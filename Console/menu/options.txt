@@ -5,16 +5,26 @@
 	"back_callback" : "callback_dcc_close",
 	"items" : [
 		{
+			"type" : "keybind",
+			"id" : "id_dcc_toggle",
+			"title" : "dcc_toggle_title",
+			"description" : "dcc_toggle_desc",
+			"keybind_id" : "dcc_commandprompt_toggle",
+			"run_in_game" : true,
+			"run_in_menu" : true,
+			"func" : "commandprompt_toggle"
+		},
+		{
+			"type" : "divider",
+			"size" : 8
+		},
+		{
 			"type" : "toggle",
 			"id" : "id_dcc_toggle_1",
 			"title" : "dcc_toggle_title_1",
 			"description" : "dcc_toggle",
 			"callback" : "commandprompt_toggle_1",
 			"value" : "none"
-		},
-		{
-			"type" : "divider",
-			"size" : 8
 		},
 		{
 			"type" : "DISABLED_multiple_choice",
@@ -52,16 +62,6 @@
 			"title" : "dcc_reset_settings_title",
 			"description" : "dcc_reset_settings_desc",
 			"callback" : "commandprompt_resetsettings"
-		},
-		{
-			"type" : "keybind",
-			"id" : "id_dcc_toggle",
-			"title" : "dcc_toggle_title",
-			"description" : "dcc_toggle_desc",
-			"keybind_id" : "dcc_commandprompt_toggle",
-			"run_in_game" : true,
-			"run_in_menu" : true,
-			"func" : "commandprompt_toggle"
 		}
 	]
 }

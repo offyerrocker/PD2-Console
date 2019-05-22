@@ -20,6 +20,12 @@ function HUDManager:_create_commandprompt()
 	
 	local v_margin = Console.v_margin
 	
+	local tracker_base = ws:panel({
+		name = "tracker_base", --used for trackers
+		visible = true
+	})
+	Console._tracker_panel = tracker_base
+	
 	local console_base = ws:panel({
 		name = "console_base",
 		visible = false --hidden by default, activated by keybind
@@ -41,13 +47,7 @@ function HUDManager:_create_commandprompt()
 		layer = -2
 	})
 	bg_blur:set_size(console_base:size())
-	local prompt = console_base:text({
-		name = "prompt",
-		layer = 101,
-		x = 0,
-		y = console_h - (font_size + v_margin),
-	})
-	
+
 	local command_history_frame = console_base:panel({
 		name = "command_history_frame",
 		layer = 100,
@@ -88,7 +88,7 @@ function HUDManager:_create_commandprompt()
 	
 	local caret = console_base:text({
 		name = "caret",
-		layer = 102,
+		layer = 103,
 		x = h_margin,
 		y = console_h - (font_size + v_margin),
 		text = "|",
@@ -99,7 +99,7 @@ function HUDManager:_create_commandprompt()
 	
 	local selection_box = console_base:rect({
 		name = "selection_box",
-		layer = 101,
+		layer = 102,
 		x = h_margin,
 		y = console_h - (font_size + v_margin),
 		w = 3,
@@ -110,7 +110,7 @@ function HUDManager:_create_commandprompt()
 	
 	local input_text = console_base:text({
 		name = "input_text",
-		layer = 103,
+		layer = 104,
 		x = h_margin,
 		y = console_h - (font_size + v_margin),
 		text = "",
@@ -119,10 +119,22 @@ function HUDManager:_create_commandprompt()
 		blend_mode = "add",
 		color = Color.white
 	})
+
+	local prompt = console_base:text({
+		name = "prompt",
+		text = "> ",
+		layer = 102,
+		x = 0,
+		y = console_h - (font_size + v_margin),
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		blend_mode = "add",
+		color = Color.white
+	})
 	
 	local input_bg = console_base:rect({
 		name = "input_bg",
-		layer = 100,
+		layer = 101,
 		h = font_size,
 		y = input_text:y(),
 		color = Color.black:with_alpha(0.7)
@@ -132,7 +144,7 @@ function HUDManager:_create_commandprompt()
 	
 end
 
-local function held(key)
+local function held(key) --should i even bother with holdthekey?
 	if not (managers and managers.hud) or managers.hud._chat_focus then
 		return false
 	end

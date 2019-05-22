@@ -1,75 +1,79 @@
+--[[ TODO: FEATURES BEFORE PUBLIC 1.0
 
---console stuff
---[[ TODO:
-- Move cmd history properly when sending new commands
+- Instead of adding vspace by value, check against previous log's xy/wh values and add to those (also solves v whitespace issue)
+	- Add remaining passed params to new_log_line()
+	- Fix new_log_line() text height calculation (string.match count for "\n"?)
+	- Move cmd history properly when sending new commands
+
+- Create Debug HUD
+
+- Finish implementation of persist scripts
+
+- Add trackers + customization options
+
+- Add scroll bar that actually works, except no mouse support, sadly
+
+- Keybind callbacks + script exec trackers (/bind stuff)
 
 - Block all other input in console mode
 
-- Change load priority to last load
-
-- Overflow to newline (todo test \n functionality) for character limits (should check against max length setting)
-
-- Add Log() callback so that manually calling Log() in the console only returns its result after displaying the original cmd string	
+- Overflow to newline for character limits (should check against max length setting)
+	- \n works for standard strings and hud text panels
 	
-- Better error messages with assert() (https://www.lua.org/pil/8.html)	
+- Add new global Log() function to shortcut to Console:Log() (disableable by setting)
+	- Optionally, allow overriding log() function
+	- Add console command "enablelogs" to enable/disable BLT logs or something
 
-- Scan for protected values; eg. do not allow console to change Console or its values. Instead, use cl_ commands	
+- Add settings
+	- "Reset settings" button
+	- Console window mover in mod options
 
-- Straighten out history (It should be easy to get previous commands by number, without interference from other console_log lines)
-	- Command history should be saved in a table, by index
-	- Saved result should be the function result returned by loadstring() rather than the string, to save on perf/mem
+
+- Add basic debug commands:
+	- log [msg] [name]: outputs to blt log; otherwise identical to _log()
+	- c_log [msg] [name]: outputs to console; otherwise identical to c_log()
+	- t_log/PrintTable [table] [optional: name] [optional: tier]: prints nicely-formatted table to console
+
+- Add command tooltip/syntax/error/usage	
+
+- Implement GetConsoleAddOns hook for third-party command modules /persist callback scripts etc
+
+Keybinds:
+	- Set position waypoint at fwd_ray
+	- Select Unit at fwd_ray
+		- Select enemy at fwd_ray
+			* Hold [modifier key] to select enemy and freeze AI
+		- Select deployable at fwd_ray
+		- Select misc object at fwd_ray
+
+
+
+	
+	
+
+---extra features
+
+- Fix [I stopped typing here because I got distracted and never finished the thought. I guess I'll never know what it is that needed to be fixed]
+
+- Localize the whole damn thing
+	- Add macros to support other languages rather than using a million string fragments
+	- Find people willing to help
+
+- Revert to earlier version to return data automatically (include optional new, alternate behavior?)
+	- callback tests confirmed pcall() and loadstring() functioning as expected
 	
 - Standardize margins + values in hudmanagerpd2
 - Enable Console in main menu
-- Add vertical space between command pairs
-- Add scroll bar that actually works, except no mouse support, sadly
 - Fancy fadeout/fadein for command window
 - Fancy texture(s) for command window
-- Add settings
-	- "Reset settings" button
-	- Console window mover
-- Separate into separate mod
 - Add better highlight visibility
 - Add special character actions:
-	- UPARROW to choose prev command in history
-	- DOWNARROW to choose next command in history
-	- CTRL-Z support?
 	- CAPSLOCK support?
 	- SHIFT+RETURN for newline? (invisible to code, only for organization)
-	- or append with ; (SEMICOLON) for multi-line commands
 	- CTRL + (LEFTARROW/RIGHTARROW) to move cursor to next space/special char in left/right direction
 	- ALT-code support?
 
-- Add most console settings as cl_blanketyblank
-- Add console commands (separate from Lua code execution):
-	= Debug console commands:
-		- log [msg] [name]: outputs to blt log; otherwise identical to _log()
-		- c_log [msg] [name]: outputs to console; otherwise identical to c_log()
-		- t_log/PrintTable [table] [optional: name] [optional: tier]: prints nicely-formatted table to console
-	= Misc console commands:
-		- about: display mod info/hash
-		- help: output a list of all (read: most) commands and their descriptions
-		- //: execute previous command/code again
-		- say: output result to chat
-		- quit: Application:close() (after confirm prompt)
-		- restart [sec]: initiate restart after [sec] seconds; default 5/0?
-		- playsound [id] [sync]: plays soundfile with string id [id]. if [sync], is audible to other players
-		- wait [s]; delayed callback?
-		- fov [num]: sets FOV to this number
-		- sensitivity [num]: sets mouse sensitivity to this number
-		- sensitivity_aim [num]: sets mouse sensitivity to this number
-		- ping [optional: peerid]: displays ping to all clients, or specified client; output "you're in offline mode, dumbass" if offline
-		- other client settings?
-		- date: returns Application:date()
-		- time: returns the current real-world time
-		- writetodisk [data] [pathname]: Writes data to a (default txt) file in JSON format; todo figure out boundaries to where I can save that shit
-			- if pathname is unparseable, save to default location and write error message detailing save location
-		- stop: stops all jokes, command processes, sounds, and registered running callback/functions
-
-- Determine console prefix (probably "/")
-	
-- Add command tooltip/syntax/error/usage	
-	
+- Add console settings as cl_blanketyblank
 --]]
 
 
@@ -79,11 +83,13 @@ Console.settings = {
 	font_size = 12,
 	margin = 2,
 	scroll_speed = 12, --pixels per scroll action
-	scroll_page_speed = 800, --pixels per page scroll action
-	esc_behavior = 1
+	scroll_page_speed = 720, --pixels per page scroll action
+	esc_behavior = 1,
+	auto_evaluate = true
 }
 
 Console.path = ModPath
+Console.loc_path = Console.path .. "localization/"
 Console.options_name = "options.txt"
 Console.options_path = Console.path .. "menu/" .. Console.options_name
 Console.save_name = "command_prompt_settings.txt"
@@ -98,17 +104,272 @@ Console.input_interval_done = false --flag for enabling input_interval_initial
 Console._typing_callback = 0 --lol idk
 Console._skip_first = false --used to ensure that console-management buttons (like the "enter" or "`" the console open key) don't trigger as text inputs
 Console.num_lines = 1 --updated count of number of text lines in the console
+Console.num_commands = 1
+Console.selected_history = nil --currently displayed command history for when browsing command history with (UP/DOWN)ARROW
 Console.input_t = 0 --last t of valid character/text input
 --Console._panel = panel
 Console._enter_text_set = true --i'm... not totally sure what that does
 Console._delayed_result = nil --stores the result of pcalled Log(), so that it can be displayed in order
+Console._adventure = nil --WHAT TIME IS IT
 
-Console.color_data = {
+Console.command_history = {
+--	[1] = { name = "/say thing", func = (function value) } --as an example
+}
+
+Console.color_data = { --for ui stuff
 	scroll_handle = Color(0.1,0.5,0.8)
+}
+
+Console.cmd_list = { --todo update
+	help = "Console:cmd_help($ARGS)",
+	about = "Console:cmd_about()",
+	info = "Console:cmd_info()",
+	say = "Console:cmd_say($ARGS)",
+	whisper = "Console:cmd_whisper($ARGS)",
+	god = "OffyLib:EnableInvuln($ARGS)",
+	exec = "Console:cmd_dofile($ARGS)",
+	time = "Console:cmd_time()",
+	date = "Console:cmd_date()",
+	quit = "Console:cmd_quit()",
+	restart = "Console:cmd_restart($ARGS)", --argument is seconds delay to restart
+	fov = "Console:cmd_fov($ARGS)", -- borked atm
+	ping = "Console:cmd_ping($ARGS)",
+	savetable = "Console:cmd_writetodisk($ARGS)", -- [data] [pathname]
+	adventure = "Console:cmd_adventure($ARGS)",
+	stop = "Console:cmd_stop($ARGS)"
 }
 
 Console.h_margin = 24
 Console.v_margin = 3
+
+Console._persist_scripts = { --any scripts in this table will run every frame (as they are persist scripts) until they are removed. see documentation/help for how to use this.
+--[[
+	persist_script_id = {
+		clbk = callback(classname, classname_2, "functionname", additional_arguments),
+		clbk_fail = callback(classname, classname_2, "functionname", additional_arguments), --called if clbk fails to execute
+		clbk_success = callback(classname, classname_2, "functionname", additional_arguments), --called if clbk returns true (MUST return true (or non/false or non-nil value), not simply execute successfully)
+		silent_fail = true, --if true, does not log any errors
+		silent_success = true, --if true, does not log successful runs
+		silent_all = true --if true, does not create ANY logs on the status of this persist script or its fail/success callbacks.
+		
+	}	
+--]]
+}
+
+Console._persist_trackers = { --storage for HUD elements
+	
+}
+
+--set data for the tracker hud element: 
+--valid examples 
+function Console:SetPersistTracker(id,data)
+	if not (data and type(data) == "table") then 
+		self:Log("ERROR: Bad data to SetPersistTracker(" .. tostring(id) .. ",[non-table value]")
+		return 
+	end
+	local trackers = self._persist_trackers
+	if not (trackers and trackers[id] and alive(trackers[id])) then 
+		
+	else
+	
+	end
+	
+end
+
+function Console:SetTrackerValue(id,info)
+	info = tostring(info or "")
+	local trackers = self._persist_trackers
+	if not (trackers and trackers[id] and alive(trackers[id])) then
+		trackers[id]:set_text(info)
+	else
+		trackers[id] = self._tracker_panel:text({
+			name = id,
+			text = info,
+			x = 0,
+			y = 0
+		})
+		return
+	end
+end
+
+function Console:RegisterPersistScript(id,clbk,clbk_fail,clbk_success,silent_fail,silent_success,silent_all)
+	if (id ~= nil) and type(clbk) == "function" then 
+		self._persist_scripts[tostring(id)] = {
+			clbk = clbk,
+			clbk_fail = clbk_fail,
+			clbk_success = clbk_success,
+			silent_fail = silent_fail,
+			silent_success = silent_success,
+			silent_all = silent_all
+		}
+		return true
+	else
+		local invalid_id = (id == nil) and "Invalid persist_script id" 
+		local invalid_clbk = ((not clbk) or (type(clbk) ~= "function")) and "Invalid clbk" 
+		self:Log("ERROR: RegisterPersistScript() for id [" .. tostring(id) .. "]: " .. (invalid_id or "") .. ((invalid_id and invalid_data and " and ") or "") .. (invalid_data or ""))
+		return false
+	end
+end
+
+function Console:RemovePersistScript(id)
+	self._persist_scripts[tostring(id)] = nil -- very complex as you can see
+end
+
+function Console:cmd_whisper(message)
+	return "Not implemented"
+end
+
+function Console:cmd_adventure(toggle)
+	if (toggle == true) or (toggle == false) then --if state given, set to state
+		--continue to ADVENTURE
+	else --if no state given, invert state
+		toggle = not self._adventure
+	end
+	
+	if self._adventure == nil then --adventure is not initiated; load adventure engine
+		local result,error_message = dofile(Console.path .. "lua/adventure/adventure.lua")
+		
+		if error_message then 
+			self:Log("Error executing adventure: " .. tostring(error_message),{color = Color.red})
+			return
+		elseif result then 
+			self:Log("Returned from loading adventure: " .. tostring(result),{color = Color.yellow})
+		end
+	end
+	
+	self._adventure = toggle
+	
+end
+
+function Console:cmd_help(cmd_name)
+	self:Log("Hewwo dere uwu how are u")
+--	self:Log("Hewwo dere \n uwu how are u") --this does in fact work
+	return "help who?"
+end
+
+function Console:cmd_about()
+	return "About: CommandConsole is a mod designed to aid the creation and development of mods for PAYDAY 2."
+end
+
+function Console:cmd_info()
+	return "Info: CommandConsole Version 0.1, by Offyerrocker. \nOpen Source. Do not redistribute without permission."
+end
+
+function Console:cmd_time()
+	return tostring(os.time())
+end
+
+function Console:cmd_date()
+	return tostring(os.date())
+end
+
+function Console:cmd_say(message)
+	if managers.chat and managers.network then 
+		local channel = managers.chat._channel_id
+		local sender_name = managers.network.account:username() or "Someone"
+		managers.chat:send_message(channel, sender_name ,message)
+		managers.chat:_receive_message(channel,sender_name,message,Color.white) --todo peerid color
+	else
+		self:Log("Command [/say " .. tostring(message) .. "] failed: no ChatManager present. Are you in an active lobby?")
+	end
+end
+
+function Console:cmd_dofile(path)
+	if (not path) or path == "" then 
+		self:Log("Error: /exec " .. tostring(path) .. " failed (Invalid argument to path)",{color = Color.red})
+		return
+	end
+end
+
+function Console:cmd_quit(skip_confirm)
+	if skip_confirm == true then --must pass "true", not just a non-nil/non-false value
+		Application:Close()
+	end
+	local menu_title = managers.localization:text("dcc_qtd_prompt_title")
+	local menu_desc = managers.localization:text("dcc_qtd_prompt_desc")
+	local options = {
+		{
+			text = managers.localization:text("dcc_qtd_cancel"),
+			is_cancel_button = true
+		},
+		{
+			text = managers.localization:text("dcc_qtd_confirm"),
+			callback = callback(self,self,"cmd_quit",true)
+		}
+	}
+	QuickMenu:new(menu_title,menu_desc,options):show()
+end
+
+function Console:cmd_restart(timer)
+	if not (Global.game_settings.single_player or (managers.network and managers.network:session():is_host())) then 
+		self:Log("You cannot restart the game in which you are not the host!",{color = Color.red})
+		return
+	end
+
+	timer = timer and tonumber(timer)
+	if not timer or timer <= 0 then 
+		managers.game_play_central:restart_the_game()
+	elseif timer then 
+	--do delayed callback bs
+		--callback(self,self,"cmd_restart",0)
+		
+--	local votemanager = managers.vote
+	--if not votemanager._stopped then
+--do new restart, check if host/offline
+--		votemanager._callback_type = "restart"
+--		votemanager._callback_counter = TimerManager:wall():time() + tonumber(timer)		
+	end
+end
+
+function Console:cmd_fov(new_fov)
+	local player = managers.player:local_player()
+	local camera = player and player:camera()
+	if not camera then return "ERROR: No player/camera unit found" end
+	if not new_fov then 
+		return camera._camera_object._fov
+	elseif camera._camera_object then
+		camera:set_FOV(new_fov)
+	end
+end
+
+function Console:cmd_sens(new_sens) --not used
+	return "Not implemented yet"
+end
+
+function Console:cmd_sens_aim(new_sens) --not used; --currently identical to cmd_sens
+	if not new_sens then 
+		return sens
+	end
+	return "Not implemented yet"
+end
+
+function Console:cmd_ping(peerid) --not implemented
+	if not peerid then 
+	
+	end
+end
+
+function Console:cmd_writetodisk(data,pathname) --yeah turns out there's already a BLT Util for this, SaveTable() / Utils.DoSaveTable. SO i'm just gonna redirect to that. 
+	return SaveTable(data,pathname)
+--[[
+	if not (data and type(data) == "table") then 
+		return "Invalid data. Usage: /writetodisk data pathname"
+	elseif not pathname or pathname == "" then 
+		return "Invalid path. Usage: /writetodisk data pathname"
+	else
+		local file = io.open(pathname,"w+")
+		if file then
+			file:write(json.encode(self.settings))
+			file:close()
+			return ("Output to " .. pathname .. " successful.")
+		end
+	end
+	--]]
+end
+
+function Console:cmd_stop(process_id) --untested
+	return self:RemovePersistScript(process_id)
+end
 
 local orig_togglechat = MenuManager.toggle_chatinput
 function MenuManager:toggle_chatinput(...) --prevent the chat window from showing up when using console
@@ -145,7 +406,7 @@ function Console:GetEscBehavior()
 	return self.settings.esc_behavior
 end
 
-function Console:string_excise(str,s,e,replacement)
+function Console:string_excise(str,s,e,replacement) --obsolete; not consistently inclusive to e
 --removes the selected part of a string (non inclusive) and returns the modified string
 --optional: arg "replacement" can be inserted in place of the excised substring
 	replacement = tostring(replacement or "")
@@ -203,21 +464,25 @@ function Console:ClearConsole()
 end
 
 function Console:Log(info,params)
-	local color = params and params.color or Color.white
-	
+--	local color = params and params.color or Color.white
+--	local margin = params and params.h_margin
 	if not info then
 --		return --todo setting to disable logging if nil value? optional parameter?
 	end
 	
 	local line = self.num_lines
-	local new_line = self:new_log_line()
+	local new_line = self:new_log_line(params)
 	if new_line and alive(new_line) then 
-		new_line:set_color(color) 
 		new_line:set_text(tostring(info))
 	end
 end
 
-function Console:new_log_line()
+function Console:new_log_line(params)
+	params = params or {}
+	
+	local color = params.color or Color.white:with_alpha(0.5)
+	local v_div = params.new_cmd and 6 or 0
+
 	local panel = self._panel
 	local frame = panel:child("command_history_frame")
 	local history = frame:child("command_history_panel")
@@ -225,20 +490,38 @@ function Console:new_log_line()
 	local font_size = self:GetFontSize()
 	local v_margin = self.v_margin
 	local h_margin = self.h_margin
-	history:set_h(history:h() + font_size + v_margin)
+	history:set_h(history:h() + font_size + self.v_margin)
+	local new_x = h_margin
+	local new_y = (2 + self.num_lines) * font_size
 	if not history:child("history_cmd_" .. tostring(self.num_lines)) then 
+		local previous_line = history:child("history_cmd_" .. tostring(self.num_lines - 1))
+		if previous_line and alive(previous_line) then
+		--todo for every instance of \n in previous_line do y = y + v_margin + font_size
+			local x,y,w,h = previous_line:text_rect()
+	--[[
+			--can't use Log() here cause it'll overflow from infinite recursive errors.
+			--how ironic, it could save others from crashing, but not itself
+			KineticHUD:_debug(x,1)
+			KineticHUD:_debug(y,2)
+			KineticHUD:_debug(w,3)
+			KineticHUD:_debug(h,4)
+			KineticHUD:_debug(v_margin,5)
+			KineticHUD:_debug(previous_line:bottom(),6)
+	--]]
+			new_y = previous_line:bottom() + v_div
+		end
 		line = history:text({
 			name = "history_cmd_" .. tostring(self.num_lines),
 			layer = 1,
-			x = h_margin + 16, --margin
-			y = (2 + self.num_lines) * (font_size),
+			x = new_x, --margin
+			y = new_y,
 			text = "[" .. tostring(self.num_lines) .. "] loading...",
 			font = tweak_data.hud.medium_font,
 			font_size = font_size,
-			color = Color.white:with_alpha(0.5)
+			color = color
 		})
 	else
-		log("ERROR! history line " .. tostring(self.num_lines) .. " already exists!")
+		log("Console: ERROR! history line " .. tostring(self.num_lines) .. " already exists!")
 	end
 	self.num_lines = self.num_lines + 1
 	return line
@@ -278,11 +561,16 @@ function Console:ToggleConsoleFocus(focused)
 end
 
 Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", function( loc )
-	loc:add_localized_strings(
-		{
-			commandprompt_menu_title = "Console Options"
-		}
-	)
+	local path = Console.loc_path
+	
+	for _, filename in pairs(file.GetFiles(path) do
+		local str = filename:match('^(.*).txt$')
+		if str and Idstring(str) and Idstring(str):key() == SystemInfo:language():key() then
+			loc:load_localization_file(path .. filename)
+			return
+		end
+	end
+	loc:load_localization_file(path .. "localization/english.txt")
 end)	
 
 Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manager)
@@ -356,11 +644,6 @@ function Console:BuildCharList(region) --i'm either a genius or an idiot, depend
 	return charlist
 end
 
-function Console:DelayedLog(info)
-	self._delayed_result = info --save result as it is given,
-	return tostring(info) --but return in string format to be logged
-end
-
 function Console:esc_key_callback() --temp disabled until i figure out how to safely temporarily disable esc>menu input; currently will only close console
 
 	local text = Console._panel:child("input_text")
@@ -385,50 +668,141 @@ function Console:esc_key_callback() --temp disabled until i figure out how to sa
 	end
 end
 
-function Console:enter_key_callback()
-
+function Console:enter_key_callback(from_history) --interpret cmd input from the "Enter" key
+	local auto_evaluate = false --and self.settings.auto_evaluate --should be taken from setting
+	local v_margin = 6 or self.v_margin --done margin, not normal v margin
 	local panel = self._panel
-	local text = panel:child("input_text")
-	local cmd = text:text()
-	local cmd_len = string.len(cmd)
-	if cmd_len <= 0 then	
+	local input_text = panel:child("input_text")
+	local history_func,history_success,history_result
+	local cmd = input_text:text() --input string to work with
+	if from_history and self.selected_history then
+		local history_data = self.command_history[self.selected_history]
+		if history_data then
+			history_func = history_data.func
+			if history_func then 
+				if history_data.name and history_data.name == cmd then 					
+					history_success,history_result = pcall(history_func)
+					self:Log("> " .. tostring(cmd))
+					if history_success then
+						if (history_result ~= nil) then 
+							self:Log("Command successfully ran from history with result:\n" .. tostring(history_result),{color = Color(0.1,0.5,1),v_margin = v_margin})
+						else
+							self:Log("Command successfully ran from history with no result",{color = Color.yellow,v_margin = v_margin})
+						end
+					else
+						self:Log("Command run from history failed",{color = Color.red,v_margin = v_margin})
+					end
+					
+					table.insert(self.command_history,{name = cmd, func = history_func}) --save to history as last used command
+					self.selected_history = nil --reset selected command_history 
+					return
+				else
+					self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: modified cmd. Only use CTRL-ENTER for re-executing command history!",{color = Color.red,v_margin = v_margin})
+				end
+			else
+				self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: invalid history func.",{color = Color.red,v_margin = v_margin})
+			end
+		else
+			self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: invalid command history. Only use CTRL-ENTER for re-executing command history!",{color = Color.red,v_margin = v_margin}) 
+		end
+		--don't clear selected command history if failure
 		return
+	end		
+	self.selected_history = nil --reset selected command_history 
+	
+	
+	local orig_cmd = cmd --copy original input string for logging purposes; cmd will be extensively changed in following command parsing
+	input_text:set_text("") --wipe input box
+	
+	local is_command = false
+	
+	local input_len = string.len(cmd)
+	
+	if input_len <= 0 then 
+		return --invalid/empty input
 	else
-		local space_len = 0
-		for i=1,cmd_len,1 do 
-			if string.sub(cmd,i,i) == " " then --remove all spaces from the start of a command
+		--check for empty space before cmd and remove it
+		local space_len = 0 --index 
+		for i = 1, input_len,1 do
+			if string.sub(cmd,i,i) == " " then --note to self: add other future blacklisted "prefix" characters and check against blacklist table here
 				space_len = i
 			else
-				break
+				break --if next character is not a space
 			end
 		end
 		if space_len > 0 then 
-			cmd = string.sub(cmd,space_len,cmd_len)
+			cmd = string.sub(cmd,space_len) 
 		end
 	end
-	if cmd == "" or (string.len(cmd) <= 0) then 
-		return 
+	input_len = string.len(cmd) --set len again
+	if cmd == "" or (input_len <= 0) then 
+		return --check for invalid cmd again since we just changed it
 	end
-	local orig_cmd = cmd
-	cmd = "Console:DelayedLog(" .. cmd .. ")" --save the result of the cmd string to log later
-	--todo delayed callback to log so we can determine if it was a successful cmd that didn't output,
-	--or an unsuccessful command 
-	--save result as a var?
-	log(tostring(cmd))
-	if pcall(loadstring(cmd)) then
-		self:Log("> " .. orig_cmd) --log the cmd string (before modifying to add console_log result)
-		if self._delayed_result then 
-			self:Log(self._delayed_result)
-		end
-	else
-		self:Log("> " .. orig_cmd)
-		self:Log("Command failed",{color = Color.red})
-	end
-	self._delayed_result = nil
+
+	self:Log("> " .. cmd) --log the input str to console
 	
-	text:set_text("")
+	if cmd == "//" then
+		self:Log("Doing last command (TODO)")
+		
+		
+		--call last command
+		return --TODO remove
+	elseif string.sub(cmd,1,1) == "/" then --command indicator
+		is_command = true
+		cmd = string.sub(cmd,2)
+		local args = string.split(cmd," ") --parse args from input string
+		local cmd_id = args and args[1] --
+		local command = cmd_id and self.cmd_list[cmd_id] 
+		local argument_string = ""
+		for k,argument in pairs(args) do 
+			if k > 2 then 
+				--basically table.concat but i need to ignore the first argument because it's actually the "function"
+				argument_string = argument_string .. "," .. argument 
+			end
+		end
+		
+		if command then 
+			cmd = string.gsub(command,"$ARGS",argument_string) --replace original string, and preserve "command" for logging the original function name (eg. "Console:cmd_about()")
+			self:Log("Writing command " .. tostring(command) .. " to result " .. tostring(cmd))
+		elseif cmd_id then 
+			self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = Color.red,v_margin = v_margin})
+			return
+		else
+			self:Log("Error: empty command string",{color = Color.red,v_margin = v_margin})
+			return 
+		end
+	end
+	local success,result,func,error_message
+	if auto_evaluate then 
+		func,error_message = loadstring("Console:evaluate(" .. cmd .. ")")
+	else
+		func,error_message = loadstring(cmd)
+	end
+	if error_message or not func then 
+		self:Log("Command " .. tostring(func or "") .. " failed: " .. error_message,{color = Color.red,v_margin = v_margin})
+	else
+		success,result = pcall(func) --!
+		if success then
+			if result ~= nil then 
+				self:Log(result,{color = Color(0.1,0.5,1)})
+			elseif not is_command then
+				self:Log("No result",{color = Color.yellow,v_margin = v_margin})
+			elseif is_command then
+				self:Log("Done",{color = Color.yellow,v_margin = v_margin})
+			end
+		else -- command fail
+			self:Log("Command failed (no error given) " .. (result and (" with result:[" .. tostring(result) .. "]") or ""),{color = Color.red,v_margin = v_margin})
+		end
+	end
+	table.insert(self.command_history,{name = is_command and orig_cmd or cmd, func = func})
 end
 
+function Console:evaluate(info) 
+--this is only for enabling simple Lua code like "1+1" to return 2 rather than requiring "return 1+1" in order to return 2
+--without this, "1+1" will yield an error, and code that returns something will still need a value returned in order to display a result
+	self._last_result = info
+	return info
+end
 
 function Console:upd_caret(t) --position, selection and blink
 	local panel = self._panel
@@ -473,7 +847,10 @@ function Console:key_press(o,k)
 	local text = panel:child("input_text")
 	local debug_text = panel:child("debug_text")
 	self.input_interval_done = false
-
+	
+	local skip_set_pressed = false --if true, does not set self._key_pressed to k (basically, just ignores this key input)
+	local revert_alpha = false --if keys that are not up-arrow or down-arrow are pressed, this is set to true, and alpha is set to 1.0 once more
+	
 	self.input_t = 0
 	
 	local ctrl_held = self:_ctrl() --and they said i didn't have any self control
@@ -492,50 +869,69 @@ function Console:key_press(o,k)
 			self._skip_first = false
 			return
 		else
-			self:enter_key_callback()
+			self:enter_key_callback(ctrl_held)
 		end
 	end
-
+	local clipb_end
 	local current = text:text()
 	local current_len = string.len(current)
 	if k == Idstring("delete") then 
-
+		revert_alpha = true
+		--can autorepeat
 	elseif k == Idstring("insert") then 
-		text:set_text(self:string_excise(current,s,e,clipboard))
-		text:set_selection(s,s + string.len(clipboard))
+		revert_alpha = true
+--		text:set_text(self:string_excise(current,s,e,clipboard))
+		text:replace_text(clipboard)
+		clipb_end = clipboard and (s + string.len(clipboard)) or s --get end of clipboard, or use caret position before clipboard
+		text:set_selection(clipb_end,clipb_end) --set caret to end of clipboard
 	elseif k == Idstring("left") then 
+		revert_alpha = true
+		--can autorepeat
 	elseif k == Idstring("right") then 
-	elseif k == Idstring("up") then 
+		revert_alpha = true
+		--can autorepeat
+	elseif k == Idstring("up") then
 	elseif k == Idstring("down") then 
 	elseif k == Idstring("home") then 
+		revert_alpha = true
+		--can autorepeat
 	elseif k == Idstring("end") then 
+		revert_alpha = true
+		--can autorepeat
 	elseif k == Idstring("page up") then 
+		--can autorepeat
 	elseif k == Idstring("page down") then 
-	elseif k == Idstring("esc") and type(self._esc_callback) ~= "number" then
-		
+		--can autorepeat
+	elseif k == Idstring("esc") and type(self._esc_callback) ~= "number" then		
 		self:esc_key_callback()
-		--options:
-		--1. clear current line
-		--2. if line is empty, close console; else clear current line
-		--3. close console
-	elseif k == Idstring("a") and ctrl_held then 
+	elseif k == Idstring("a") and ctrl_held then --select all; do not autorepeat
+		revert_alpha = true
 		if current_len > 0 then
 			text:set_selection(0,current_len)
 		end
-		return
-	elseif k == Idstring("v") and ctrl_held then
-		text:set_text(self:string_excise(current,s,e,clipboard))
-		text:set_selection(s,s + string.len(clipboard))
-		return --do not set key pressed and add "v" char
+		skip_set_pressed = true
+	elseif k == Idstring("v") and ctrl_held then --do not autorepeat; identical to insert
+		revert_alpha = true
+--		text:set_text(self:string_excise(current,s,e,clipboard))
+--		text:set_selection(s,s + string.len(clipboard)) --select newly pasted clipboard contents
+		text:replace_text(clipboard)
+		clipb_end = clipboard and (s + string.len(clipboard)) or s --get end of clipboard, or use caret position before clipboard
+		text:set_selection(clipb_end,clipb_end) --set caret to end of clipboard
+		
+		skip_set_pressed = true  --do not set key pressed or add "v" char
 	elseif k == Idstring("z") and ctrl_held then 
-		return --same; ctrl-z is not implemented yet
-	elseif k == Idstring("a") and ctrl_held then 
-		--select all
+		revert_alpha = true
+		skip_set_pressed = true --same; ctrl-z is not implemented yet
 	else
 --		return
 	end
-
-	self._key_pressed = k
+	if revert_alpha then 
+		text:set_alpha(1)
+	end
+	
+	if not skip_set_pressed then 
+		self._key_pressed = k
+	end
 end
 
 function Console:update_key_down(o,k,t)
@@ -552,6 +948,7 @@ function Console:update_key_down(o,k,t)
 		return
 	end
 	
+	local num_commands = #self.command_history
 	local text = panel:child("input_text")	
 	local history = panel:child("command_history_frame"):child("command_history_panel")
 	local new_char
@@ -564,7 +961,7 @@ function Console:update_key_down(o,k,t)
 	local current = text:text()
 	local new_text = ""
 	local current_len = string.len(current) --todo figure out how this is different from ut8.len()
-	
+
 	if k == Idstring("space") then 
 		new_char = " "
 	else
@@ -590,10 +987,11 @@ function Console:update_key_down(o,k,t)
 				text:set_selection(s+1,s+1)
 			end
 		elseif s ~= e then --replace selection
-			text:set_text(self:string_excise(current,s,e,new_char))
+			text:replace_text(new_char)
+--			text:set_text(self:string_excise(current,s,e,new_char))
 			text:set_selection(e,e)
 		end
-
+		text:set_alpha(1)
 	else
 		if k == Idstring("backspace") then --delete selection or text character behind caret
 			if s == e and s > 0 then
@@ -605,13 +1003,13 @@ function Console:update_key_down(o,k,t)
 		elseif k == Idstring("delete") then --delete selection or text character after caret
 			
 			if s == e and s < n then
-				text:set_selection(s + 1, e)
+				text:set_selection(s, e + 1)
 			end
 
 			text:replace_text("")
 
 		elseif k == Idstring("insert") then 
-			--nothing? todo decide if "paste clipboard" should be auto-repeatable
+			--copypaste should not auto-repeat
 		elseif k == Idstring("left") then 
 			if shift_held then 
 				if s == e then 
@@ -633,7 +1031,8 @@ function Console:update_key_down(o,k,t)
 			end
 			
 			self._caret_blink_t = t
-			
+
+			self._panel:child("caret"):set_visible(true)			
 		elseif k == Idstring("right") then 
 			if shift_held then 
 				if (s == e) then --if no selection then set direction right
@@ -652,12 +1051,48 @@ function Console:update_key_down(o,k,t)
 				elseif s < n then --move caret right
 					text:set_selection(s + 1, s + 1)
 				end
-				self._caret_blink_t = t
 			end
-		elseif k == Idstring("up") then 
-		
+			self._caret_blink_t = t
+			self._panel:child("caret"):set_visible(true)
 		elseif k == Idstring("down") then 
-		
+			if not self.selected_history then 
+				self.selected_history = 1 --set at newest command
+			else
+				if self.selected_history >= num_commands then 
+					self.selected_history = 1
+--					self:Log(self.selected_history .. ">=" .. num_commands)
+				elseif num_commands > 1 then
+					self.selected_history = self.selected_history + 1
+--					self:Log(num_commands .. ">" .. 1)
+				end
+			end
+			new_text = self.selected_history and self.command_history[self.selected_history]
+			new_text = new_text and new_text.name
+			if new_text then 
+				text:set_alpha(0.5)
+				text:set_text(new_text)
+				current_len = string.len(new_text)
+				text:set_selection(current_len,current_lent)
+			end
+			--history select goes here
+		elseif k == Idstring("up") then 
+			if not self.selected_history then 
+				self.selected_history = num_commands --set at oldest command
+			else
+				if self.selected_history <= 1 then 
+					self.selected_history = num_commands
+				elseif num_commands > 1 then --and self.selected_history > 1 by default 
+					self.selected_history = self.selected_history - 1
+				end
+			end
+			new_text = self.selected_history and self.command_history[self.selected_history]
+			new_text = new_text and new_text.name
+			if new_text then 
+				text:set_alpha(0.5)
+				text:set_text(new_text)
+				current_len = string.len(new_text)
+				text:set_selection(current_len,current_lent)
+			end
 		elseif k == Idstring("home") then 
 			text:set_selection(0, 0)
 		elseif k == Idstring("end") then 
@@ -684,3 +1119,4 @@ function Console:key_release(o,k)
 		self._key_pressed = nil
 	end
 end
+

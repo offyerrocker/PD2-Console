@@ -1,10 +1,11 @@
 {
 	"name" : "Command Console",
-	"description" : "Adds a toggle-able command prompt UI in-game, for Lua mod development.\nCompatible with all HUD mods.",
+	"description" : "Adds a toggle-able command prompt UI in-game with real-time Lua interaction,\nfor Lua mod development.\n\nCompatible with all HUD mods.",
 	"author" : "Offyerrocker",
 	"contact" : "Discord: Offyerrocker#3878",
-	"version" : "0.1",
+	"version" : "0.2",
 	"blt_version" : 2,
+	"priority" : 1,
 	"color" : "255 128 0",
 	"hooks" : [
 		{
@@ -14,6 +15,17 @@
 		{
 			"hook_id" : "lib/managers/hudmanagerpd2",
 			"script_path" : "lua/hudmanagerpd2.lua"
+		}
+	],
+	"persist_scripts" : [
+		{
+			"global" : "DisableConsolePersistScripts",
+			"script_path" : "lua/exec_persist.lua"
+		}
+	],
+	"DISABLED_updates" : [
+		{
+			"identifier" : "console"
 		}
 	]
 }
