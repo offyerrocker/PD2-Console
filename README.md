@@ -13,6 +13,11 @@ For example, running
 
 will not crash, and will instead log an error "div 0 error" to the console.
 However, any successful code execution may still cause crashes in any affected code outside of the console, e.g. replacing a value that the game uses with a nil or invalid value. 
+For example, running
+
+`managers.player = true` 
+will crash next time any PlayerManager function is called, because you are removing (the global for) an important class used by the game.
+
 This code will only execute on your client; remote code execution is a security exploit, not a planned feature.
 Commands may not be mixed with other commands or with user-input Lua code by default. 
 
