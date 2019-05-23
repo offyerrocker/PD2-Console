@@ -1,25 +1,19 @@
 --[[ TODO: FEATURES BEFORE PUBLIC 1.0
 
-- Instead of adding vspace by value, check against previous log's xy/wh values and add to those (also solves v whitespace issue)
-	- Add remaining passed params to new_log_line()
-	- Fix new_log_line() text height calculation (string.match count for "\n"?)
-	- Move cmd history properly when sending new commands
 
 - Create Debug HUD
-
-- Finish implementation of persist scripts
-
-- Add trackers + customization options
+	- create cool looking ui for unit info (using hud assets? think bounding box; see camera unit-spotting code for example)
+	Trackers:
+	- Test tracker creation
+	- Dynamic tracker placement + menu order by ID
+	- command to get all trackers by name + number
 
 - Add scroll bar that actually works, except no mouse support, sadly
 
+- Straighten out keybind info to log/whether "held" is a parameter or a separate command
+
 - Keybind callbacks + script exec trackers (/bind stuff)
 
-- Block all other input in console mode
-
-- Overflow to newline for character limits (should check against max length setting)
-	- \n works for standard strings and hud text panels
-	
 - Add new global Log() function to shortcut to Console:Log() (disableable by setting)
 	- Optionally, allow overriding log() function
 	- Add console command "enablelogs" to enable/disable BLT logs or something
@@ -34,7 +28,18 @@
 	- c_log [msg] [name]: outputs to console; otherwise identical to c_log()
 	- t_log/PrintTable [table] [optional: name] [optional: tier]: prints nicely-formatted table to console
 
-- Add command tooltip/syntax/error/usage	
+- Add command tooltip/syntax/error/usage
+
+- Instead of adding vspace by value, check against previous log's xy/wh values and add to those (also solves v whitespace issue)
+	- Add remaining passed params to new_log_line()
+	- Fix new_log_line() text height calculation (string.match count for "\n"?)
+	- Move cmd history properly when sending new commands
+	- Restore replaced text if selected_history == 0
+
+- Scan for \n in strings, and replace with separate Log() line
+	- Overflow to newline for character limits (should check against max length setting)
+		- \n works for standard strings and hud text panels
+
 
 - Implement GetConsoleAddOns hook for third-party command modules /persist callback scripts etc
 
@@ -51,8 +56,11 @@ Keybinds:
 	
 	
 
----extra features
+---extra features, for post release
 
+- Block movement input in console mode
+	- Reset movement when opening console (so that positive input is not "stuck" if opening console while applying input)
+	
 - Fix [I stopped typing here because I got distracted and never finished the thought. I guess I'll never know what it is that needed to be fixed]
 
 - Localize the whole damn thing
@@ -90,10 +98,12 @@ Console.settings = {
 
 Console.path = ModPath
 Console.loc_path = Console.path .. "localization/"
-Console.options_name = "options.txt"
-Console.options_path = Console.path .. "menu/" .. Console.options_name
 Console.save_name = "command_prompt_settings.txt"
 Console.save_path = SavePath .. Console.save_name
+Console.options_name = "options.txt"
+Console.options_path = Console.path .. "menu/" .. Console.options_name
+Console.keybinds_name = "command_prompt_keybinds.txt" --custom keybinds; separate from BLT/mod keybinds
+Console.keybinds_path = Console.save_path .. Console.keybinds_name
 Console._focus = false --whether or not console is visible/interactable
 Console.caret_blink_interval = 0.5 --duration in seconds of cursor flashes
 Console._caret_blink_t = 0 --last t for caret blink (calculations)
@@ -117,7 +127,7 @@ Console.command_history = {
 }
 
 Console.color_data = { --for ui stuff
-	scroll_handle = Color(0.1,0.5,0.8)
+	scroll_handle = Color(0.1,0.3,0.7)
 }
 
 Console.cmd_list = { --todo update
@@ -128,6 +138,8 @@ Console.cmd_list = { --todo update
 	whisper = "Console:cmd_whisper($ARGS)",
 	god = "OffyLib:EnableInvuln($ARGS)",
 	exec = "Console:cmd_dofile($ARGS)",
+	bind = "Console:cmd_bind($ARGS)",
+	unbind = "Console:cmd_unbind($ARGS)",
 	time = "Console:cmd_time()",
 	date = "Console:cmd_date()",
 	quit = "Console:cmd_quit()",
@@ -142,65 +154,141 @@ Console.cmd_list = { --todo update
 Console.h_margin = 24
 Console.v_margin = 3
 
-Console._persist_scripts = { --any scripts in this table will run every frame (as they are persist scripts) until they are removed. see documentation/help for how to use this.
+Console._keybind_cache = { --whether the key is currently being held (or was last frame)
+--	[keybind_id_1] = true,
+--	[keybind_Id_2] = false
+}
+Console._custom_keybinds = {
+	--[[
+	[keybind_id] = {
+		clbk = callback(Class,SelfArg,"functionname",'additional_arguments'), --function to run
+		persist = true --if true, run every frame; else, run only on pressed (once per press)
+	}
+	--]]
+}
+
+Console._persist_scripts = { --any scripts in this table will run every frame (as they are persist scripts) until they are removed. see documentation/help for how to use this.	
 --[[
-	persist_script_id = {
+	[persist_script_id] = {
 		clbk = callback(classname, classname_2, "functionname", additional_arguments),
 		clbk_fail = callback(classname, classname_2, "functionname", additional_arguments), --called if clbk fails to execute
 		clbk_success = callback(classname, classname_2, "functionname", additional_arguments), --called if clbk returns true (MUST return true (or non/false or non-nil value), not simply execute successfully)
-		silent_fail = true, --if true, does not log any errors
-		silent_success = true, --if true, does not log successful runs
-		silent_all = true --if true, does not create ANY logs on the status of this persist script or its fail/success callbacks.
+		log_fail = true, --if true, log errors
+		log_success = true, --if true, log successful runs
+		log_all = true --if true, logs on the status of this persist script or its fail/success callbacks. equivalent to having both (log_fail = true) and (log_success = true)
 		
 	}	
 --]]
 }
 
-Console._persist_trackers = { --storage for HUD elements
+Console._persist_trackers = { --storage for HUD elements; todo rename
 	
 }
 
+function Console:cmd_bind(keybind_id,held,func,...) --func is actually a string which is fed into Console's command interpreter
+--todo popup box req HoldTheKey
+	if keybind_id then 
+		if self._custom_keybinds[keybind_id] or not func then --if nil or invalid func parameter then show current bind
+			return self._custom_keybinds[keybind_id] --todo output to log
+		elseif func then 
+			self._custom_keybinds[keybind_id] = {
+				persist = held,
+				func = func
+			}
+		end
+	end
+end
+
+function Console:OnInternalLoad() --called on event PlayerManager:_internal_load()
+	--load keybinds
+end
+
+function Console:SaveKeybinds()
+	
+end
+
+function Console:LoadKeybinds()
+	
+end
+
 --set data for the tracker hud element: 
---valid examples 
-function Console:SetPersistTracker(id,data)
+function Console:SetTrackerData(id,data) --should be called on create or by internal functions; short /commands should only set one parameter at a time
 	if not (data and type(data) == "table") then 
-		self:Log("ERROR: Bad data to SetPersistTracker(" .. tostring(id) .. ",[non-table value]")
+		self:Log("ERROR: Bad data to SetTrackerData(" .. tostring(id) .. ",[non-table value]")
 		return 
 	end
-	local trackers = self._persist_trackers
-	if not (trackers and trackers[id] and alive(trackers[id])) then 
-		
-	else
+	local tracker = self:GetTrackerElementByName(id)
 	
-	end
-	
+	local text = data.text or "No data"
+	local layer = data.layer or 90
+	local x = data.x or 10
+	local y = data.y or 10
+	local font = data.font or tweak_data.hud.medium_font,
+	local font_size = data.font_size or self:GetFontSize()
+	local color = data.color or Color.white
+	tracker:set_text(text)
+	tracker:set_layer(layer)
+	tracker:set_x(x)
+	tracker:set_y(y)
+	tracker:set_font(font)
+	tracker:set_font_size(font_size)
+	tracker:set_color(color)
+	--all that good stuff
 end
 
-function Console:SetTrackerValue(id,info)
-	info = tostring(info or "")
-	local trackers = self._persist_trackers
-	if not (trackers and trackers[id] and alive(trackers[id])) then
-		trackers[id]:set_text(info)
-	else
-		trackers[id] = self._tracker_panel:text({
-			name = id,
-			text = info,
-			x = 0,
-			y = 0
-		})
-		return
+
+function Console:SetTrackerValue(id,value) --setting text value only; should be used for updates, and linked to short command
+	local tracker = self:GetTrackerElementByName(id)
+	tracker:set_text(value)
+	return tracker
+end
+
+function Console:SetTrackerColor(id,col)
+	if col then 
+end
+
+function Console:SetTrackerColorRGB(id,r,g,b,a) --technically, r/g/b/a are all optional arguments
+	local tracker = self:GetTrackerElementByName(id)
+	r = r and tonumber(r) or 1
+	g = g and tonumber(g) or 1
+	b = b and tonumber(b) or 1
+	a = a and tonumber(a) or 1
+	tracker:set_color(Color(r,g,b))
+	
+	return tracker
+end
+
+function Console:SetTrackerXY(id,x,y) --setting x/y only; can be used for updates, and linked to short command
+	local tracker = self:GetTrackerElementByName(id)
+	x = x and tonumber(x)
+	y = y and tonumber(y)
+	if x then 
+		tracker:set_x(x)
+	end
+	if y then 
+		tracker:set_y(y)
 	end
 end
 
-function Console:RegisterPersistScript(id,clbk,clbk_fail,clbk_success,silent_fail,silent_success,silent_all)
+function Console:GetTrackerElementByName(id)
+	if id ~= nil then 
+		return self._persist_trackers[tostring(id)]
+	end
+end
+
+function Console:SetUnitInfo() --unit info from debug hud
+	--todo
+end
+
+function Console:RegisterPersistScript(id,clbk,clbk_fail,clbk_success)
 	if (id ~= nil) and type(clbk) == "function" then 
 		self._persist_scripts[tostring(id)] = {
 			clbk = clbk,
 			clbk_fail = clbk_fail,
 			clbk_success = clbk_success,
-			silent_fail = silent_fail,
-			silent_success = silent_success,
-			silent_all = silent_all
+			log_fail = log_fail,
+			log_success = log_success,
+			log_all = log_all
 		}
 		return true
 	else
@@ -477,17 +565,21 @@ function Console:Log(info,params)
 	end
 end
 
+function Console:Test()
+	KineticHUD:_debug(Application:time(),9)
+end
+
+
 function Console:new_log_line(params)
 	params = params or {}
-	
+	local font_size = self:GetFontSize()
 	local color = params.color or Color.white:with_alpha(0.5)
-	local v_div = params.new_cmd and 6 or 0
+	local v_div = params.new_cmd and font_size or 0
 
 	local panel = self._panel
 	local frame = panel:child("command_history_frame")
 	local history = frame:child("command_history_panel")
 	local line
-	local font_size = self:GetFontSize()
 	local v_margin = self.v_margin
 	local h_margin = self.h_margin
 	history:set_h(history:h() + font_size + self.v_margin)
@@ -498,23 +590,27 @@ function Console:new_log_line(params)
 		if previous_line and alive(previous_line) then
 		--todo for every instance of \n in previous_line do y = y + v_margin + font_size
 			local x,y,w,h = previous_line:text_rect()
-	--[[
-			--can't use Log() here cause it'll overflow from infinite recursive errors.
-			--how ironic, it could save others from crashing, but not itself
 			KineticHUD:_debug(x,1)
 			KineticHUD:_debug(y,2)
 			KineticHUD:_debug(w,3)
 			KineticHUD:_debug(h,4)
+--OffyLib:c_log(y,"y")
+--			new_y = new_y + v_div
+	--[[
+			--can't use Log() here cause it'll overflow from infinite recursive errors.
+			--how ironic, it could save others from crashing, but not itself
 			KineticHUD:_debug(v_margin,5)
 			KineticHUD:_debug(previous_line:bottom(),6)
 	--]]
-			new_y = previous_line:bottom() + v_div
+--			new_y = y + v_div
 		end
 		line = history:text({
 			name = "history_cmd_" .. tostring(self.num_lines),
 			layer = 1,
 			x = new_x, --margin
 			y = new_y,
+--			w = 100,
+			h = font_size * 1.15,
 			text = "[" .. tostring(self.num_lines) .. "] loading...",
 			font = tweak_data.hud.medium_font,
 			font_size = font_size,
@@ -563,7 +659,7 @@ end
 Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", function( loc )
 	local path = Console.loc_path
 	
-	for _, filename in pairs(file.GetFiles(path) do
+	for _, filename in pairs(file.GetFiles(path)) do
 		local str = filename:match('^(.*).txt$')
 		if str and Idstring(str) and Idstring(str):key() == SystemInfo:language():key() then
 			loc:load_localization_file(path .. filename)
@@ -673,47 +769,54 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 	local v_margin = 6 or self.v_margin --done margin, not normal v margin
 	local panel = self._panel
 	local input_text = panel:child("input_text")
-	local history_func,history_success,history_result
+	local history_data,history_func,history_success,history_result
 	local cmd = input_text:text() --input string to work with
-	if from_history and self.selected_history then
-		local history_data = self.command_history[self.selected_history]
-		if history_data then
-			history_func = history_data.func
-			if history_func then 
-				if history_data.name and history_data.name == cmd then 					
-					history_success,history_result = pcall(history_func)
-					self:Log("> " .. tostring(cmd))
-					if history_success then
-						if (history_result ~= nil) then 
-							self:Log("Command successfully ran from history with result:\n" .. tostring(history_result),{color = Color(0.1,0.5,1),v_margin = v_margin})
-						else
-							self:Log("Command successfully ran from history with no result",{color = Color.yellow,v_margin = v_margin})
-						end
-					else
-						self:Log("Command run from history failed",{color = Color.red,v_margin = v_margin})
-					end
-					
-					table.insert(self.command_history,{name = cmd, func = history_func}) --save to history as last used command
-					self.selected_history = nil --reset selected command_history 
-					return
-				else
-					self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: modified cmd. Only use CTRL-ENTER for re-executing command history!",{color = Color.red,v_margin = v_margin})
-				end
-			else
-				self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: invalid history func.",{color = Color.red,v_margin = v_margin})
-			end
-		else
-			self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: invalid command history. Only use CTRL-ENTER for re-executing command history!",{color = Color.red,v_margin = v_margin}) 
-		end
-		--don't clear selected command history if failure
-		return
-	end		
-	self.selected_history = nil --reset selected command_history 
-	
-	
+
 	local orig_cmd = cmd --copy original input string for logging purposes; cmd will be extensively changed in following command parsing
 	input_text:set_text("") --wipe input box
 	
+						
+		
+	if from_history and self.selected_history then
+		history_data = self.command_history[self.selected_history] or {}
+		if not (history_data.name and history_data.name == cmd) then
+			self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: modified cmd. Only use CTRL-ENTER for re-executing command history!",{color = Color.red})
+			return
+		end
+	elseif cmd == "//" then --note: no whitespace removal, as this conditional is before that bit. string must match EXACTLY
+		history_data = self.command_history and self.command_history[#self.command_history] or {}
+		cmd = history_data.name
+		from_history = true
+		if not cmd then 
+			self:Log("Attempt to run repeat command (using //) from history failed: invalid command name in history.",{color = Color.red})
+			return 
+		end
+	end
+	
+	if history_data then 
+		history_func = history_data.func
+		history_success,history_result = pcall(history_func)
+		self:Log("> " .. tostring(cmd),{new_cmd = true})
+		if history_success then
+			if (history_result ~= nil) then 
+				self:Log("Command successfully ran from history with result:",{color = Color.blue})
+				self:Log(tostring(history_result),{color = Color(0.1,0.5,1)})
+			else
+				self:Log("Command successfully ran from history with no result",{color = Color.yellow})
+			end
+		else
+			self:Log("Command run from history failed",{color = Color.red}) --todo get error from when loadstring() was called at original command
+		end
+		table.insert(self.command_history,{name = cmd, func = history_func}) --save to history as last used command
+		self.selected_history = nil --reset selected command_history 
+		return
+	elseif from_history then
+		self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: invalid history data.",{color = Color.red})
+		return
+		--don't clear selected command history if failure
+	end
+	self.selected_history = nil --reset selected command_history 
+
 	local is_command = false
 	
 	local input_len = string.len(cmd)
@@ -739,15 +842,9 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 		return --check for invalid cmd again since we just changed it
 	end
 
-	self:Log("> " .. cmd) --log the input str to console
-	
-	if cmd == "//" then
-		self:Log("Doing last command (TODO)")
-		
-		
-		--call last command
-		return --TODO remove
-	elseif string.sub(cmd,1,1) == "/" then --command indicator
+	self:Log("> " .. cmd,{new_cmd = true}) --log the input str to console
+
+	if string.sub(cmd,1,1) == "/" then --command indicator
 		is_command = true
 		cmd = string.sub(cmd,2)
 		local args = string.split(cmd," ") --parse args from input string
@@ -765,10 +862,10 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 			cmd = string.gsub(command,"$ARGS",argument_string) --replace original string, and preserve "command" for logging the original function name (eg. "Console:cmd_about()")
 			self:Log("Writing command " .. tostring(command) .. " to result " .. tostring(cmd))
 		elseif cmd_id then 
-			self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = Color.red,v_margin = v_margin})
+			self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = Color.red})
 			return
 		else
-			self:Log("Error: empty command string",{color = Color.red,v_margin = v_margin})
+			self:Log("Error: empty command string",{color = Color.red})
 			return 
 		end
 	end
@@ -779,19 +876,19 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 		func,error_message = loadstring(cmd)
 	end
 	if error_message or not func then 
-		self:Log("Command " .. tostring(func or "") .. " failed: " .. error_message,{color = Color.red,v_margin = v_margin})
+		self:Log("Command " .. tostring(func or "") .. " failed: " .. error_message,{color = Color.red})
 	else
 		success,result = pcall(func) --!
 		if success then
 			if result ~= nil then 
 				self:Log(result,{color = Color(0.1,0.5,1)})
 			elseif not is_command then
-				self:Log("No result",{color = Color.yellow,v_margin = v_margin})
+				self:Log("No result",{color = Color.yellow})
 			elseif is_command then
-				self:Log("Done",{color = Color.yellow,v_margin = v_margin})
+				self:Log("Done",{color = Color.yellow})
 			end
 		else -- command fail
-			self:Log("Command failed (no error given) " .. (result and (" with result:[" .. tostring(result) .. "]") or ""),{color = Color.red,v_margin = v_margin})
+			self:Log("Command failed (no error given) " .. (result and (" with result:[" .. tostring(result) .. "]") or ""),{color = Color.red})
 		end
 	end
 	table.insert(self.command_history,{name = is_command and orig_cmd or cmd, func = func})
@@ -1074,7 +1171,6 @@ function Console:update_key_down(o,k,t)
 				current_len = string.len(new_text)
 				text:set_selection(current_len,current_lent)
 			end
-			--history select goes here
 		elseif k == Idstring("up") then 
 			if not self.selected_history then 
 				self.selected_history = num_commands --set at oldest command

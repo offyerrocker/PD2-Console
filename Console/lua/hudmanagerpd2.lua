@@ -9,10 +9,10 @@ function HUDManager:_create_commandprompt()
 	Console._ws = managers.gui_data:create_fullscreen_workspace()
 	local ws = Console._ws:panel()
 	
-	local hud = managers.hud:script(PlayerBase.PLAYER_INFO_HUD_PD2).panel
+	local orig_hud = managers.hud:script(PlayerBase.PLAYER_INFO_HUD_PD2).panel
 	
-	local console_w = hud:w()
-	local console_h = hud:h()
+	local console_w = orig_hud:w()
+	local console_h = orig_hud:h()
 	
 	local font_size = Console:GetFontSize()
 	
@@ -20,12 +20,35 @@ function HUDManager:_create_commandprompt()
 	
 	local v_margin = Console.v_margin
 	
-	local tracker_base = ws:panel({
-		name = "tracker_base", --used for trackers
+	local debug_hud_base = ws:panel({
+		name = "debug_hud_base", --used for trackers
 		visible = true
 	})
-	Console._tracker_panel = tracker_base
+	Console._debug_hud = debug_hud_base
 	
+	local unit_name = debug_hud_base:text({
+		name = "info_unit_name",
+		layer = 90,
+		x = 400,
+		y = 100,
+		text = "unit_name",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		color = Color.white
+	})
+	
+	local unit_hp = debug_hud_base:text({
+		name = "info_unit_hp",
+		layer = 90,
+		x = 400,
+		y = 120,
+		text = "unit_name",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		color = Color.white
+	})
+	
+
 	local console_base = ws:panel({
 		name = "console_base",
 		visible = false --hidden by default, activated by keybind
@@ -70,7 +93,7 @@ function HUDManager:_create_commandprompt()
 		w = 8,
 		x = 2,
 		h = console_h - font_size,
-		color = Color.cyan
+		color = Console.color_data.scroll_handle
 	})
 	
 	local scroll_bg = console_base:rect({
