@@ -2,6 +2,36 @@ Hooks:PostHook(HUDManager,"_setup_player_info_hud_pd2","commandprompt_setup_work
 	self:_create_commandprompt()
 end)
 
+--[[
+Hooks:PostHook(HUDManager,"access_camera_track","commandprompt_test12",function(self,i,cam,pos)
+	local name = Console._debug_hud:child("info_unit_name")
+	local hp = Console._debug_hud:child("info_unit_hp")
+	
+	if name then 
+		name:set_text(tostring(i))
+	end
+	if hp then 
+		hp:set_text(tostring(cam))
+	end
+	local herp = Console:GetTrackerElementByName("herp")
+	herp = herp or Console:CreateTracker("herp")
+	
+	
+	herp:set_text(tostring(pos))
+	
+	local derp = Console:GetTrackerElementByName("derp")
+	derp = derp or Console:CreateTracker("derp")
+	
+	local result = self._workspace:world_to_screen(cam,pos)
+	Console:Log("result: " .. tostring(result),{color = Color.green})
+	derp:set_text(result)
+	
+	
+	
+end)
+
+--]]
+
 function HUDManager:_create_commandprompt()
 	if not self:alive(PlayerBase.PLAYER_INFO_HUD_PD2) then 
 		return
@@ -26,11 +56,20 @@ function HUDManager:_create_commandprompt()
 	})
 	Console._debug_hud = debug_hud_base
 	
+	local unit_marker = debug_hud_base:bitmap({
+		name = "marker",
+		texture = "guis/textures/access_camera_marker",
+		layer = 02,
+		color = Color.white,
+		x = 1,
+		y = 1
+	})
+	
 	local unit_name = debug_hud_base:text({
 		name = "info_unit_name",
 		layer = 90,
-		x = 400,
-		y = 100,
+		x = 700, --just to the right of crosshair
+		y = 400,
 		text = "unit_name",
 		font = tweak_data.hud.medium_font,
 		font_size = font_size,
@@ -40,9 +79,9 @@ function HUDManager:_create_commandprompt()
 	local unit_hp = debug_hud_base:text({
 		name = "info_unit_hp",
 		layer = 90,
-		x = 400,
-		y = 120,
-		text = "unit_name",
+		x = 700, --just under unit name
+		y = 420,
+		text = "unit_hp",
 		font = tweak_data.hud.medium_font,
 		font_size = font_size,
 		color = Color.white
@@ -74,9 +113,10 @@ function HUDManager:_create_commandprompt()
 	local command_history_frame = console_base:panel({
 		name = "command_history_frame",
 		layer = 100,
+		x = h_margin,
 		y = font_size + v_margin,
 		w = console_w,
-		h = console_h - (font_size + v_margin)
+		h = console_h - (font_size + v_margin + v_margin)
 	})
 	
 	local command_history_bg = command_history_frame:rect({
@@ -85,6 +125,11 @@ function HUDManager:_create_commandprompt()
 		h = console_h - (font_size + v_margin),
 		visible = false, --draws in front of everything for whatever reason
 		color = Color.black:with_alpha(0.1)
+	})
+	local command_history_panel = command_history_frame:panel({
+		name = "command_history_panel",
+		h = 32, --increased with each Log()
+		layer = 100
 	})
 	
 	local scroll_handle = console_base:rect({
@@ -96,17 +141,30 @@ function HUDManager:_create_commandprompt()
 		color = Console.color_data.scroll_handle
 	})
 	
+	local scroll_block_top = console_base:rect({	
+		name = "scroll_block_top",
+		layer = 100,
+		w = 12,
+		h = 12,
+		y = 20,
+		color = Color.white:with_alpha(0.7)
+	})
+	
+	local scroll_block_bottom = console_base:rect({	
+		name = "scroll_block_bottom",
+		layer = 100,
+		w = 12,
+		h = 12,
+		y = 700,
+		color = Color.white:with_alpha(0.7)
+	})
+	
 	local scroll_bg = console_base:rect({
 		name = "scroll_bg",
 		layer = 99,
 		w = 12,
 		h = console_h - font_size,
-		color = Color.white:with_alpha(0.5)
-	})
-	
-	local command_history_panel = command_history_frame:panel({
-		name = "command_history_panel",
-		layer = 100
+		color = Color.white:with_alpha(0.3)
 	})
 	
 	local caret = console_base:text({
@@ -167,23 +225,13 @@ function HUDManager:_create_commandprompt()
 	
 end
 
-local function held(key) --should i even bother with holdthekey?
-	if not (managers and managers.hud) or managers.hud._chat_focus then
-		return false
-	end
-	
-	key = tostring(key)
-	if key:find("mouse ") then 
-		if not key:find("wheel") then 
-			key = key:sub(7)
-		end
-		return Input:mouse():down(Idstring(key))
-	else
-		return Input:keyboard():down(Idstring(key))
-	end
-end
+
+--[[
 
 Hooks:PostHook(HUDManager,"update","update_olib_console",function(self,t,dt)
+
+--if selected unit then update marker to unit
+
 	local panel = Console._panel
 	local scroll_handle = panel:child("scroll_handle")
 	--cursor blink
@@ -201,14 +249,21 @@ Hooks:PostHook(HUDManager,"update","update_olib_console",function(self,t,dt)
 	if Console._focus then 
 		Console:upd_caret(t)
 		Console:update_key_down(input_text,Console._key_pressed,t)
+		local new_y
+--		local y_sign
 		if held(mwu) then --console scroll
-			history:set_y(history:y() - scroll_speed)
-			scroll_handle:set_h(console_h / Console.num_lines)
-			scroll_handle:set_y(scroll_speed * (history:y() / (scroll_speed * Console.num_lines)))
+			new_y = math.max(history:y() - scroll_speed,-history:h())
+			
+--			y_sign = math.sign(new_y)
+			history:set_y(new_y)
+			Console:refresh_scroll_handle()
 		elseif held(mwd) then 
-			history:set_y(history:y() + scroll_speed)
-			scroll_handle:set_h(console_h / Console.num_lines)
-			scroll_handle:set_y(scroll_speed * (history:y() / (scroll_speed * Console.num_lines)))
+			new_y = math.min(history:y() + scroll_speed,0)
+--			y_sign = math.sign(new_y)
+			history:set_y(new_y)
+			Console:refresh_scroll_handle()
 		end
 	end
 end)
+
+--]]

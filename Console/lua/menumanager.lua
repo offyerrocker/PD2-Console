@@ -1,21 +1,66 @@
 --[[ TODO: FEATURES BEFORE PUBLIC 1.0
 
+tracker: auto-detect changes
+	-support callbacks?
 
+wrap Debug HUD unit info in nice safe pcall()
+
+add more unit info 
+
+add unit info keybind to hide interface
+
+add unit info /shortcommands to display info (accessible through chat)
+
+add waypoint to selected unit
+	- crawl through hudmanager for waypoint code
+
+
+- Enable Console in main menu (init console window somewhere other than where it is in hudmanager)
+	
 - Create Debug HUD
 	- create cool looking ui for unit info (using hud assets? think bounding box; see camera unit-spotting code for example)
-	Trackers:
-	- Test tracker creation
-	- Dynamic tracker placement + menu order by ID
-	- command to get all trackers by name + number
+
+	
+		
+- Add backup chat commands (hidden by default)
+	
+	
+Keybinds:
+	- Set position waypoint at fwd_ray
+	- Select Unit at fwd_ray
+		- Select enemy at fwd_ray
+			* Hold [modifier key] to select enemy and freeze AI
+		- Select deployable at fwd_ray
+		- Select misc object at fwd_ray
+
+
 
 - Add scroll bar that actually works, except no mouse support, sadly
+	-update on any scroll action (scrollwheel, pgup, pgdn, new log)
+	- scroll blocks should render over scroll bar
+	- scroll bar should move properly
+	- scroll bad should be inside a frame so as not to render over other things
+	
+	- Scroll bar at top: earliest logs
+	- Scroll bar at bottom: latest logs
+	
+	- Scroll height: (frame_h - history_h)
+		- decreases after history_h > frame_h, down to [min] at history_h == frame_h * [10] 
+	
 
-- Straighten out keybind info to log/whether "held" is a parameter or a separate command
+	if history_h <= frame_h then 
+		scroll_h = frame_h
+	else
+		scroll_h = history_h / (frame_h * 10)
+	end
+	
+	- scroll_h = frame_h / history_h
+	
+	
 
 - Keybind callbacks + script exec trackers (/bind stuff)
 
-- Add new global Log() function to shortcut to Console:Log() (disableable by setting)
-	- Optionally, allow overriding log() function
+- Optionally, allow overriding log() function
 	- Add console command "enablelogs" to enable/disable BLT logs or something
 
 - Add settings
@@ -28,7 +73,12 @@
 	- c_log [msg] [name]: outputs to console; otherwise identical to c_log()
 	- t_log/PrintTable [table] [optional: name] [optional: tier]: prints nicely-formatted table to console
 
-- Add command tooltip/syntax/error/usage
+
+
+
+---extra features, for post release
+
+- re-absorb upd_caret to update_scroll for var efficiency
 
 - Instead of adding vspace by value, check against previous log's xy/wh values and add to those (also solves v whitespace issue)
 	- Add remaining passed params to new_log_line()
@@ -39,27 +89,12 @@
 - Scan for \n in strings, and replace with separate Log() line
 	- Overflow to newline for character limits (should check against max length setting)
 		- \n works for standard strings and hud text panels
+		
+- Add command tooltips
 
+- Add remaining syntax + usage + /help
 
-- Implement GetConsoleAddOns hook for third-party command modules /persist callback scripts etc
-
-Keybinds:
-	- Set position waypoint at fwd_ray
-	- Select Unit at fwd_ray
-		- Select enemy at fwd_ray
-			* Hold [modifier key] to select enemy and freeze AI
-		- Select deployable at fwd_ray
-		- Select misc object at fwd_ray
-
-
-
-	
-	
-
----extra features, for post release
-
-- Block movement input in console mode
-	- Reset movement when opening console (so that positive input is not "stuck" if opening console while applying input)
+- Reset movement when opening console (so that positive input is not "stuck" if opening console while applying input)
 	
 - Fix [I stopped typing here because I got distracted and never finished the thought. I guess I'll never know what it is that needed to be fixed]
 
@@ -69,9 +104,10 @@ Keybinds:
 
 - Revert to earlier version to return data automatically (include optional new, alternate behavior?)
 	- callback tests confirmed pcall() and loadstring() functioning as expected
+
+- Add console settings as cl_blanketyblank
 	
 - Standardize margins + values in hudmanagerpd2
-- Enable Console in main menu
 - Fancy fadeout/fadein for command window
 - Fancy texture(s) for command window
 - Add better highlight visibility
@@ -81,7 +117,48 @@ Keybinds:
 	- CTRL + (LEFTARROW/RIGHTARROW) to move cursor to next space/special char in left/right direction
 	- ALT-code support?
 
-- Add console settings as cl_blanketyblank
+- Implement GetConsoleAddOns hook for third-party command modules /persist callback scripts etc
+
+-----------------
+changes from last version:
+
+added global Log() function that redirects to Console:Log()
+
+reorganized persist scripts: console now organizes its update functions into a single update() called from exec_persist.lua (todo rename this)
+-	moved update to persist script rather than hudmanager update, for better custom hud compatibility
+-	changed key held check held() to Console class function rather than local function; moved function to menumanager with everything else rather than hudmanage
+
+Debug HUD unit info is now in early functional phases of development
+
+HUD Tracker is now functional
+
+Officially added HoldTheKey as dependency
+
+/quit now accepts "true" as its first argument, which skips the confirm dialogue
+
+/restart now properly accepts and uses timer from its first and only argument, and outputs this timer progress to console every second
+this timer can now be cancelled with /restart cancel
+
+short /commands now properly process arguments as strings
+added syntax + usage messages for most commands with arguments, if the first non-command argument (aka subcommand or "subcmd") provided is equal to "help"
+short /commands now properly process arguments without an extra, erroneous comma if there is no second argument
+
+/whisper implemented (needs testing)
+
+trackers can now be listed and selected by number with "/tracker list" and "/tracker select [number]"
+
+command history is now 70% alpha; other logs are 100% alpha by default (changed from universal 70% alpha)
+
+selected_unit can now be created with a keybind
+
+changed horizontal margin for console window text: logged results are indented while command history is not
+
+console toggle button is disabled while holding shift (so that "~" can be used for "~=" compare operators if bound to `)  
+
+organized function orders in menumanager (mostly cosmetic)
+
+-more stuff i forgot right now
+
 --]]
 
 
@@ -115,12 +192,19 @@ Console._typing_callback = 0 --lol idk
 Console._skip_first = false --used to ensure that console-management buttons (like the "enter" or "`" the console open key) don't trigger as text inputs
 Console.num_lines = 1 --updated count of number of text lines in the console
 Console.num_commands = 1
-Console.selected_history = nil --currently displayed command history for when browsing command history with (UP/DOWN)ARROW
+Console.selected_history = false --currently displayed command history for when browsing command history with (UP/DOWN)ARROW
 Console.input_t = 0 --last t of valid character/text input
 --Console._panel = panel
 Console._enter_text_set = true --i'm... not totally sure what that does
-Console._delayed_result = nil --stores the result of pcalled Log(), so that it can be displayed in order
-Console._adventure = nil --WHAT TIME IS IT
+--Console._delayed_result = false --stores the result of pcalled Log(), so that it can be displayed in order; unused
+Console._adventure = false --WHAT TIME IS IT
+Console.selected_unit = false --used for unit manipulation 
+Console._restart_timer = false --used for /restart [timer] command: tracks next _restart_timer value to output (every second)
+Console._restart_timer_t = false  --used for /restart [timer] command: tracks time left til 0 (restart)
+Console._dt = 0 --should never be directly used for anything except calculation of dt itself
+Console.selected_tracker = nil --string; holds id index of currently selected tracker from table _persist_trackers, NOT the element
+
+--todo slap these in an init() function and call it at start
 
 Console.command_history = {
 --	[1] = { name = "/say thing", func = (function value) } --as an example
@@ -130,24 +214,26 @@ Console.color_data = { --for ui stuff
 	scroll_handle = Color(0.1,0.3,0.7)
 }
 
-Console.cmd_list = { --todo update
-	help = "Console:cmd_help($ARGS)",
-	about = "Console:cmd_about()",
-	info = "Console:cmd_info()",
+Console.cmd_list = { --in string form so that they can be called with loadstring() and run safely in a pcall; --todo update
+	help = "Console:cmd_help($ARGS)", --nothing useful
+	about = "Console:cmd_about()", --nothing useful 
+	info = "Console:cmd_info($ARGS)", --nothing useful
 	say = "Console:cmd_say($ARGS)",
 	whisper = "Console:cmd_whisper($ARGS)",
-	god = "OffyLib:EnableInvuln($ARGS)",
+	tracker = "Console:cmd_tracker($ARGS)",
+	god = "OffyLib:EnableInvuln($ARGS)", --sorry kids you don't get the kool cheats unless you're me
 	exec = "Console:cmd_dofile($ARGS)",
+	["dofile"] = "Console:cmd_dofile($ARGS)", --don't you give me your syntax-highlighting sass, np++, i know dofile is already a thing
 	bind = "Console:cmd_bind($ARGS)",
 	unbind = "Console:cmd_unbind($ARGS)",
 	time = "Console:cmd_time()",
 	date = "Console:cmd_date()",
-	quit = "Console:cmd_quit()",
+	quit = "Console:cmd_quit($ARGS)",
 	restart = "Console:cmd_restart($ARGS)", --argument is seconds delay to restart
-	fov = "Console:cmd_fov($ARGS)", -- borked atm
-	ping = "Console:cmd_ping($ARGS)",
+--	fov = "Console:cmd_fov($ARGS)", -- borked atm
+--	ping = "Console:cmd_ping($ARGS)", --not implemented
 	savetable = "Console:cmd_writetodisk($ARGS)", -- [data] [pathname]
-	adventure = "Console:cmd_adventure($ARGS)",
+--	adventure = "Console:cmd_adventure($ARGS)",
 	stop = "Console:cmd_stop($ARGS)"
 }
 
@@ -185,30 +271,147 @@ Console._persist_trackers = { --storage for HUD elements; todo rename
 	
 }
 
-function Console:cmd_bind(keybind_id,held,func,...) --func is actually a string which is fed into Console's command interpreter
---todo popup box req HoldTheKey
-	if keybind_id then 
-		if self._custom_keybinds[keybind_id] or not func then --if nil or invalid func parameter then show current bind
-			return self._custom_keybinds[keybind_id] --todo output to log
-		elseif func then 
-			self._custom_keybinds[keybind_id] = {
-				persist = held,
-				func = func
-			}
-		end
+
+function _G.Log(...)
+	Console:Log(...)
+end
+
+function Console:Log(info,params)
+--	local color = params and params.color or Color.white
+--	local margin = params and params.h_margin
+	if not info then
+--		return --todo setting to disable logging if nil value? optional parameter?
 	end
+	
+	local line = self.num_lines
+	local new_line = self:new_log_line(params)
+	if new_line and alive(new_line) then 
+		new_line:set_text(tostring(info))
+	end
+end
+
+function Console:new_log_line(params)
+	params = params or {}
+	local font_size = self:GetFontSize()
+	local color = params.color or Color.white:with_alpha(1)
+	local v_div = params.new_cmd and font_size or 0
+
+	local panel = self._panel
+	local frame = panel:child("command_history_frame")
+	local history = frame:child("command_history_panel")
+	local line
+	local v_margin = self.v_margin
+	local h_margin = params.h_margin or self.h_margin
+	history:set_h(history:h() + font_size + v_margin)
+	local new_x = h_margin
+	local new_y = (2 + self.num_lines) * font_size
+	if not history:child("history_cmd_" .. tostring(self.num_lines)) then 
+		local previous_line = history:child("history_cmd_" .. tostring(self.num_lines - 1))
+		if previous_line and alive(previous_line) then
+		--todo for every instance of \n in previous_line do y = y + v_margin + font_size
+	--[[
+			local x,y,w,h = previous_line:text_rect()
+			KineticHUD:_debug(x,1)
+			KineticHUD:_debug(y,2)
+			KineticHUD:_debug(w,3)
+			KineticHUD:_debug(h,4)
+--OffyLib:c_log(y,"y")
+--			new_y = new_y + v_div
+			--can't use Log() here cause it'll overflow from infinite recursive errors.
+			--how ironic, it could save others from crashing, but not itself
+			KineticHUD:_debug(v_margin,5)
+			KineticHUD:_debug(previous_line:bottom(),6)
+	--]]
+--			new_y = y + v_div
+		end
+		line = history:text({
+			name = "history_cmd_" .. tostring(self.num_lines),
+			layer = 1,
+			x = new_x, --margin
+			y = new_y,
+--			w = 100,
+			h = font_size * 1.15,
+			text = "[" .. tostring(self.num_lines) .. "] loading...",
+			font = tweak_data.hud.medium_font,
+			font_size = font_size,
+			color = color
+		})
+	else
+		log("Console: ERROR! history line " .. tostring(self.num_lines) .. " already exists!")
+	end
+	self:refresh_scroll_handle()
+	self.num_lines = self.num_lines + 1
+	return line
 end
 
 function Console:OnInternalLoad() --called on event PlayerManager:_internal_load()
 	--load keybinds
 end
 
-function Console:SaveKeybinds()
-	
+function Console:cmd_tracker(subcmd,id,...) --interpret
+	subcmd = tostring(subcmd)
+	--todo get success from directed function; display error message if invalid tracker/syntax
+	if subcmd then 
+		local i = 0
+		if subcmd == "setxy" then 
+			self:SetTrackerXY(id,...)
+		elseif subcmd == "list" then 
+			self:Log("Debug HUD Trackers:")
+			for tracker_id,element in pairs(self._persist_trackers) do 
+				i = i + 1
+				self:Log(i .. ": [" .. tracker_id .. "] | Text: [" .. tostring(element:text()) .."]")
+			end
+			--list all trackers by number
+		elseif (subcmd == "setcolor") or (subcmd == "color") then
+			self:SetTrackerColorRGB(id,...)
+			--todo function should interpret color input type
+		elseif (subcmd == "add") or (subcmd == "new") or (subcmd == "create") then
+			self:CreateTracker(id)
+		elseif subcmd == "set" then 
+--			self:SetTrackerData(id,...)
+			self:SetTrackerValue(id,...)
+		elseif subcmd == "remove" or subcmd == "delete" then 
+			self:RemoveTracker(id)
+		elseif subcmd == "help" then
+			self:Log("Syntax: /tracker [string: subcommand] [string: id] [value]",{color = Color.yellow})
+			self:Log("Subcommands: color, add/create/new, help, list, remove/delete, select, setxy",{color = Color.yellow})
+			self:Log("Usage: Creates display values on the HUD for you to see. Useful for tracking values that change frequently and would flood a normal console.",{color = Color.yellow})
+		elseif subcmd == "select" then --select by number in case it is not feasible to write tracker's string id name
+			for tracker_id,element in pairs(self._persist_trackers) do 
+				i = i + 1
+				if i == tonumber(id or -1) then 
+					self.selected_tracker = tracker_id
+				end
+			end
+		end
+	end
 end
 
-function Console:LoadKeybinds()
-	
+function Console:CreateTracker(id)
+	local tracker = self:GetTrackerElementByName(id)
+	if tracker then 
+--		self:Log("Error: CreateTracker(" .. tostring(id) .. ") Tracker" .. tostring(id) .. "Already exists!",{color = Color.red})
+		return tracker
+	end
+	tracker = self._debug_hud:text({
+		name = tostring(id),
+		text = tostring(id) .. ": [empty tracker]",
+		layer = 1,
+		x = 500,
+		y = 100,
+		font = tweak_data.hud.medium_font,
+		font_size = self:GetFontSize(),
+		color = Color.white
+	})
+	self._persist_trackers[tostring(id)] = tracker
+--	self:SetTrackerData(id,data)
+	return tracker
+end
+
+function Console:GetTrackerElementByName(id)
+	if id ~= nil then 
+		return self._persist_trackers[tostring(id)]
+	end
 end
 
 --set data for the tracker hud element: 
@@ -218,66 +421,96 @@ function Console:SetTrackerData(id,data) --should be called on create or by inte
 		return 
 	end
 	local tracker = self:GetTrackerElementByName(id)
-	
-	local text = data.text or "No data"
-	local layer = data.layer or 90
-	local x = data.x or 10
-	local y = data.y or 10
-	local font = data.font or tweak_data.hud.medium_font,
-	local font_size = data.font_size or self:GetFontSize()
-	local color = data.color or Color.white
-	tracker:set_text(text)
-	tracker:set_layer(layer)
-	tracker:set_x(x)
-	tracker:set_y(y)
-	tracker:set_font(font)
-	tracker:set_font_size(font_size)
-	tracker:set_color(color)
-	--all that good stuff
+	if tracker and alive(tracker) then 
+
+		local text = data.text or "No data"
+		local layer = data.layer or 90
+		local x = data.x or 10
+		local y = data.y or 10
+		local font = data.font or tweak_data.hud.medium_font
+		local font_size = data.font_size or self:GetFontSize()
+		local color = data.color or Color.white
+		tracker:set_text(text)
+		tracker:set_layer(layer)
+		tracker:set_x(x)
+		tracker:set_y(y)
+		tracker:set_font(font)
+		tracker:set_font_size(font_size)
+		tracker:set_color(color)
+		--all that good stuff
+	end
 end
 
-
 function Console:SetTrackerValue(id,value) --setting text value only; should be used for updates, and linked to short command
+	if id == "selected" then 
+		id = self.selected_tracker
+	end
 	local tracker = self:GetTrackerElementByName(id)
-	tracker:set_text(value)
+	if tracker and alive(tracker) then 
+		tracker:set_text(value)
+	end
 	return tracker
 end
 
-function Console:SetTrackerColor(id,col)
-	if col then 
+function Console:SetTrackerColor(id,col) --not used
+	local tracker = self:GetTrackerElementByName(id)
+	if tracker and col then --type(col) == "userdata color"
+		tracker:set_color(col)
+	end
 end
 
 function Console:SetTrackerColorRGB(id,r,g,b,a) --technically, r/g/b/a are all optional arguments
+	if id == "selected" then 
+		id = self.selected_tracker
+	end
 	local tracker = self:GetTrackerElementByName(id)
-	r = r and tonumber(r) or 1
-	g = g and tonumber(g) or 1
-	b = b and tonumber(b) or 1
-	a = a and tonumber(a) or 1
-	tracker:set_color(Color(r,g,b))
-	
-	return tracker
+	if tracker and alive(tracker) then 
+		r = r and tonumber(r) or 1
+		g = g and tonumber(g) or 1
+		b = b and tonumber(b) or 1
+		a = a and tonumber(a) or 1
+		tracker:set_color(Color(r,g,b))
+		return tracker
+	end
 end
 
 function Console:SetTrackerXY(id,x,y) --setting x/y only; can be used for updates, and linked to short command
-	local tracker = self:GetTrackerElementByName(id)
-	x = x and tonumber(x)
-	y = y and tonumber(y)
-	if x then 
-		tracker:set_x(x)
+	if id == "selected" then 
+		id = self.selected_tracker
 	end
-	if y then 
-		tracker:set_y(y)
+	local tracker = self:GetTrackerElementByName(id)
+	if tracker and alive(tracker) then 
+		x = x and tonumber(x)
+		y = y and tonumber(y)
+		if x then 
+			tracker:set_x(x)
+		end
+		if y then 
+			tracker:set_y(y)
+		end
 	end
 end
 
-function Console:GetTrackerElementByName(id)
-	if id ~= nil then 
-		return self._persist_trackers[tostring(id)]
+function Console:cmd_unit(subcmd,id,...)
+	if subcmd == "select" then 
+		
 	end
 end
 
 function Console:SetUnitInfo() --unit info from debug hud
 	--todo
+end
+
+function Console:RemoveTracker(id)
+	local tracker 
+	if id ~= nil then 
+		tracker = self._persist_trackers[tostring(id)]
+	end
+	if tracker and alive(tracker) then 
+		self._debug_hud:remove(tracker)
+		self._persist_trackers[tostring(id)] = nil
+		self.selected_tracker = nil
+	end
 end
 
 function Console:RegisterPersistScript(id,clbk,clbk_fail,clbk_success)
@@ -303,10 +536,7 @@ function Console:RemovePersistScript(id)
 	self._persist_scripts[tostring(id)] = nil -- very complex as you can see
 end
 
-function Console:cmd_whisper(message)
-	return "Not implemented"
-end
-
+--[[
 function Console:cmd_adventure(toggle)
 	if (toggle == true) or (toggle == false) then --if state given, set to state
 		--continue to ADVENTURE
@@ -328,19 +558,39 @@ function Console:cmd_adventure(toggle)
 	self._adventure = toggle
 	
 end
+--]]
+
+function Console:cmd_bind(keybind_id,func,held,...) --func is actually a string which is fed into Console's command interpreter
+--todo popup box req HoldTheKey
+	if (keybind_id == "help") and (not func) then 
+		self:Log("Syntax: /bind [string: keybind_id] [callback/command string: func] [optional bool: held]",{color = Color.yellow})
+		self:Log("Usage: Bind a key to execute a Lua snippet or Console commmand.",{color = Color.yellow})
+		return
+	end
+	if keybind_id then --todo check blt.keybinds for valid keybind registration
+		if self._custom_keybinds[keybind_id] or not func then --if nil or invalid func parameter then show current bind
+			return self._custom_keybinds[keybind_id] --todo output to log
+		elseif func then 
+			self._custom_keybinds[keybind_id] = {
+				persist = held or false,
+				func = func
+			}
+		end
+	end
+end
 
 function Console:cmd_help(cmd_name)
-	self:Log("Hewwo dere uwu how are u")
---	self:Log("Hewwo dere \n uwu how are u") --this does in fact work
-	return "help who?"
+	self:Log("new mod who dis?",{color = Color.yellow})
+	return
 end
 
 function Console:cmd_about()
-	return "About: CommandConsole is a mod designed to aid the creation and development of mods for PAYDAY 2."
+	return "Info: CommandConsole Version 0.1, by Offyerrocker. \nOpen Source. Do not redistribute without permission."
+--	return "About: CommandConsole is a mod designed to aid the creation and development of mods for PAYDAY 2."
 end
 
-function Console:cmd_info()
-	return "Info: CommandConsole Version 0.1, by Offyerrocker. \nOpen Source. Do not redistribute without permission."
+function Console:cmd_info(target) --not implemented
+	--get info about selected unit here?
 end
 
 function Console:cmd_time()
@@ -351,11 +601,37 @@ function Console:cmd_date()
 	return tostring(os.date())
 end
 
+function Console:cmd_whisper(target,message)
+	if target == "help" then 
+		self:Log("Syntax: /whisper [peer_id (1-4)] [message]",{color = Color.yellow})
+		self:Log("Usage: Send a private message to a single player without other players reading it.",{color = Color.yellow})
+		return
+	end
+	target = tonumber(target)
+	if not target then return end --log error
+	if managers.network:session() and managers.chat then
+		local channel = managers.chat._channel_id
+		local msg_str
+		for peer_id, peer in pairs(peers) do
+			if peer and (peer_id == target) and peer:ip_verified() then
+				peer:send("send_chat_message", channel, message)
+				local name = peer:name()
+				msg_str = "[To" .. name .. "]: " .. message --todo timestamp
+				managers.chat:receive_message_by_peer(channel,managers.network:session():local_peer(),msg_str,Color(0.7,0.1,0.6))
+				self:Log(msg_str,{color = Color(0.7,0.1,0.6)})
+				return
+			end
+		end			
+	end
+	self:Log("Private message failed")
+	return
+end
+
 function Console:cmd_say(message)
 	if managers.chat and managers.network then 
 		local channel = managers.chat._channel_id
 		local sender_name = managers.network.account:username() or "Someone"
-		managers.chat:send_message(channel, sender_name ,message)
+		managers.chat:send_message(channel, sender_name, message)
 		managers.chat:_receive_message(channel,sender_name,message,Color.white) --todo peerid color
 	else
 		self:Log("Command [/say " .. tostring(message) .. "] failed: no ChatManager present. Are you in an active lobby?")
@@ -363,6 +639,11 @@ function Console:cmd_say(message)
 end
 
 function Console:cmd_dofile(path)
+	if path == "help" then 
+		self:Log("Syntax: /dofile [string: filepath]",{color = Color.yellow})
+		self:Log("Usage: Executes a file at the given path location.",{color = Color.yellow})
+		return
+	end
 	if (not path) or path == "" then 
 		self:Log("Error: /exec " .. tostring(path) .. " failed (Invalid argument to path)",{color = Color.red})
 		return
@@ -370,8 +651,13 @@ function Console:cmd_dofile(path)
 end
 
 function Console:cmd_quit(skip_confirm)
-	if skip_confirm == true then --must pass "true", not just a non-nil/non-false value
-		Application:Close()
+	if skip_confirm == "help" then 
+		self:Log("Syntax: /quit [optional bool: skip_confirm]",{color = Color.yellow})
+		self:Log("Usage: Quits PAYDAY 2 after a confirm dialogue. If skip_confirm is true, does not show confirm dialogue, and quits immediately.",{color = Color.yellow})		
+	end
+
+	if (tostring(skip_confirm) == "true") then
+		Application:close()
 	end
 	local menu_title = managers.localization:text("dcc_qtd_prompt_title")
 	local menu_desc = managers.localization:text("dcc_qtd_prompt_desc")
@@ -389,15 +675,25 @@ function Console:cmd_quit(skip_confirm)
 end
 
 function Console:cmd_restart(timer)
+	if timer == "help" then 
+		self:Log("Syntax: /restart [optional (number: timer) or (string: cancel)]",{color = Color.yellow})
+		self:Log('Usage: Restarts the heist day after [timer] seconds, or cancels countdown if argument is "cancel".',{color = Color.yellow})
+		return 
+	end
 	if not (Global.game_settings.single_player or (managers.network and managers.network:session():is_host())) then 
 		self:Log("You cannot restart the game in which you are not the host!",{color = Color.red})
 		return
 	end
 
+	if timer == "cancel" then 
+		self._restart_timer_t = nil
+	end
 	timer = timer and tonumber(timer)
 	if not timer or timer <= 0 then 
+--		self:Log("Restarted the game! JK",{color = Color.green})
 		managers.game_play_central:restart_the_game()
 	elseif timer then 
+		self._restart_timer_t = Application:time() + timer
 	--do delayed callback bs
 		--callback(self,self,"cmd_restart",0)
 		
@@ -409,7 +705,7 @@ function Console:cmd_restart(timer)
 	end
 end
 
-function Console:cmd_fov(new_fov)
+function Console:cmd_fov(new_fov) --not used
 	local player = managers.player:local_player()
 	local camera = player and player:camera()
 	if not camera then return "ERROR: No player/camera unit found" end
@@ -438,6 +734,11 @@ function Console:cmd_ping(peerid) --not implemented
 end
 
 function Console:cmd_writetodisk(data,pathname) --yeah turns out there's already a BLT Util for this, SaveTable() / Utils.DoSaveTable. SO i'm just gonna redirect to that. 
+	if data == "help" then 
+		self:Log("Syntax: /writetodisk [table: data] [string: filepath]",{color = Color.yellow})
+		self:Log("Usage: Writes a table to a file on your hard disk. Useful for saving Console log results.",{color = Color.yellow})
+		return
+	end
 	return SaveTable(data,pathname)
 --[[
 	if not (data and type(data) == "table") then 
@@ -455,39 +756,14 @@ function Console:cmd_writetodisk(data,pathname) --yeah turns out there's already
 	--]]
 end
 
-function Console:cmd_stop(process_id) --untested
-	return self:RemovePersistScript(process_id)
-end
-
-local orig_togglechat = MenuManager.toggle_chatinput
-function MenuManager:toggle_chatinput(...) --prevent the chat window from showing up when using console
---if not Console:enabled() then return orig_togglechat(self,...) end
-	if not Console._focus then 
-		if Global.game_settings.single_player then
---			return
-		end
-		if Application:editor() then
-			return
-		end
-
-		if SystemInfo:platform() ~= Idstring("WIN32") then
-			return
-		end
-
-		if self:active_menu() then
-			return
-		end
-
-		if not managers.network:session() then
---			return
-		end
-
-		if managers.hud then
-			managers.hud:toggle_chatinput()
-
-			return true
-		end
+function Console:cmd_stop(process_id) --untested; todo ban certain process names like "help" or "all" 
+--todo "remove all" option
+	if process_id == "help" then --and self._persist_scripts.help then
+		self:Log("Syntax: /stop [string: persistscript_id]",{color = Color.yellow})
+		self:Log("Usage: Remove a Console-added persist script and stop it from running anymore.",{color = Color.yellow})
+		--don't cancel removing the persist script, just in case some joker named their persist script "help"
 	end
+	return self:RemovePersistScript(process_id)
 end
 
 function Console:GetEscBehavior()
@@ -514,25 +790,6 @@ function Console:string_excise(str,s,e,replacement) --obsolete; not consistently
 	return result
 end
 
-function Console:Load()
-	local file = io.open(self.save_path, "r")
-	if (file) then
-		for k, v in pairs(json.decode(file:read("*all"))) do
-			self.settings[k] = v
-		end
-	else
-		self:Save()
-	end
-end
-
-function Console:Save()
-	local file = io.open(self.save_path,"w+")
-	if file then
-		file:write(json.encode(self.settings))
-		file:close()
-	end
-end
-
 function Console:GetFontSize()
 	return self.settings.font_size
 end
@@ -551,76 +808,24 @@ function Console:ClearConsole()
 	self.num_lines = 1
 end
 
-function Console:Log(info,params)
---	local color = params and params.color or Color.white
---	local margin = params and params.h_margin
-	if not info then
---		return --todo setting to disable logging if nil value? optional parameter?
+function Console:held(key)
+	if HoldTheKey then
+--		return HoldTheKey:key_held(key)
 	end
 	
-	local line = self.num_lines
-	local new_line = self:new_log_line(params)
-	if new_line and alive(new_line) then 
-		new_line:set_text(tostring(info))
+	if not (managers and managers.hud) or managers.hud._chat_focus then
+		return false
 	end
-end
-
-function Console:Test()
-	KineticHUD:_debug(Application:time(),9)
-end
-
-
-function Console:new_log_line(params)
-	params = params or {}
-	local font_size = self:GetFontSize()
-	local color = params.color or Color.white:with_alpha(0.5)
-	local v_div = params.new_cmd and font_size or 0
-
-	local panel = self._panel
-	local frame = panel:child("command_history_frame")
-	local history = frame:child("command_history_panel")
-	local line
-	local v_margin = self.v_margin
-	local h_margin = self.h_margin
-	history:set_h(history:h() + font_size + self.v_margin)
-	local new_x = h_margin
-	local new_y = (2 + self.num_lines) * font_size
-	if not history:child("history_cmd_" .. tostring(self.num_lines)) then 
-		local previous_line = history:child("history_cmd_" .. tostring(self.num_lines - 1))
-		if previous_line and alive(previous_line) then
-		--todo for every instance of \n in previous_line do y = y + v_margin + font_size
-			local x,y,w,h = previous_line:text_rect()
-			KineticHUD:_debug(x,1)
-			KineticHUD:_debug(y,2)
-			KineticHUD:_debug(w,3)
-			KineticHUD:_debug(h,4)
---OffyLib:c_log(y,"y")
---			new_y = new_y + v_div
-	--[[
-			--can't use Log() here cause it'll overflow from infinite recursive errors.
-			--how ironic, it could save others from crashing, but not itself
-			KineticHUD:_debug(v_margin,5)
-			KineticHUD:_debug(previous_line:bottom(),6)
-	--]]
---			new_y = y + v_div
+	
+	key = tostring(key)
+	if key:find("mouse ") then 
+		if not key:find("wheel") then 
+			key = key:sub(7)
 		end
-		line = history:text({
-			name = "history_cmd_" .. tostring(self.num_lines),
-			layer = 1,
-			x = new_x, --margin
-			y = new_y,
---			w = 100,
-			h = font_size * 1.15,
-			text = "[" .. tostring(self.num_lines) .. "] loading...",
-			font = tweak_data.hud.medium_font,
-			font_size = font_size,
-			color = color
-		})
+		return Input:mouse():down(Idstring(key))
 	else
-		log("Console: ERROR! history line " .. tostring(self.num_lines) .. " already exists!")
+		return Input:keyboard():down(Idstring(key))
 	end
-	self.num_lines = self.num_lines + 1
-	return line
 end
 
 function Console:_shift()
@@ -656,51 +861,16 @@ function Console:ToggleConsoleFocus(focused)
 	end
 end
 
-Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", function( loc )
-	local path = Console.loc_path
-	
-	for _, filename in pairs(file.GetFiles(path)) do
-		local str = filename:match('^(.*).txt$')
-		if str and Idstring(str) and Idstring(str):key() == SystemInfo:language():key() then
-			loc:load_localization_file(path .. filename)
-			return
-		end
-	end
-	loc:load_localization_file(path .. "localization/english.txt")
-end)	
+function Console:GetFwdRay()
+	local player = managers.player:local_player()
+	return player and player:movement():current_state()._fwd_ray
+end
 
-Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manager)
-	MenuCallbackHandler.commandprompt_quitgame = function(self)
-	--[[
-		local title = managers.localization:text("sws_bind_info_title")
-		local desc = managers.localization:text("sws_bind_info_long")
-		local options = {
-			{
-				text = managers.localization:text("sws_ok"),
-				is_cancel_button = true
-			}
-		}
-		QuickMenu:new(title,desc,options,true)
-		--]]
+function Console:SetFwdRayUnit(unit)
+	if unit then --and not filtered_type(unit)
+		self.selected_unit = unit
 	end
-	MenuCallbackHandler.commandprompt_resetsettings = function(self) --button
-		
-	end
-	MenuCallbackHandler.commandprompt_setescbehavior = function(self,item) --multiplechoice
-		Console.settings.esc_behavior = item:value()
-	end
-	MenuCallbackHandler.commandprompt_toggle_1 = function(self,item) --slider
-		--save?
-	end
-	MenuCallbackHandler.commandprompt_setfontsize = function(self,item) --slider
-		Console.settings.font_size = tonumber(item:value())
-		--save?
-	end
-	MenuCallbackHandler.commandprompt_toggle = function(self) --keybind
-		Console:ToggleConsoleFocus()
-	end
-	MenuHelper:LoadFromJsonFile(Console.options_path, Console, Console.settings) --no settings, just the two keybinds
-end)
+end
 
 function Console:GetCharList()
 	--local region = System:region() or "US" or whatever i guess
@@ -739,6 +909,7 @@ function Console:BuildCharList(region) --i'm either a genius or an idiot, depend
 
 	return charlist
 end
+
 
 function Console:esc_key_callback() --temp disabled until i figure out how to safely temporarily disable esc>menu input; currently will only close console
 
@@ -796,7 +967,7 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 	if history_data then 
 		history_func = history_data.func
 		history_success,history_result = pcall(history_func)
-		self:Log("> " .. tostring(cmd),{new_cmd = true})
+		self:Log("> " .. tostring(cmd),{new_cmd = true,color = Color.white:with_alpha(0.7),h_margin = 0})
 		if history_success then
 			if (history_result ~= nil) then 
 				self:Log("Command successfully ran from history with result:",{color = Color.blue})
@@ -842,25 +1013,36 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 		return --check for invalid cmd again since we just changed it
 	end
 
-	self:Log("> " .. cmd,{new_cmd = true}) --log the input str to console
+	self:Log("> " .. cmd,{new_cmd = true,color = Color.white:with_alpha(0.7),h_margin = 0}) --log the input str to console
 
 	if string.sub(cmd,1,1) == "/" then --command indicator
 		is_command = true
+		
+		if string.match(cmd,"'") then 
+			self:Log("Error: Illegal character (') in shortcommand",{color = Color.red}) 
+			return 
+		end
+		
 		cmd = string.sub(cmd,2)
 		local args = string.split(cmd," ") --parse args from input string
 		local cmd_id = args and args[1] --
 		local command = cmd_id and self.cmd_list[cmd_id] 
-		local argument_string = ""
+		local argument_string = args[2]
+		if argument_string then 
+			argument_string = "'" .. argument_string .. "'"
+		else
+			argument_string = ""
+		end
 		for k,argument in pairs(args) do 
-			if k > 2 then 
+			if k > 2 and (argument ~= "") then 
 				--basically table.concat but i need to ignore the first argument because it's actually the "function"
-				argument_string = argument_string .. "," .. argument 
+				argument_string = argument_string .. ",'" .. argument  .. "'"
 			end
 		end
 		
 		if command then 
 			cmd = string.gsub(command,"$ARGS",argument_string) --replace original string, and preserve "command" for logging the original function name (eg. "Console:cmd_about()")
-			self:Log("Writing command " .. tostring(command) .. " to result " .. tostring(cmd))
+--			self:Log("Writing command " .. tostring(command) .. " to result " .. tostring(cmd))
 		elseif cmd_id then 
 			self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = Color.red})
 			return
@@ -883,9 +1065,9 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 			if result ~= nil then 
 				self:Log(result,{color = Color(0.1,0.5,1)})
 			elseif not is_command then
-				self:Log("No result",{color = Color.yellow})
-			elseif is_command then
 				self:Log("Done",{color = Color.yellow})
+			elseif is_command then
+				self:Log("Done (command)",{color = Color.yellow})
 			end
 		else -- command fail
 			self:Log("Command failed (no error given) " .. (result and (" with result:[" .. tostring(result) .. "]") or ""),{color = Color.red})
@@ -893,51 +1075,6 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 	end
 	table.insert(self.command_history,{name = is_command and orig_cmd or cmd, func = func})
 end
-
-function Console:evaluate(info) 
---this is only for enabling simple Lua code like "1+1" to return 2 rather than requiring "return 1+1" in order to return 2
---without this, "1+1" will yield an error, and code that returns something will still need a value returned in order to display a result
-	self._last_result = info
-	return info
-end
-
-function Console:upd_caret(t) --position, selection and blink
-	local panel = self._panel
-	
-	local input_text = panel:child("input_text")
-	local caret = panel:child("caret")
-	local selection_box = panel:child("selection_box")
-	local s,e = input_text:selection()
-	
-	local x,y,w,h = input_text:selection_rect()
-	
-	if s == 0 and e == 0 then 
-		x = input_text:world_x()
-		y = input_text:world_y()
-	end
-	
-	if s == e then 
-		w = 0
-	end
-	
-	if self.selection_dir > 0 then --selection going right
-		caret:set_x(x + w + -1)
-	elseif self.selection_dir < 0 then --selection going left
-		caret:set_x(x - 1)
-	end
-	caret:set_y(y)
-	
-	h = input_text:font_size()
-	
-	selection_box:set_world_shape(x,y + 2, w, h - 4)
-	
-	if self._caret_blink_t + self.caret_blink_interval < t then 
-		self._caret_blink_t = t
-		caret:set_visible(not caret:visible())
-	end
-
-end
-
 
 function Console:key_press(o,k)
 	local panel = self._panel
@@ -1193,11 +1330,13 @@ function Console:update_key_down(o,k,t)
 			text:set_selection(0, 0)
 		elseif k == Idstring("end") then 
 			text:set_selection(n, n)
-		elseif k == Idstring("page up") then 
+		elseif k == Idstring("page down") then 
 			history:set_y(history:y() - (Console.settings.scroll_page_speed))
 			--move history window up by 14 * (math.floor(frame:h() / 14))
-		elseif k == Idstring("page down") then 
+			self:refresh_scroll_handle()
+		elseif k == Idstring("page up") then 
 			history:set_y(history:y() + (Console.settings.scroll_page_speed))
+			self:refresh_scroll_handle()
 			--same as pgup except move down
 		elseif k == Idstring("esc") and type(self._esc_callback) ~= "number" then
 			return
@@ -1216,3 +1355,353 @@ function Console:key_release(o,k)
 	end
 end
 
+function Console:evaluate(info) --UNUSED
+--this is only for enabling simple Lua code like "1+1" to return 2 rather than requiring "return 1+1" in order to return 2
+--without this, "1+1" will yield an error, and code that returns something will still need a value returned in order to display a result
+	self._last_result = info
+	return info
+end
+
+function Console:update(t,dt)
+	self:update_custom_keybinds(t,dt)
+
+	self:update_scroll(t)
+	
+	self:update_hud(t,dt)
+	
+	self:update_persist_scripts(t,dt)
+	
+	self:update_restart_timer(t,dt)
+end
+
+function Console:update_persist_scripts(t,dt)
+	if not self._persist_scripts then return end
+	for id, data in pairs(self._persist_scripts) do 
+		if data and type(data) == "table" then 
+			local success_1,result_1,success_2,result_2
+			if data.clbk then 
+				success_1,result_1 = pcall(data.clbk) --execute given script
+			end
+			if success_1 then 
+				if result_1 and data.clbk_success then 
+					success_2,result_2 = pcall(data.clbk_success)
+				end
+			elseif data.clbk_fail then 
+				success_2,result_2 = pcall(data.clbk_fail)				
+			end
+			local clbk_1_msg,clbk_2_msg
+			
+			if data.log_fail or data.log_all then 
+				if not success_1 then 
+					clbk_1_msg = "clbk failed with result " .. tostring(result_1)
+				end
+				if clbk_fail and not success_2 then 
+					clbk_2_msg = "clbk_fail failed with result " .. tostring(result_2)
+				end
+			end
+			if data.log_success or data.log_all then
+				if success_1 then 
+					clbk_1_msg = "clbk succeeded with result " .. tostring(result_1)
+				end
+				if clbk_success and success_2 then
+					clbk_2_msg = "clbk_success succeeded with result " .. tostring(result_2)
+				end
+				
+			end
+			--[[	
+			local clbk_1_msg = (success_1 and " successful with result [" .. tostring(result_1) .. "]") or (" unsuccessful.")
+			local clbk_2_msg = (success_1 and clbk_success and " clbk_success ") or (not success_1 and data.clbk_fail and " clbk_fail ")
+			if clbk_2_msg then 
+				clbk_2_msg = clbk_2_msg .. " was " .. (success_2 and "successful " or "unsuccessful")
+				clbk_2_msg = clbk_2_msg .. " with result [" .. tostring(result_2) .. "]"
+			else
+				clbk_2_msg = ""
+			end	
+			--]]
+			if (clbk_1_msg or clbk_2_msg) then 
+				self:Log("Persist script [" .. id .. "]  was " .. (clbk_1_msg or "") .. (clbk_2_msg or ""))
+			end
+		else
+			self:Log("Invalid persist data")
+			--invalid persist data
+		end
+	end
+end
+
+function Console:update_hud(t,dt)
+	local hud = self._debug_hud
+	if not hud then return end
+	local name = hud:child("info_unit_name")
+	local hp = hud:child("info_unit_hp")
+	
+	
+	
+	local fwd_ray = self:GetFwdRay() or {}
+	
+	local unit = fwd_ray.unit
+	
+	local pos = fwd_ray.position
+	
+	if unit and alive(unit) and unit:character_damage() and unit:base() then 
+		name:set_text(tostring(unit:base()._tweak_table or "ERROR"))
+		name:set_color(Color.yellow)
+		hp:set_text(tostring(unit:character_damage()._health))
+		hp:set_color(Color.yellow)
+	else
+		name:set_text("NO DATA")
+		name:set_color(Color.red:with_alpha(0.3))
+		hp:set_text("NO DATA")
+		hp:set_color(Color.red:with_alpha(0.3))
+	end
+	
+end
+
+function Console:update_custom_keybinds(t,dt)
+
+	for keybind_id,keybind_data in pairs(self._custom_keybinds) do 
+		local k_result,k_fail
+		local held = HoldTheKey and HoldTheKey:Keybind_Held(keybind_id)
+		if keybind_data and type(keybind_data) == "table" then
+			if held and ((not self._keybind_cache[keybind_id]) or keybind_data.persist) then
+				if keybind_data.clbk then 
+					if type(keybind_data.clbk) == "function" then 
+						k_result,k_fail = pcall(keybind_data.clbk)
+						if not (k_result or keybind_data.persist) then 
+							self:Log("Keybind [" .. keybind_id .."] execution failed",{color = Color.red})
+						end
+					end
+				end
+			end
+			self._keybind_cache[keybind_id] = held
+		end
+	end
+	
+end
+
+function Console:update_restart_timer(t,dt)
+	--if host then blah blah blah
+	if self._restart_timer_t then --time at which heist will restart
+		local time_left = math.floor(self._restart_timer_t - t) --seconds left to restart
+		if (not self._restart_timer) or (self._restart_timer - time_left) >= 1 then --output only once, not every update
+			self._restart_timer = self._restart_timer or time_left 
+			self._restart_timer = time_left
+			self:Log("RESTARTING IN " .. string.format("%i",tostring(time_left)) .. " SECONDS.",{color = Color.yellow})
+		end
+		if time_left <= 0 then 
+			managers.game_play_central:restart_the_game()
+			self._restart_timer_t = nil
+		end
+	end
+end
+
+function Console:update_scroll(t,dt)
+--todo if selected unit then update marker to unit
+	local panel = self._panel
+	if not panel then return end
+	if self._focus then 
+		local scroll_handle = panel:child("scroll_handle")
+		--cursor blink
+		local input_text = panel:child("input_text")
+		local cursor = panel:child("cursor")
+
+		local frame = panel:child("command_history_frame")
+		local history = frame:child("command_history_panel")
+		local font_size = self:GetFontSize()
+		local v_margin = self.v_margin
+		local console_h = frame:h()
+		local mwu = "mouse wheel up"
+		local mwd = "mouse wheel down"
+		local scroll_speed = self:GetScrollSpeed()
+		
+		self:upd_caret(t)
+		self:update_key_down(input_text,self._key_pressed,t)
+		
+		local new_y
+--		local y_sign
+		if self:held(mwu) then --console scroll
+			new_y = math.max(history:y() - scroll_speed,-history:h())
+			
+--			y_sign = math.sign(new_y)
+			history:set_y(new_y)
+			self:refresh_scroll_handle()
+		elseif self:held(mwd) then 
+			new_y = math.min(history:y() + scroll_speed,0)
+--			y_sign = math.sign(new_y)
+			history:set_y(new_y)
+			self:refresh_scroll_handle()
+		end
+	end
+end
+
+function Console:upd_caret(t) --position, selection and blink
+	local panel = self._panel
+	
+	local input_text = panel:child("input_text")
+	local caret = panel:child("caret")
+	local selection_box = panel:child("selection_box")
+	local s,e = input_text:selection()
+	
+	local x,y,w,h = input_text:selection_rect()
+	
+	if s == 0 and e == 0 then 
+		x = input_text:world_x()
+		y = input_text:world_y()
+	end
+	
+	if s == e then 
+		w = 0
+	end
+	
+	if self.selection_dir > 0 then --selection going right
+		caret:set_x(x + w + -1)
+	elseif self.selection_dir < 0 then --selection going left
+		caret:set_x(x - 1)
+	end
+	caret:set_y(y)
+	
+	h = input_text:font_size()
+	
+	selection_box:set_world_shape(x,y + 2, w, h - 4)
+	
+	if self._caret_blink_t + self.caret_blink_interval < t then 
+		self._caret_blink_t = t
+		caret:set_visible(not caret:visible())
+	end
+
+end
+
+function Console:refresh_scroll_handle()
+	--local lines_ratio = self.lines_ratio
+	local frame = self._panel:child("command_history_frame")
+	local history = frame:child("command_history_panel")
+	--return Console._panel:child("command_history_frame"):child("command_history_panel"):h()
+	local page_h = frame:h()
+	local total_h = history:h()
+	local history_y = history:y()
+	
+	local size_ratio = page_h / total_h
+	
+	
+--	local num_lines = self.num_lines
+	
+	
+	local scroll_handle = self._panel:child("scroll_handle")
+--	local history_tracker = self:CreateTracker("history_debug")
+	
+	scroll_handle:set_h(math.max(page_h * size_ratio,8))
+	scroll_handle:set_y(history_y * size_ratio)
+	
+--	history_tracker:set_text(history_y)
+	--[[
+--	local scroll_tracker = self:CreateTracker("scroll_debug")
+--	scroll_tracker:set_text(tostring(num_lines))
+	scroll_handle:set_y(page_h - (history_y * size_ratio))
+	scroll_handle:set_h(console_h / Console.num_lines)
+	scroll_handle:set_y(scroll_speed * (history:y() / (scroll_speed * Console.num_lines)))
+
+	scroll_handle:set_h(console_h / Console.num_lines)
+	scroll_handle:set_y(scroll_speed * (history:y() / (scroll_speed * Console.num_lines)))
+--]]
+end
+
+
+local orig_togglechat = MenuManager.toggle_chatinput
+function MenuManager:toggle_chatinput(...) --prevent the chat window from showing up when using console
+--if not Console:enabled() then return orig_togglechat(self,...) end
+	if not Console._focus then 
+		if Global.game_settings.single_player then
+--			return
+		end
+		if Application:editor() then
+			return
+		end
+
+		if SystemInfo:platform() ~= Idstring("WIN32") then
+			return
+		end
+
+		if self:active_menu() then
+			return
+		end
+
+		if not managers.network:session() then
+--			return
+		end
+
+		if managers.hud then
+			managers.hud:toggle_chatinput()
+
+			return true
+		end
+	end
+end
+
+
+Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", function( loc )
+	local path = Console.loc_path
+	
+	for _, filename in pairs(file.GetFiles(path)) do
+		local str = filename:match('^(.*).txt$')
+		if str and Idstring(str) and Idstring(str):key() == SystemInfo:language():key() then
+			loc:load_localization_file(path .. filename)
+			return
+		end
+	end
+	loc:load_localization_file(path .. "localization/english.txt")
+end)	
+
+Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manager)
+	MenuCallbackHandler.commandprompt_selectfwdrayunit = function(self)
+		local fwd_ray = Console:GetFwdRay()
+		local unit = fwd_ray.unit
+		if unit then 
+			Console:SetFwdRayUnit(unit)
+		end
+	end
+	MenuCallbackHandler.commandprompt_resetsettings = function(self) --button
+		
+	end
+	MenuCallbackHandler.commandprompt_setescbehavior = function(self,item) --multiplechoice
+		Console.settings.esc_behavior = item:value()
+	end
+	MenuCallbackHandler.commandprompt_toggle_1 = function(self,item) --slider
+		--save?
+	end
+	MenuCallbackHandler.commandprompt_setfontsize = function(self,item) --slider
+		Console.settings.font_size = tonumber(item:value())
+		--save?
+	end
+	MenuCallbackHandler.commandprompt_toggle = function(self) --keybind
+		if (Input and Input:keyboard() and not Console:_shift()) then 
+			Console:ToggleConsoleFocus()
+		end
+	end
+	MenuHelper:LoadFromJsonFile(Console.options_path, Console, Console.settings) --no settings, just the two keybinds
+end)
+
+function Console:SaveKeybinds()
+	
+end
+
+function Console:LoadKeybinds()
+	
+end
+
+function Console:Load()
+	local file = io.open(self.save_path, "r")
+	if (file) then
+		for k, v in pairs(json.decode(file:read("*all"))) do
+			self.settings[k] = v
+		end
+	else
+		self:Save()
+	end
+end
+
+function Console:Save()
+	local file = io.open(self.save_path,"w+")
+	if file then
+		file:write(json.encode(self.settings))
+		file:close()
+	end
+end
