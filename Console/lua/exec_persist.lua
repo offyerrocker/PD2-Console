@@ -2,6 +2,7 @@ if Console then
 	local t = Application:time()
 	local dt = t - Console._dt
 	Console._dt = t
-	
-	Console:update(t,dt)
+	if Console.update then
+		Console:update(t,dt)
+	end
 end

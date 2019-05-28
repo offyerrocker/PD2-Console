@@ -14,7 +14,7 @@ end
 local orig_move = PlayerStandard._determine_move_direction
 function PlayerStandard:_determine_move_direction(...)
 	if Console._focus then 
-		return Vector3()
+		return Vector3(0,0,0)
 	end
 	return orig_move(self,...)
 end

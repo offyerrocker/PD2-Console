@@ -1,82 +1,106 @@
 --[[ TODO: FEATURES BEFORE PUBLIC 1.0
 
-tracker: auto-detect changes
-	-support callbacks?
-
-wrap Debug HUD unit info in nice safe pcall()
-
-add more unit info 
-
-add unit info keybind to hide interface
-
-add unit info /shortcommands to display info (accessible through chat)
-
-add waypoint to selected unit
-	- crawl through hudmanager for waypoint code
-
-
-- Enable Console in main menu (init console window somewhere other than where it is in hudmanager)
-	
-- Create Debug HUD
-	- create cool looking ui for unit info (using hud assets? think bounding box; see camera unit-spotting code for example)
-
-	
-		
-- Add backup chat commands (hidden by default)
-	
-	
-Keybinds:
-	- Set position waypoint at fwd_ray
-	- Select Unit at fwd_ray
-		- Select enemy at fwd_ray
-			* Hold [modifier key] to select enemy and freeze AI
-		- Select deployable at fwd_ray
-		- Select misc object at fwd_ray
-
-
-
-- Add scroll bar that actually works, except no mouse support, sadly
-	-update on any scroll action (scrollwheel, pgup, pgdn, new log)
-	- scroll blocks should render over scroll bar
-	- scroll bar should move properly
-	- scroll bad should be inside a frame so as not to render over other things
-	
-	- Scroll bar at top: earliest logs
-	- Scroll bar at bottom: latest logs
-	
-	- Scroll height: (frame_h - history_h)
-		- decreases after history_h > frame_h, down to [min] at history_h == frame_h * [10] 
-	
-
-	if history_h <= frame_h then 
-		scroll_h = frame_h
-	else
-		scroll_h = history_h / (frame_h * 10)
-	end
-	
-	- scroll_h = frame_h / history_h
-	
-	
-
-- Keybind callbacks + script exec trackers (/bind stuff)
-
-- Optionally, allow overriding log() function
-	- Add console command "enablelogs" to enable/disable BLT logs or something
-
-- Add settings
-	- "Reset settings" button
-	- Console window mover in mod options
-
-
 - Add basic debug commands:
 	- log [msg] [name]: outputs to blt log; otherwise identical to _log()
-	- c_log [msg] [name]: outputs to console; otherwise identical to c_log()
 	- t_log/PrintTable [table] [optional: name] [optional: tier]: prints nicely-formatted table to console
+
+Console:
+	* Parse spaces in quotes (strings) in command line (requires string.split alternative)
+	* Formatted timestamp in Console 
+		* Options: Game time or system time
+	
+Command "/bind":
+	* use /bindid for using existing blt keybinds;
+	* use /bind for individual keyboard/mouse inputs by name
+	* blacklist ids of subcommands like:
+		* help
+		* list
+	* Separate subtables for self._custom_keybinds
+		* keybindid 
+		* keyname
+
+Command "/teleport":
+	* optional 3 args for rotlook
+
+Persist Scripts:
+	* Option to add by command, as with "/tracker track"
+
+Add optional HUD waypoint to position tagging, a la Goonmod Waypoints
+
+Tracker:
+	add var/cmd to recall value of tracked items for use in cmds
+
+	make tracker more intuitive
+
+Scroll Bar: 
+	- Fix the goddamn scroll bar
+		-update on any scroll action (scrollwheel, pgup, pgdn, new log)
+		- scroll blocks should render over scroll bar
+		- scroll bar should move properly
+		- scroll bad should be inside a frame so as not to render over other things
+		
+		- Scroll bar at top: earliest logs
+		- Scroll bar at bottom: latest logs
+		
+		- Scroll height: (frame_h - history_h)
+			- decreases after history_h > frame_h, down to [min] at history_h == frame_h * [10] 
+		
+
+		if history_h <= frame_h then 
+			scroll_h = frame_h
+		else
+			scroll_h = history_h / (frame_h * 10)
+		end
+		
+		- scroll_h = frame_h / history_h
+
+Navigation
+	- CTRL + (LEFTARROW/RIGHTARROW) to move cursor to next space/special char in left/right direction (spaces? periods? commas? todo figure that out)
+
+
+Settings
+	- "Reset settings" button
+	- Console window mover in mod options
+	- Optionally, allow overriding log() function
+		- Add console command "enablelogs" to enable/disable BLT logs or something
+
+
+Debug HUD
+	- wrap Debug HUD unit info in nice safe pcall() (whichever isn't already)
+	- add more unit info 
+	- add unit info keybind to hide interface
+	- add unit info /shortcommands to display info (accessible through chat)
+
+- Enable Console in main menu (init console window somewhere other than where it is in hudmanager)
+			
+- Import chat commands from OffyLib + allow chat in Offline Mode (disabled by default)
+	
+- fix application:close crashing instead of quitting
+	...Application:quit()?
+	
+Keybinds functions:
+	* Hold [modifier key] to select enemy and freeze AI
+	- Select deployable at fwd_ray
+	- Select misc object at fwd_ray
 
 
 
 
 ---extra features, for post release
+
+Command Help
+	- Add remaining syntax + usage + /help
+	- Add command tooltips
+	- update self.command_list to have command_string as well as short, single-line description
+		eg
+		self.command_string = {
+			"teleport" = {
+				func = [func],
+				cmd = "Console:cmd_teleport($ARGS)",
+				desc = "Hewwo??"
+			}
+		}
+		
 
 - re-absorb upd_caret to update_scroll for var efficiency
 
@@ -84,15 +108,11 @@ Keybinds:
 	- Add remaining passed params to new_log_line()
 	- Fix new_log_line() text height calculation (string.match count for "\n"?)
 	- Move cmd history properly when sending new commands
-	- Restore replaced text if selected_history == 0
 
 - Scan for \n in strings, and replace with separate Log() line
 	- Overflow to newline for character limits (should check against max length setting)
 		- \n works for standard strings and hud text panels
-		
-- Add command tooltips
 
-- Add remaining syntax + usage + /help
 
 - Reset movement when opening console (so that positive input is not "stuck" if opening console while applying input)
 	
@@ -106,59 +126,47 @@ Keybinds:
 	- callback tests confirmed pcall() and loadstring() functioning as expected
 
 - Add console settings as cl_blanketyblank
-	
+
 - Standardize margins + values in hudmanagerpd2
 - Fancy fadeout/fadein for command window
 - Fancy texture(s) for command window
 - Add better highlight visibility
 - Add special character actions:
+	- Re-enable tilde (`/~) as inputs:
+		* Fix tilde entering on close console (or at all) if also bound to console
+			* Add or switch key (alt?) to enable entering this key
+			
+		* Recommend that one mod that re-adds characters to the font, such as "~"
 	- CAPSLOCK support?
 	- SHIFT+RETURN for newline? (invisible to code, only for organization)
-	- CTRL + (LEFTARROW/RIGHTARROW) to move cursor to next space/special char in left/right direction
 	- ALT-code support?
+
+- Add SECRET SECRETS
 
 - Implement GetConsoleAddOns hook for third-party command modules /persist callback scripts etc
 
 -----------------
 changes from last version:
 
-added global Log() function that redirects to Console:Log()
-
-reorganized persist scripts: console now organizes its update functions into a single update() called from exec_persist.lua (todo rename this)
--	moved update to persist script rather than hudmanager update, for better custom hud compatibility
--	changed key held check held() to Console class function rather than local function; moved function to menumanager with everything else rather than hudmanage
-
-Debug HUD unit info is now in early functional phases of development
-
-HUD Tracker is now functional
-
-Officially added HoldTheKey as dependency
-
-/quit now accepts "true" as its first argument, which skips the confirm dialogue
-
-/restart now properly accepts and uses timer from its first and only argument, and outputs this timer progress to console every second
-this timer can now be cancelled with /restart cancel
-
-short /commands now properly process arguments as strings
-added syntax + usage messages for most commands with arguments, if the first non-command argument (aka subcommand or "subcmd") provided is equal to "help"
-short /commands now properly process arguments without an extra, erroneous comma if there is no second argument
-
-/whisper implemented (needs testing)
-
-trackers can now be listed and selected by number with "/tracker list" and "/tracker select [number]"
-
-command history is now 70% alpha; other logs are 100% alpha by default (changed from universal 70% alpha)
-
-selected_unit can now be created with a keybind
-
-changed horizontal margin for console window text: logged results are indented while command history is not
-
-console toggle button is disabled while holding shift (so that "~" can be used for "~=" compare operators if bound to `)  
-
-organized function orders in menumanager (mostly cosmetic)
-
--more stuff i forgot right now
-
+* Fixed new character insertion (typing as usual) in the wrong spot after having moved the selection caret 
+* Console now saves the last change you made before browsing command history; this can be recovered by using the arrow keys (DOWN/UP) to navigate toward the most recent command
+* Fixed "/restart cancel" cancelling the timer but then restarting immediately anyway
+* Fixed refreshing the restart timer with subsequent "/restart [timer]" commands not displaying the time 
+* Added /teleport (aka /tp). Takes three arguments: x, y, and z. Leave blank or use argument1 "tag" to teleport to tagged_position.
+* Added unit selection feature
+	* Activated by keybind or command
+	* Selecting a unit is now referred to as "tagging" a unit
+	* Tagging a unit will automatically show the unit's hitbox and navigation path, as well as other stats (name, hp, weapon)
+		* The ability to change what displays will be added in the future
+	* This unit may be used for reference in commands that involve unit manipulation
+* Added position selection feature
+	* Activated by keybind or command
+	* Selecting a position is now referred to as "tagging" a position
+	* Tagging a position will automatically render a debug shape at the location
+	* This position may be used for reference in commands that involve unit manipulation, including teleporting oneself
+* Added "/tracker track [id] [variable]", which automatically adds a hud element with name [id] and refreshes the displayed value of [variable] every frame to that hud element
+* Added Console:c_log() to output to chat. Theoretically should be able to handle any number of arguments, but does not adjust for the character limit
+* Probable fix for Application:quit()/close() crashing rather than closing
 --]]
 
 
@@ -203,38 +211,74 @@ Console._restart_timer = false --used for /restart [timer] command: tracks next 
 Console._restart_timer_t = false  --used for /restart [timer] command: tracks time left til 0 (restart)
 Console._dt = 0 --should never be directly used for anything except calculation of dt itself
 Console.selected_tracker = nil --string; holds id index of currently selected tracker from table _persist_trackers, NOT the element
-
+Console.tagged_unit = nil --used for selected_unit for unit manipulation
+Console.tagged_position = nil --used for waypoint/position manipulation
+Console._failsafe = false --used for logall() debug function; probably should not be touched
 --todo slap these in an init() function and call it at start
+
 
 Console.command_history = {
 --	[1] = { name = "/say thing", func = (function value) } --as an example
 }
 
 Console.color_data = { --for ui stuff
-	scroll_handle = Color(0.1,0.3,0.7)
+	scroll_handle = Color(0.1,0.3,0.7),
+	chat_color = Color("8650AC"),
+	debug_brush_tagged_enemy = Color.yellow:with_alpha(0.1),
+	debug_brush_enemies = Color.red:with_alpha(0.1),
+	debug_brush_world = Color.green:with_alpha(0.1)
 }
 
-Console.cmd_list = { --in string form so that they can be called with loadstring() and run safely in a pcall; --todo update
-	help = "Console:cmd_help($ARGS)", --nothing useful
-	about = "Console:cmd_about()", --nothing useful 
-	info = "Console:cmd_info($ARGS)", --nothing useful
-	say = "Console:cmd_say($ARGS)",
-	whisper = "Console:cmd_whisper($ARGS)",
-	tracker = "Console:cmd_tracker($ARGS)",
+Console.quality_colors = {
+	normal = Color("B2B2B2"), --grey
+	unique = Color("FFD700"), --yellow 
+	vintage = Color("476291"), --desat navy ish
+	genuine = Color("4D6455"), --desat forest green ish
+	strange = Color("CF6A32"), --desat orangey
+	unusual = Color("8650AC"), --purple
+	haunted = Color("38F3AB"), --turquoise
+	collector = Color("AA0000"), --collector's, but i hate dealing with release + quotes in strings. dark red
+	decorated = Color("FAFAFA"), --lighter grey?
+	community = Color("70B04A"), --also self-made; magenta
+	valve = Color("A50F79"), --burgundy?
+	void = Color("544071"), --purple; more sat than unusual
+	solar = Color("E1834F"), --orange
+	arc = Color("6F8EA2"), --powder blue
+	common = Color("43734B"), --moderately green
+	rare = Color("547C96"), --blue; lighter than vintage
+	legendary = Color("522F65"), --purple; lighter than unusual
+	exotic = Color("CEAE33") --(bright lemony yellow)
+}
+
+Console._tagunit_brush = Draw:brush(Console.color_data.debug_brush_enemies) --arg2 is lifetime
+Console._tagworld_brush = Draw:brush(Console.color_data.debug_brush_world)
+
+
+Console.command_list = { --in string form so that they can be called with loadstring() and run safely in a pcall; --todo update
+	help = "Console:cmd_help($ARGS)", --list all commands
+	about = "Console:cmd_about()", --output basic mod info about Console
+	contact = "Console:cmd_contact()", --output mod author's contact info
+	info = "Console:cmd_info($ARGS)", --not implemented
+	say = "Console:cmd_say($ARGS)", --outputs message to chat as one would chat normally
+	whisper = "Console:cmd_whisper($ARGS)", --outputs private message to user
+	tracker = "Console:cmd_tracker($ARGS)", --various commands related to tracking variables and displaying their contents to the HUD
 	god = "OffyLib:EnableInvuln($ARGS)", --sorry kids you don't get the kool cheats unless you're me
-	exec = "Console:cmd_dofile($ARGS)",
-	["dofile"] = "Console:cmd_dofile($ARGS)", --don't you give me your syntax-highlighting sass, np++, i know dofile is already a thing
-	bind = "Console:cmd_bind($ARGS)",
-	unbind = "Console:cmd_unbind($ARGS)",
-	time = "Console:cmd_time()",
-	date = "Console:cmd_date()",
-	quit = "Console:cmd_quit($ARGS)",
-	restart = "Console:cmd_restart($ARGS)", --argument is seconds delay to restart
+	exec = "Console:cmd_dofile($ARGS)", --dofile. literally just dofile.
+	["dofile"] = "Console:cmd_dofile($ARGS)", --sorry, just dofile again. and don't you give me your syntax-highlighting sass, np++, i know dofile is already a thing
+	teleport = "Console:cmd_teleport($ARGS)",
+	tp = "Console:cmd_teleport($ARGS)",
+	bind = "Console:cmd_bind($ARGS)", --is this tf2.jpg
+	bindid = "Console:cmd_bindid($ARGS)",
+	unbind = "Console:cmd_unbind($ARGS)", --i hear unbindall in console gives you infinite ammo :^)
+	time = "Console:cmd_time()", --i don't know when this would be useful
+	date = "Console:cmd_date()", --outputs system date + time to console (preformatted)
+	quit = "Console:cmd_quit($ARGS)", --closes payday 2 executable (after confirm prompt)
+	restart = "Console:cmd_restart($ARGS)", --restarts heist day; argument is seconds delay to restart
 --	fov = "Console:cmd_fov($ARGS)", -- borked atm
 --	ping = "Console:cmd_ping($ARGS)", --not implemented
 	savetable = "Console:cmd_writetodisk($ARGS)", -- [data] [pathname]
 --	adventure = "Console:cmd_adventure($ARGS)",
-	stop = "Console:cmd_stop($ARGS)"
+	stop = "Console:cmd_stop($ARGS)" --for stopping persist scripts or if logall() has gone awry
 }
 
 Console.h_margin = 24
@@ -271,6 +315,12 @@ Console._persist_trackers = { --storage for HUD elements; todo rename
 	
 }
 
+
+function Console:OnInternalLoad() --called on event PlayerManager:_internal_load()
+	--load keybinds
+	--do stuff for Console development here such as creating tracker elements
+	self:SetupHitboxes()
+end
 
 function _G.Log(...)
 	Console:Log(...)
@@ -344,8 +394,20 @@ function Console:new_log_line(params)
 	return line
 end
 
-function Console:OnInternalLoad() --called on event PlayerManager:_internal_load()
-	--load keybinds
+function Console:c_log(...)
+	local arg = {...}
+	local message
+	for _,v in ipairs(arg) do
+		message = message and (message .. " : " .. tostring(v)) or tostring(v)
+	end
+	
+	local col = self.color_data.chat_color
+	if not message then -- if message == "" then 
+		message = "(EMPTY LOG)"
+		col = self.quality_colors.collector
+	end
+	managers.chat:_receive_message(1,"[CONSOLE]",message,col)
+	self:Log(message,{color = col})
 end
 
 function Console:cmd_tracker(subcmd,id,...) --interpret
@@ -372,6 +434,8 @@ function Console:cmd_tracker(subcmd,id,...) --interpret
 			self:SetTrackerValue(id,...)
 		elseif subcmd == "remove" or subcmd == "delete" then 
 			self:RemoveTracker(id)
+		elseif subcmd == "track" then 
+			self:RegisterTrackerUpdater(id,...)
 		elseif subcmd == "help" then
 			self:Log("Syntax: /tracker [string: subcommand] [string: id] [value]",{color = Color.yellow})
 			self:Log("Subcommands: color, add/create/new, help, list, remove/delete, select, setxy",{color = Color.yellow})
@@ -411,6 +475,21 @@ end
 function Console:GetTrackerElementByName(id)
 	if id ~= nil then 
 		return self._persist_trackers[tostring(id)]
+	end
+end
+
+function Console:RegisterTrackerUpdater(id,var)
+	local cmd_str = "Console:SetTrackerValue('" .. tostring(id) .. "'," .. tostring(var) .. ")"
+	local func,error_message = loadstring(cmd_str)
+	
+	if func and not error_message then 
+		self:CreateTracker(id)
+		self:RegisterPersistScript("Tracker_" .. tostring(id),func)
+		self:Log("done " .. cmd_str,{color = Color.green})
+		Console._last_func_ran = func
+	else
+		self:Log("ERROR: RegisterTrackerUpdater(" .. tostring(id) .. "," .. tostring(var) .. ") failed with error:",{color = Color.red})
+		self:Log(tostring(error_message),{color = Color.red})
 	end
 end
 
@@ -560,16 +639,45 @@ function Console:cmd_adventure(toggle)
 end
 --]]
 
-function Console:cmd_bind(keybind_id,func,held,...) --func is actually a string which is fed into Console's command interpreter
+
+function Console:cmd_bind(key_name,func,held,...) --func is actually a string which is fed into Console's command interpreter
+	if (key_name == "help") and (not func) then
+		self:Log("Syntax: /bindid [string: key_name] [function to execute; or string to parse] [optional bool: held]",{color = Color.yellow})
+		self:Log("Usage: Bind a key to execute a Lua snippet or Console command.",{color = Color.yellow})
+		self:Log("Example: /bind a Console:Log(\"I just pressed (a)!\")",{color = Color.yellow})
+		return
+	end
+	if key_name then 
+		if self._custom_keybinds[key_name] then --if nil or invalid func parameter then show current bind
+			self:Log(tostring(key_name) .. " is already bound to [" .. self._custom_keybinds[key_name] .. "]!",{color = Color.yellow})
+			return
+		elseif not func then 
+			self:Log("Error: You must supply a command, code, or function to execute!")
+			return
+		elseif func then 
+			self._custom_keybinds[key_name] = {
+				persist = held or false,
+				func = func
+			}
+		end
+	end
+end
+
+function Console:cmd_bindid(keybind_id,func,held,...)
 --todo popup box req HoldTheKey
 	if (keybind_id == "help") and (not func) then 
-		self:Log("Syntax: /bind [string: keybind_id] [callback/command string: func] [optional bool: held]",{color = Color.yellow})
+		self:Log("Syntax: /bind [string: keybind_id] [function to execute; or string to parse] [optional bool: held]",{color = Color.yellow})
 		self:Log("Usage: Bind a key to execute a Lua snippet or Console commmand.",{color = Color.yellow})
+		self:Log("Example: /bindid keybindid_taclean_left Console:Log(\"I just pressed (keybindid_taclean_left)!\")",{color = Color.yellow})
 		return
 	end
 	if keybind_id then --todo check blt.keybinds for valid keybind registration
-		if self._custom_keybinds[keybind_id] or not func then --if nil or invalid func parameter then show current bind
-			return self._custom_keybinds[keybind_id] --todo output to log
+		if self._custom_keybinds[keybind_id] then
+			self:Log(tostring(key_name) .. " is already bound to [" .. self._custom_keybinds[key_name] .. "]!",{color = Color.yellow})	
+			return self._custom_keybinds[keybind_id]
+		elseif not func then
+			self:Log("Error: You must supply a command, code, or function to execute!")
+			return
 		elseif func then 
 			self._custom_keybinds[keybind_id] = {
 				persist = held or false,
@@ -580,8 +688,24 @@ function Console:cmd_bind(keybind_id,func,held,...) --func is actually a string 
 end
 
 function Console:cmd_help(cmd_name)
-	self:Log("new mod who dis?",{color = Color.yellow})
+	if cmd_name and self.command_list[cmd_name] and string.find(self.command_list[cmd_name],"$ARGS") then 
+		self:Log("Try '/" .. cmd_name .. "help'.",{color = Color.yellow}) 
+	else
+		self:Log("Available commands:",{color = Color.green})
+		for name,_ in pairs(self.command_list) do 
+			self:Log(name)
+		end
+	end
+	self:Log("Please visit https://github.com/offyerrocker/PD2-Console/wiki for more thorough documentation.",{color = Color.yellow})
 	return
+end
+
+function Console:cmd_contact()
+	self:Log("Questions? Comments? You can reach me on these platforms:",{color = Color.yellow})
+	self:Log("Discord: Offyerrocker#3878",{color = Color("7289da")})
+	self:Log("Reddit: /u/offyerrocker",{color = Color("ff6314")})
+	self:Log("Steam: /id/offyerrocker",{color = Color("2b6190")})
+	self:Log("For bug reports or pull requests, I recommend you submit them to this mod's GitHub page.",{color = Color.yellow})
 end
 
 function Console:cmd_about()
@@ -657,7 +781,11 @@ function Console:cmd_quit(skip_confirm)
 	end
 
 	if (tostring(skip_confirm) == "true") then
-		Application:close()
+--		Application:quit() 
+--causes:
+--[string "core/lib/system/coreengineaccess.lua"]:67: Application:quit(...) has been hidden by core. Use CoreSetup:quit(...) instead!
+--...interesting
+		CoreSetup:quit()
 	end
 	local menu_title = managers.localization:text("dcc_qtd_prompt_title")
 	local menu_desc = managers.localization:text("dcc_qtd_prompt_desc")
@@ -674,6 +802,25 @@ function Console:cmd_quit(skip_confirm)
 	QuickMenu:new(menu_title,menu_desc,options):show()
 end
 
+function Console:cmd_teleport(x,y,z)
+	local player = managers.player:local_player()
+	local pos
+	if x and type(x) == "string" then 
+		if x == "aim" then
+			pos = Console:GetTaggedPosition()
+		end
+	else 
+		if not (x and y and z) then --teleport to aim if no arguments supplied
+			pos = Console:GetTaggedPosition()
+--			pos = pos or Console:GetFwdRay().position
+		end
+		pos = pos or Vector3(tonumber(x or 0), tonumber(y or 0), tonumber(z or 0))
+	end
+	if player and pos then 
+		managers.player:warp_to(pos,player:rotation())
+	end
+end
+
 function Console:cmd_restart(timer)
 	if timer == "help" then 
 		self:Log("Syntax: /restart [optional (number: timer) or (string: cancel)]",{color = Color.yellow})
@@ -687,12 +834,15 @@ function Console:cmd_restart(timer)
 
 	if timer == "cancel" then 
 		self._restart_timer_t = nil
+		self._restart_timer = nil
+		return
 	end
-	timer = timer and tonumber(timer)
+	timer = timer and tonumber(timer) --or 5; require 0 to restart instantly?
 	if not timer or timer <= 0 then 
 --		self:Log("Restarted the game! JK",{color = Color.green})
 		managers.game_play_central:restart_the_game()
 	elseif timer then 
+		self._restart_timer = nil
 		self._restart_timer_t = Application:time() + timer
 	--do delayed callback bs
 		--callback(self,self,"cmd_restart",0)
@@ -758,6 +908,7 @@ end
 
 function Console:cmd_stop(process_id) --untested; todo ban certain process names like "help" or "all" 
 --todo "remove all" option
+	Console._failsafe = true
 	if process_id == "help" then --and self._persist_scripts.help then
 		self:Log("Syntax: /stop [string: persistscript_id]",{color = Color.yellow})
 		self:Log("Usage: Remove a Console-added persist script and stop it from running anymore.",{color = Color.yellow})
@@ -861,15 +1012,32 @@ function Console:ToggleConsoleFocus(focused)
 	end
 end
 
-function Console:GetFwdRay()
+function Console:GetFwdRay(item)
 	local player = managers.player:local_player()
-	return player and player:movement():current_state()._fwd_ray
+	local result
+	if player then 
+		result = player:movement():current_state()._fwd_ray
+		if item then --custom index
+			result = result and result[item] or result
+		end
+	end
+	return result
 end
 
-function Console:SetFwdRayUnit(unit)
-	if unit then --and not filtered_type(unit)
-		self.selected_unit = unit
+function Console:SetFwdRayUnit(unit) 
+	if unit and alive(unit) and unit:character_damage() then --and not filtered_type(unit)
+		self.tagged_unit = unit
+	else
+		self.tagged_unit = nil
 	end
+end
+
+function Console:GetTaggedPosition()
+	return self.tagged_position
+end
+
+function Console:GetTaggedUnit()
+	return self.tagged_unit
 end
 
 function Console:GetCharList()
@@ -886,6 +1054,7 @@ function Console:BuildCharList(region) --i'm either a genius or an idiot, depend
 		alpha = { ["abcdefghijklmnopqrstuvwxyz"] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
 		numeric = {["1234567890"] = "!@#$%^&*()"},
 		symbol = {["-=[]\\;,./"] = "_+{}|:<>?"},
+--		tilde = {["`"] = "`"}, --disabled for now
 		special = {["'"] = "\""}
 	}
 	
@@ -909,7 +1078,6 @@ function Console:BuildCharList(region) --i'm either a genius or an idiot, depend
 
 	return charlist
 end
-
 
 function Console:esc_key_callback() --temp disabled until i figure out how to safely temporarily disable esc>menu input; currently will only close console
 
@@ -1026,7 +1194,7 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 		cmd = string.sub(cmd,2)
 		local args = string.split(cmd," ") --parse args from input string
 		local cmd_id = args and args[1] --
-		local command = cmd_id and self.cmd_list[cmd_id] 
+		local command = cmd_id and self.command_list[cmd_id] 
 		local argument_string = args[2]
 		if argument_string then 
 			argument_string = "'" .. argument_string .. "'"
@@ -1209,22 +1377,32 @@ function Console:update_key_down(o,k,t)
 		end
 	end
 	if new_char then 
-		if s == e then --insert text at (after) caret
+	--[[	
+		if (s == e) then --insert text at (after) caret
 			if s >= current_len then --insert at end; implicitly s > 1
 				text:set_text(current .. new_char)
 				text:set_selection(s+1,s+1)
+				self:Log("==")
 			elseif s <= 1 then --insert at start
-				text:set_text(new_char .. current:sub(1,current_len))
+--				text:set_text(new_char .. current:sub(1,current_len))
+				text:replace_text(new_char)
 				text:set_selection(s+1,s+1) --todo TEXT-INS mode?
+				self:Log("<=")
 			elseif s < current_len then --insert somewhere in middle
 				text:set_text(current:sub(1,s) .. new_char .. current:sub(s + 1,current_len))
 				text:set_selection(s+1,s+1)
+				self:Log("<")
 			end
-		elseif s ~= e then --replace selection
 			text:replace_text(new_char)
+			text:set_selection(s+1,s+1)
+		else --if s ~= e then --replace selection
+			self:Log("else")
 --			text:set_text(self:string_excise(current,s,e,new_char))
-			text:set_selection(e,e)
 		end
+			--]]
+		self.selected_history = false
+		text:replace_text(new_char)
+		text:set_selection(s+1,s+1)
 		text:set_alpha(1)
 	else
 		if k == Idstring("backspace") then --delete selection or text character behind caret
@@ -1289,17 +1467,144 @@ function Console:update_key_down(o,k,t)
 			self._caret_blink_t = t
 			self._panel:child("caret"):set_visible(true)
 		elseif k == Idstring("down") then 
-			if not self.selected_history then 
-				self.selected_history = 1 --set at newest command
+			new_text = false
+			if self.selected_history then
+				self.selected_history = (self.selected_history + 1) % num_commands			
 			else
-				if self.selected_history >= num_commands then 
-					self.selected_history = 1
---					self:Log(self.selected_history .. ">=" .. num_commands)
-				elseif num_commands > 1 then
-					self.selected_history = self.selected_history + 1
---					self:Log(num_commands .. ">" .. 1)
+				self.command_history[0] = {name = current, func = nil}
+				self.selected_history = 1
+			end
+			
+			local herpaderp = self.command_history[self.selected_history] --todo rename var
+			new_text = herpaderp and herpaderp.name
+			
+			if (self.selected_history <= 0) and not herpaderp then
+				self.selected_history = false
+			end
+			
+			
+--			new_text = self.command_history[self.selected_history]
+			
+--			new_next = new_text and new_text.name
+			if new_text then 
+				if not self.selected_history then 
+--					self:Log("ERROR! No self.selected_history for DOWNARROW input",{color = Color.red})
+				elseif self.selected_history <= 0 then
+					text:set_alpha(1)
+					text:set_text(new_text)
+--					self.command_history[0] = {name = current; func = nil} --no func, to disable CTRL-ENTER
+				else
+					text:set_alpha(0.5)
+					text:set_text(new_text)
+				end
+
+				current_len = new_text and string.len(tostring(new_text))
+				
+--do not change selection				
+				--text:set_selection(current_len,current_len)
+--				self:Log("Success for selection index " .. tostring(self.selected_history))
+			else
+--				self:Log("No new_text for selection index " .. tostring(self.selected_history),{color = Color.yellow})
+			end
+			
+			--[[
+		
+			if not self.selected_history then 
+				self.command_history[0] = {name = current, func = nil}
+				self.selected_history = 1 --set at newest command
+				
+			else
+
+				if self.selected_history <= 0 then --revert to line in progress
+					self.selected_history = 0
+					new_text = self.command_history[self.selected_history]
+					if new_text then 
+						new_text = new_text.name
+						text:set_text(new_text)
+						text:set_alpha(1)
+						return
+					end
+					
+				else
+					if self.selected_history >= num_commands then -- next command
+						self.selected_history = 1
+					elseif num_commands > 1 then 
+						self.selected_history = self.selected_history + 1
+						new_text = new_text and new_text.name --set to history command
+					end
+
+					new_text = self.selected_history and self.command_history[self.selected_history] -- get history command
+					
+					--doing history, so lower alpha and update input
+					--then update selection caret
+					if new_text then 
+						new_text = new_text.name
+						text:set_alpha(0.5)
+						text:set_text(new_text)
+						current_len = string.len(new_text)
+						text:set_selection(current_len,current_len)
+					end
+					
 				end
 			end
+			--]]
+		elseif k == Idstring("up") then 
+			
+			new_text = false
+			
+			if self.selected_history then 
+				if (self.selected_history - 1) >= 0 then 
+					self.selected_history = self.selected_history - 1
+				else
+					self.selected_history = num_commands --set to max if below zero
+				end
+			else --set cmd history
+				self.command_history[0] = {name = current, func = nil}
+				self.selected_history = num_commands
+			end
+				
+			new_text = self.command_history[self.selected_history] and self.command_history[self.selected_history].name
+			
+			if self.selected_history <= 0 and not new_text then 
+				self.selected_history = false
+			end
+			
+			if new_text then 
+				if not self.selected_history then 
+--					self:Log("No self.selected_history for UPARROW input",{color = Color.red})
+				elseif self.selected_history <= 0 then 
+					text:set_alpha(1)
+					text:set_text(new_text)
+				else
+					text:set_alpha(0.5)
+					text:set_text(new_text)
+				end
+				
+			else
+--				self:Log("No new_text for selection_index " .. tostring(self.selected_history),{color = Color.yellow})
+			end
+			
+				
+--			current_len = new_text 
+--				self.selected_history - (self.selected_history + 1) 
+			
+
+	--[[
+			if not self.selected_history then --evaluate count
+				self.command_history[0] = current
+				self.selected_history = num_commands --set at oldest command
+			elseif self.selected_history <= 1 then --reached minimum; reset to 0; do not wraparound order
+				new_text = self.command_history[0]
+				if new_text then 
+					text:set_text(new_text)
+					self.command_history[0] = nil
+				end
+				self.selected_history = false
+				return 
+			elseif num_commands > 1 then --and self.selected_history > 1 by default 
+				self.selected_history = self.selected_history - 1
+			end
+		
 			new_text = self.selected_history and self.command_history[self.selected_history]
 			new_text = new_text and new_text.name
 			if new_text then 
@@ -1308,16 +1613,28 @@ function Console:update_key_down(o,k,t)
 				current_len = string.len(new_text)
 				text:set_selection(current_len,current_lent)
 			end
-		elseif k == Idstring("up") then 
+			--]]
+		
+		
+		
+		--[[
+		
 			if not self.selected_history then 
 				self.selected_history = num_commands --set at oldest command
+				self.command_history[0] = current
 			else
 				if self.selected_history <= 1 then 
-					self.selected_history = num_commands
+					self.selected_history = false
+					new_text = self.command_history[0]
+					if new_text then 
+						text:set_text(new_text) 
+					end
+					self.command_history[0] = current
 				elseif num_commands > 1 then --and self.selected_history > 1 by default 
 					self.selected_history = self.selected_history - 1
 				end
 			end
+			
 			new_text = self.selected_history and self.command_history[self.selected_history]
 			new_text = new_text and new_text.name
 			if new_text then 
@@ -1326,6 +1643,8 @@ function Console:update_key_down(o,k,t)
 				current_len = string.len(new_text)
 				text:set_selection(current_len,current_lent)
 			end
+			
+			--]]
 		elseif k == Idstring("home") then 
 			text:set_selection(0, 0)
 		elseif k == Idstring("end") then 
@@ -1434,24 +1753,72 @@ function Console:update_hud(t,dt)
 	local name = hud:child("info_unit_name")
 	local hp = hud:child("info_unit_hp")
 	
-	
+	local viewport_cam = managers.viewport:get_current_camera()
+
+--		self._hud_access_camera:draw_marker(i, self._workspace:world_to_screen(cam, pos)) -- returns vector3
 	
 	local fwd_ray = self:GetFwdRay() or {}
 	
-	local unit = fwd_ray.unit
+	local unit = self.tagged_unit or fwd_ray.unit
+	local is_tagged = self.tagged_unit and true or false
+	local pos = self.tagged_position or fwd_ray.position
 	
-	local pos = fwd_ray.position
+	local player = managers.player:local_player()
+	if player then 
+		--create look + pos coordinates
+	end
 	
+	--todo application debug draw 3d shapes for unit "beam"
+	--todo draw hitboxes
+	local unit_marker = hud:child("marker")
 	if unit and alive(unit) and unit:character_damage() and unit:base() then 
+		local unit_pos = unit:position()
+
+		local head_pos
+		local head_obj = unit:get_object(Idstring("Head")) 
+		if head_obj then 
+			head_pos = head_obj:position()
+		end
+		
+		local top_pos, bot_pos
+		if head_pos then 
+			top_pos = self._ws:world_to_screen(viewport_cam,head_pos)
+		end
+		if unit_pos then 
+			bot_pos = self._ws:world_to_screen(viewport_cam,unit_pos)
+		end
+--[[
+		if top_pos and bot_pos then 
+			local center = math.abs(bot_pos.y - top_pos.y)
+			unit_marker:set_h(center)
+			unit_marker:set_w(center * 0.66)
+			unit_marker:set_x(top_pos.x - (unit_marker:w() / 2))
+			
+			unit_marker:set_y(top_pos.y)
+		else
+		end
+		--]]
+	
+		local hud_pos = (top_pos or bot_pos) or {x=-500,y=-500}
+--			local hud_pos = self._ws:world_to_screen(viewport_cam,head_pos or unit_pos) or {x = -1000,y = 300}
+		unit_marker:set_center(hud_pos.x,hud_pos.y)
+	
+--		unit_marker:set_y(hud_pos.y)
+		
 		name:set_text(tostring(unit:base()._tweak_table or "ERROR"))
 		name:set_color(Color.yellow)
 		hp:set_text(tostring(unit:character_damage()._health))
 		hp:set_color(Color.yellow)
+--		unit_marker:set_color(is_tagged and Color.red or Color.white)
+		unit_marker:set_alpha(is_tagged and 1 or 0.3)
+--		unit_marker:set_visible(true)
 	else
+		unit_marker:set_alpha(0)
 		name:set_text("NO DATA")
 		name:set_color(Color.red:with_alpha(0.3))
 		hp:set_text("NO DATA")
 		hp:set_color(Color.red:with_alpha(0.3))
+--		unit_marker:set_visible(false)
 	end
 	
 end
@@ -1604,6 +1971,48 @@ function Console:refresh_scroll_handle()
 --]]
 end
 
+function Console:logall(obj,max_amount)
+	local type_colors = {
+		["function"] = Color.blue,
+		["string"] = Color.grey,
+		["number"] = Color.orange,
+		["Vector3"] = Color.purple,
+		["table"] = Color.yellow,
+		["userdata"] = Color.red
+	}
+	
+	if not obj then 
+		self:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
+		return
+	end
+	--[[ old method using globals; i realised that this was a bad idea.
+	if _G[tostring(global_failsafe)] == nil then 
+		self:Log("No global failsafe for argument2 [" .. tostring(global_failsafe) .. "]",{color = Color.red})
+		return
+	end
+	local before_state = _G[tostring(global_failsafe)]
+	while _G[tostring(global_failsafe)] == before_state do
+	--]]
+	local i = max_amount and 0
+	Console._failsafe = false
+	while not Console._failsafe do 
+		if i then 
+			i = i + 1
+			if i > max_amount then
+				self:Log("Reached manual log limit " .. tostring(max_amount),{color = Color.yellow})
+				return
+			end
+		end
+		for k,v in pairs(obj) do 
+			local data_type = type(v)
+			self:Log("Index [" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = type_colors[data_type]})
+		end
+		Console._failsafe = true --process can be stopped with "/stop" if log turns out to be recursive or too long in general
+	end
+	
+	
+	
+end
 
 local orig_togglechat = MenuManager.toggle_chatinput
 function MenuManager:toggle_chatinput(...) --prevent the chat window from showing up when using console
@@ -1636,6 +2045,67 @@ function MenuManager:toggle_chatinput(...) --prevent the chat window from showin
 	end
 end
 
+function Console:TagPosition(position)
+	if not position then 
+		return 
+	end
+	local tagged
+	if type(position) == "string" then 
+		if position == "aim" then 
+			tagged = Console:GetFwdRay("position")
+		end
+	else
+		tagged = position
+	end
+	self.tagged_position = tagged
+	
+end
+
+function Console:SetupHitboxes()
+	local hitboxes = callback(Console,Console,"GenerateHitboxes")
+	Console:RegisterPersistScript("hitboxes",hitboxes)
+end
+
+function Console:GenerateHitboxes(mask,radius,distance) --slight misnomer, it just generates the debug shapes of the hitboxes, not the actual hitboxes themselves
+	local slot_mask = managers.slot:get_mask(mask or "enemies" or "bullet_impact_targets")
+	local player = managers.player:local_player()
+	if not player then return end
+	local cam = player:camera():camera_object()
+	local center = Vector3(0,0)
+	radius = tonumber(radius or 0.9)
+	distance = tonumber(distance or 1000)
+	size = 10
+	
+	local tagged_pos = self:GetTaggedPosition()
+	if tagged_pos then --and (type(Console.tagged_position) == "Vector3") then 
+		self._tagworld_brush:sphere(tagged_pos,100)
+	end
+	local tagged = self:GetTaggedUnit()
+	if tagged and alive(tagged) then 
+		self._tagunit_brush:cylinder(tagged:position(),tagged:position() + Vector3(0,0,200),100)
+	else
+		self.tagged_unit = nil
+	end
+	
+	--props with enabled damage extension: eg. exploding barrels, tripmines, glass, saw-able safety deposit boxes
+	local objects = World:find_units("camera_cone", cam, center, radius, distance, slot_mask)
+	for _,unit in pairs(objects) do 
+		if unit and alive(unit) and unit:damage() then
+			if tagged and alive(tagged) and tagged:key() and (tagged:key() == unit:key()) then
+				--do nothing
+			else
+	--			local chardamage = unit:character_damage()
+	--			local bodyplate = chardamage and chardamage._ids_plate_name
+	--			local bodyplate = unit:get_object(Idstring("body_plate"))
+	--			if bodyplate then 
+	--			Draw:brush(Color.red:with_alpha(0.5),2):sphere(unit:position(),10)
+				Console._tagunit_brush:sphere(unit:position(),8)
+				
+			end
+		end
+	end
+		
+end
 
 Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", function( loc )
 	local path = Console.loc_path
@@ -1651,12 +2121,12 @@ Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", functi
 end)	
 
 Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manager)
-	MenuCallbackHandler.commandprompt_selectfwdrayunit = function(self)
-		local fwd_ray = Console:GetFwdRay()
-		local unit = fwd_ray.unit
-		if unit then 
-			Console:SetFwdRayUnit(unit)
-		end
+	MenuCallbackHandler.commandprompt_tagunit = function(self)
+		local unit = Console:GetFwdRay("unit")
+		Console:SetFwdRayUnit(unit)
+	end
+	MenuCallbackHandler.commandprompt_tagposition_aim = function(self)
+		Console:TagPosition("aim")
 	end
 	MenuCallbackHandler.commandprompt_resetsettings = function(self) --button
 		
@@ -1703,5 +2173,66 @@ function Console:Save()
 	if file then
 		file:write(json.encode(self.settings))
 		file:close()
+	end
+end
+
+
+function Console:Calcium(a,b) --just fooling around with bones; does nothing of value atm
+	if not Console.tagged_unit then
+		self:Log("No tagged unit",{color = Color.red})
+		return
+	end
+	local unit = Console.tagged_unit
+	local dmg = unit and unit:character_damage()
+	local bones = dmg._impact_bones
+	
+--	local bone = Console.tagged_calcium
+--	local parent = Console.tagged_calcium_parent
+	
+	b = b or 0
+	local i = 0
+	if a == -1 then
+		if unit.anim_state_machine and unit:anim_state_machine() then
+			local machine = unit:anim_state_machine()
+			machine:set_enabled(false)
+		end
+	elseif a == 0 then 
+		Console.tagged_calcium = nil
+		Console.tagged_calcium_parent = nil
+		self:Log("Reset tagged bone + parent")
+	elseif a == 1 then
+		for _, bone_name in pairs(bones) do
+			i = i + 1
+			
+			local bone_obj = unit:get_object(bone_name)
+			self:Log(i .. ":" .. tostring(bone_name))
+	--		local bone_dist_sq = mvector3.distance_sq(position, bone_obj:position())
+
+	--		if not closest_bone or bone_dist_sq < closest_dist_sq then
+	--			closest_bone = bone_obj
+	--			closest_dist_sq = bone_dist_sq
+	--		end
+			if b == i then 
+				Console.tagged_calcium = bone_obj
+			end
+		end
+		self:Log("Selected bone " .. tostring(bone_name),{color = Color.yellow})
+	elseif a == 2 then
+		if Console.tagged_calcium then
+			Console.tagged_calcium_parent = Console.tagged_calcium:parent()
+--			Console.calcium_name = bone_name
+			self:Log("Set tagged parent to " .. tostring(Console.tagged_calcium_parent),{color = Color.yellow})
+		end
+	elseif a == 3 then 
+		if Console.tagged_calcium then
+			self:Log("Attempted to move bone " .. tostring(Console.tagged_calcium),{color = Color.yellow})
+			
+			Console.tagged_calcium:set_position(Console.tagged_calcium:position() + Vector3(0,100,0))
+		end
+	elseif a == 4 then 
+		if Console.tagged_calcium then 
+			self:Log("Attempted to move parent bone " .. tostring(Console.tagged_calcium_parent),{color = Color.yellow})
+			Console.tagged_calcium:set_position(Console.tagged_calcium_parent:position() + Vector3(0,100,0))
+		end
 	end
 end

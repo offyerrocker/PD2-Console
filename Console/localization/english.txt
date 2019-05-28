@@ -4,5 +4,15 @@
 	"dcc_qtd_prompt_title" : "Are you sure you want to quit?",
 	"dcc_qtd_prompt_desc" : "The game will close immediately.",
 	"dcc_qtd_cancel" : "No, I changed my mind! I want to live!",
-	"dcc_qtd_confirm" : "Yes, I'm gonna go play a GOOD video game now, like Bad Rats."
+	"dcc_qtd_confirm" : "Yes, I'm gonna go play a GOOD video game now, like Bad Rats.",
+	"dcc_toggle_title" : "Toggle A",
+	"dcc_toggle_desc" : "a is not a",
+	"dcc_toggle_title_1" : "Toggle 1",
+	"dcc_toggle_desc_1" : "1 is not 1",
+	"dcc_tagunit_title" : "Tag Aimed Unit",
+	"dcc_tagunit_desc" : "Tags the unit you're looking at",
+	"dcc_reset_settings_title" : "Reset settings",
+	"dcc_reset_settings_desc" : "Revert to default settings",
+	"dcc_tagposition_aim_title" : "Tag Aimed Position",
+	"dcc_tagposition_aim_desc" : "Tag the place you're looking at"
 }

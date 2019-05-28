@@ -15,6 +15,24 @@
 			"func" : "commandprompt_toggle"
 		},
 		{
+			"type" : "keybind",
+			"id" : "id_dcc_tagunit",
+			"title" : "dcc_tagunit_title",
+			"description" : "dcc_tagunit_desc",
+			"keybind_id" : "dcc_commandprompt_tagunit",
+			"run_in_game" : true,
+			"func" : "commandprompt_tagunit"
+		},
+		{
+			"type" : "keybind",
+			"id" : "id_dcc_tagposition_aim",
+			"title" : "dcc_tagposition_aim_title",
+			"description" : "dcc_tagposition_aim_desc",
+			"keybind_id" : "dcc_commandprompt_tagposition_aim",
+			"run_in_game" : true,
+			"func" : "commandprompt_tagposition_aim"
+		},
+		{
 			"type" : "divider",
 			"size" : 8
 		},
@@ -22,7 +40,7 @@
 			"type" : "toggle",
 			"id" : "id_dcc_toggle_1",
 			"title" : "dcc_toggle_title_1",
-			"description" : "dcc_toggle",
+			"description" : "dcc_toggle_desc_1",
 			"callback" : "commandprompt_toggle_1",
 			"value" : "none"
 		},
