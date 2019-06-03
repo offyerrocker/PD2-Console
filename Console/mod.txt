@@ -3,7 +3,7 @@
 	"description" : "Adds a toggle-able command prompt UI in-game with real-time Lua interaction,\nfor Lua mod development.\n\nCompatible with all HUD mods.",
 	"author" : "Offyerrocker",
 	"contact" : "Discord: Offyerrocker#3878",
-	"version" : "0.4",
+	"version" : "0.5",
 	"blt_version" : 2,
 	"priority" : 1,
 	"color" : "255 128 0",

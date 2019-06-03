@@ -87,6 +87,17 @@ function HUDManager:_create_commandprompt()
 		color = Color.white
 	})
 	
+	local unit_team = debug_hud_base:text({
+		name = "info_unit_team",
+		layer = 90,
+		x = 700, --just under unit hp
+		y = 440,
+		text = "unit_team",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		color = Color.white
+	})
+	
 
 	local console_base = ws:panel({
 		name = "console_base",
