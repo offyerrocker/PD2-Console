@@ -1,32 +1,12 @@
 --[[ TODO: FEATURES BEFORE PUBLIC 1.0
 
-Console:
-	* Formatted timestamp in Console 
-		* Options: Game time or system time
-	
-Command "/bind":
-	* use /bindid for using existing blt keybinds;
-	* use /bind for individual keyboard/mouse inputs by name
-	* blacklist ids of subcommands like:
-		* help
-		* list
-	* Separate subtables for self._custom_keybinds
-		* keybindid 
-		* keyname
+**************** HIGH PRIORITY ****************
+===============================================
 
-Command "/teleport":
-	* optional 3 args for rotlook
+- Fix postargs; should be max number of args instead
 
-Persist Scripts:
-	* Option to add by command, as with "/tracker track"
-
-Add optional HUD waypoint to position tagging, a la Goonmod Waypoints
-
-Tracker:
-	add var/cmd to recall value of tracked items for use in cmds
-
-	make tracker more intuitive
-
+- Block input when console is open
+- Create/enable console window in main menu
 Scroll Bar: 
 	- Fix the goddamn scroll bar
 		-update on any scroll action (scrollwheel, pgup, pgdn, new log)
@@ -49,9 +29,42 @@ Scroll Bar:
 		
 		- scroll_h = frame_h / history_h
 
+===============================================
+
+- Save keybinds by string to a table; currently they reset on restart
+
+- Finish hitbox/hit proc visualization
+(hit proc must hook to raycast in all likelihood)
+
+Console:
+	* Formatted timestamp in Console 
+		* Options: Game time or system time
+	* /time_raw to epoch
+	
+Command "/bind":
+	* blacklist ids of subcommands like:
+		* help
+		* list
+
+Command "/teleport":
+	* optional "+" before value to do teleport jump relative to coordinates
+		* eg. "/teleport +-500 300 -400" would move you back 500 units x, forward 300 units y, and -400 units z relative to your current position
+	* optional 3 args for rotlook
+
+Persist Scripts:
+	* Option to add by command string with InterpretInput(), as with "/tracker track"
+
+Add optional HUD waypoint to position tagging, a la Goonmod Waypoints
+
+Tracker:
+	add var/cmd to recall value of tracked items for use in cmds
+
+	make tracker more intuitive
+
 Navigation
 	- CTRL + (LEFTARROW/RIGHTARROW) to move cursor to next space/special char in left/right direction (spaces? periods? commas? todo figure that out)
 
+- set debug for groupaistatebesiege
 
 Settings
 	- "Reset settings" button
@@ -130,49 +143,52 @@ Command Help
 
 - Implement GetConsoleAddOns hook for third-party command modules /persist callback scripts etc
 
+/date can accept one of the following arguments: weekday (eg. result: Thursday), shortday (Thur), day (21), shortmonth (Sep), month (9), fullmonth (September), year (1978)
+	without arguments, /date will output "MM/DD/YYYY"
+/time can accept one of the following arguments: hour (eg. result: 1), minute (23), second (17),  us (04:20:00), i (04:20) (international 24-h),
+	without arguments, /time will output "hh:mm:ss"
+	
 -----------------
 changes from last version:
 
-* Command parsing:
-	* Commands can now accept arguments which individually contain spaces
-		* If any arguments in your commands contain a space, you must separate each command with a semicolon (;)
-			- Example: 
-				/bind a; /teleport 128 500 600;
-					here, "/teleport 128 500 600" is one single string command argument for /bind, so the numbers in this command do not need to be separated
-	* Console:InterpretInput(input_string) 
-		* Commands are now parsed with this separate function, which can be called outside of Console's internal workings.
-			(This is now performed instead of parsing directly from enter_key_callback and only accepting the Console text bar as input.
-			The new method allows /command inputs for /bind , and similar use.)
-		* This function takes one input as a string, detects commands or lua snippets, and compiles it to a Lua chunk using loadstring.
-		* It returns three values: 1. a function (result of the loadstring()), 2. the parsed string, and 3. the original string.
+	Added menu option to display the output of print()
+		* This can do: 
+			* Default: Do not change print() at all
+			* Tap: Output print() result to Console, and also execute original print() (useful if you have changed print, or want to view it in the BLT log as well)
+			* Overwrite: Only output print() to Console
+			* Empty: Do nothing. Increases performance probably
+			
+	Added menu option to change between US/UK keyboard layout
 	
+	Updated /time and /date to show locale-accurate formatted system time/date
 
-* /bind and related commands
-	* /bind and /bindid are now functional (turns out, the only problem was a bad var name)
-		* Usage: "/bind [id] [func_string]
-			* func_string is any input you would normally put into the console: this can be a lua snippet or a /command
-		* /bind is for direct key names (eg: a, s, d, f, mouse 1; etc)
-		* /bindid is for keybindid names from BLT (eg. keybindid_taclean_left)
-		* "help" is banned as a keybind_id; you should name your mod keybinds something else. Don't be that guy.
-	* /unbind [id] can be used to unbind a key or id
-	* /unbindall can be used to unbind ALL keys or ids.
-		Note that this only affects commands or functions bound using /bind or /bindid;
-		Normal BLT keybinds and base-game binds (like movement) are unaffected, and non-exclusive-
-		that is to say, totally separate.
-* Command list has been slightly restructured, and is now a table, containing the string function as well as a short, single-line description.
+	Fixed /say not working
+	
+	Renamed /time_raw with /epoch to show seconds since Unix epoch
+	
+	Added /ping; returns connection latency in ms. this can take one argument as a number 1-4 representing peerid. else, prints all teammates' ping to Console
+	
+	Console Keybinds are now saved and persist through heist restarts and executable restarts.
 --]]
 
 
 _G.Console = {}
 
-Console.settings = {
+Console.default_settings = {
 	font_size = 12,
 	margin = 2,
 	scroll_speed = 12, --pixels per scroll action
 	scroll_page_speed = 720, --pixels per page scroll action
 	esc_behavior = 1,
-	auto_evaluate = true
+	print_behavior = 1, --1 = default (do not modify behavior); 2 = tap (print() output to console, and also performs original print() ); 3 = overwrite (reroute to console); 4 = empty; print() executes no code (increases performance)
+	keyboard_region = 1	--1 = us, 2 = uk
 }
+Console.settings = deep_clone(Console.default_settings)
+
+function Console:ResetSettings()
+	Console.settings = deep_clone(Console.default_settings)
+	Console:Save()
+end
 
 Console.path = ModPath
 Console.loc_path = Console.path .. "localization/"
@@ -181,7 +197,7 @@ Console.save_path = SavePath .. Console.save_name
 Console.options_name = "options.txt"
 Console.options_path = Console.path .. "menu/" .. Console.options_name
 Console.keybinds_name = "command_prompt_keybinds.txt" --custom keybinds; separate from BLT/mod keybinds
-Console.keybinds_path = Console.save_path .. Console.keybinds_name
+Console.keybinds_path = SavePath .. Console.keybinds_name
 Console._focus = false --whether or not console is visible/interactable
 Console.caret_blink_interval = 0.5 --duration in seconds of cursor flashes
 Console._caret_blink_t = 0 --last t for caret blink (calculations)
@@ -207,7 +223,7 @@ Console.tagged_unit = nil --used for selected_unit for unit manipulation
 Console.tagged_position = nil --used for waypoint/position manipulation
 Console._failsafe = false --used for logall() debug function; probably should not be touched
 --todo slap these in an init() function and call it at start
-
+Console.show_debug_hud = false --off by default; enabled by keybind
 
 Console.command_history = {
 --	[1] = { name = "/say thing", func = (function value) } --as an example
@@ -244,7 +260,7 @@ Console.quality_colors = {
 	exotic = Color("CEAE33") --(bright lemony yellow)
 }
 
-Console._tagunit_brush = Draw:brush(Console.color_data.debug_brush_enemies) --arg2 is lifetime
+Console._tagunit_brush = Draw:brush(Console.color_data.debug_brush_enemies) --arg2 is lifetime; since this updates every frame, should be nil
 Console._tagworld_brush = Draw:brush(Console.color_data.debug_brush_world)
 
 
@@ -253,57 +269,63 @@ Console.command_list = { --in string form so that they can be called with loadst
 	help = {
 		str = "Console:cmd_help($ARGS)",
 		desc = "Get information about a command, or list all commands.",
-		postargs = 1 --not used atm, i think. only for using ; to separate arguments (if any arguments have spaces)
+		postargs = 1, --denotes number of args before semicolon spacer is required; should only be used to force first argument to be single-word
+		max_args = 1 --NOT IMPLEMENTED- if no semicolon, arguments at or after this number will be concatenated into one single argument
 	},	
 	about = {
 		str = "Console:cmd_about()", 
 		desc = "Outputs basic mod info about Console.",
-		postargs = 1
+		postargs = 0
 	},
 	contact = {
 		str = "Console:cmd_contact()",
 		desc = "Outputs the mod author's contact info.",
-		postargs = 1
+		postargs = 0
 	},
 	info = {
 		str = "Console:cmd_info($ARGS)",
 		desc = "Not implemented.",
-		postargs = 1
+		postargs = 0
+	},
+	ping = {
+		str = "Console:cmd_ping($ARGS)",
+		desc = "Outputs latency (in milliseconds) to a player.",
+		postargs = 0
 	},
 	say = {
 		str = "Console:cmd_say($ARGS)",
 		desc =  "Outputs message to chat as one would chat normally.",
-		postargs = 1
+		postargs = 0
 	},
 	whisper = {
 		str = "Console:cmd_whisper($ARGS)", --outputs private message to user
 		desc = "Sends a private message to the user of your choice.",
-		postargs = 1
+		postargs = 0
 	},
 	tracker = {
 		str = "Console:cmd_tracker($ARGS)",
 		desc = "Various subcommands related to tracking variables and displaying their contents to the HUD.",
-		postargs = 1
+		postargs = 0
 	},
 	god = {
-		str = "OffyLib:EnableInvuln($ARGS)",
+		str = "Console:cmd_godmode($ARGS)",
 		desc = "Sorry, kids, you don't get the kool cheats unless you're me",
-		postargs = 1
+		postargs = 0
 	},
 	exec = {
 		str = "Console:cmd_dofile($ARGS)",
 		desc = "dofile(). Literally just dofile()",
-		postargs = 1
+		postargs = 0
 	},
 	["dofile"] = {		--don't you give me your syntax-highlighting sass, np++, i know dofile is already a thing
 		str = "Console:cmd_dofile($ARGS)",
 		desc = "Sorry, just dofile() again.",
-		postargs = 1
+		postargs = 0
 	},
 	teleport = {
 		str = "Console:cmd_teleport($ARGS)",
 		desc = "Moves you to the location of your choice. Can be a waypoint or a manually input location.",
-		postargs = 1
+		postargs = 0
 	},
 	tp = {
 		str = "Console:cmd_teleport($ARGS)",
@@ -331,29 +353,29 @@ Console.command_list = { --in string form so that they can be called with loadst
 		postargs = 0
 	},
 	["time"] = {
-		str = "Console:cmd_time()",
+		str = "Console:cmd_time($ARGS)",
 		desc = "Shows the current system time, formatted.",
 		postargs = 0
 	},
-	time_raw = {
-		str = "Console:cmd_time()",
+	epoch = {
+		str = "Console:cmd_epoch($ARGS)",
 		desc = "Displays the current time in seconds after epoch.",
 		postargs = 0
 	},
 	["date"] = {
-		str = "Console:cmd_date()", 
-		desc = "Outputs system date and time to console (preformatted)",
+		str = "Console:cmd_date($ARGS)", 
+		desc = "Outputs system date to console.",
 		postargs = 0
 	},
 	quit = {
 		str = "Console:cmd_quit($ARGS)", 
 		desc = "Closes PAYDAY 2 executable (after a confirm prompt).",
-		postargs = 0
+		postargs = 1
 	},
 	restart = {
 		str = "Console:cmd_restart($ARGS)",
 		desc = "Restarts heist day; argument is seconds delay to restart",
-		postargs = 0
+		postargs = 1
 	},
 	savetable = {
 		str = "Console:cmd_writetodisk($ARGS)", -- [data] [pathname]
@@ -365,18 +387,7 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "Stops existing persist scripts, or any current logall() process.",
 		postargs = 0
 	}
---	fov = "Console:cmd_fov($ARGS)", -- borked atm
---	ping = "Console:cmd_ping($ARGS)", --not implemented
---	adventure = "Console:cmd_adventure($ARGS)",
 }
-
---[[
-	local strs = string.blt_split(name, "_")
-	if #strs < 3 then
-		return -1
-	end
-	return Utils:TimestampToEpoch( tonumber(strs[1]), tonumber(strs[2]), tonumber(strs[3]) )
---]]
 
 Console.h_margin = 24
 Console.v_margin = 3
@@ -412,6 +423,14 @@ Console._persist_trackers = { --storage for HUD elements; todo rename
 	
 }
 
+function Console:cmd_godmode(...)
+--just make your own cheats
+	if OffyLib then 
+		OffyLib:EnableInvuln(...)
+	else
+		self:Log("That command is disabled!",{color = self.quality_colors.strange})
+	end
+end
 
 function Console:OnInternalLoad() --called on event PlayerManager:_internal_load()
 	--load keybinds
@@ -429,6 +448,131 @@ function Console:OnInternalLoad() --called on event PlayerManager:_internal_load
 	--]]
 	
 end
+
+function Console:GetEscBehavior()
+	return self.settings.esc_behavior
+end
+
+function Console:GetKeyboardRegion()
+	local region_key = {
+		[1] = "us",
+		[2] = "uk"
+	}
+	local region = self.settings.keyboard_region or 1
+	return region_key[region] or "us"
+end
+
+function Console:GetFontSize()
+	return self.settings.font_size
+end
+
+function Console:GetScrollSpeed()
+	return self.settings.scroll_speed
+end
+
+function Console:GetPrintMode()
+	return self.settings.print_behavior
+end
+
+function Console:SaveKeybinds()
+	local file = io.open(self.keybinds_path,"w+")
+	if file then
+		file:write(json.encode(self._custom_keybinds))
+		file:close()
+	end
+end
+
+function Console:LoadKeybinds()
+--read bind info and manually bind: do not use cmd_bind() since it would call SaveKeybinds()
+	local file = io.open(self.keybinds_path, "r")
+	if (file) then
+		for keybind_id, data in pairs(json.decode(file:read("*all"))) do
+			if data then 
+				local func_str = data.func_str
+				if not func_str then 
+					self:Log("ERROR: NO FUNC STR",{color = Color.red})
+				end
+				local k_category = data.k_category or "key_name"
+				local persist = data.persist
+				local func,new_func_str = self:InterpretInput(func_str)
+				if (func and func_str) then 
+					self._custom_keybinds[keybind_id] = { --overwrite existing entirely, unlike /bind
+						persist = persist,
+						func = func,
+						func_str = func_str,
+						category = k_category,
+					}
+				else
+					local cat = data.k_category or "[nil bind type]"
+					self:Log("Could not read saved " .. cat .. " : " .. tostring(keybind_id),{color = Color.red})			
+				end
+			else
+				self:Log("Bad data for saved keybind: " .. keybind_id,{color = Color.red})
+			end
+		end
+	else
+		self:SaveKeybinds()
+	end
+end
+
+function Console:Load()
+	local file = io.open(self.save_path, "r")
+	if (file) then
+		for k, v in pairs(json.decode(file:read("*all"))) do
+			self.settings[k] = v
+		end
+	else
+		self:Save()
+	end
+end
+
+function Console:Save()
+	local file = io.open(self.save_path,"w+")
+	if file then
+		file:write(json.encode(self.settings))
+		file:close()
+	end
+end
+
+Console:Load()
+
+local orig_print = _G.print
+local __print_behavior = Console:GetPrintMode()
+if __print_behavior == 1 then
+	--please do nothing to the cook
+elseif __print_behavior == 2 then 
+
+	--output to both console and BLT log window (or other, if you have (or another mod has) changed print() for your/its own purposes)
+		function _G.print(...) 
+			local result = "print( "
+			for k,item in pairs({...}) do
+				result = result .. tostring(item) .. " "
+			end
+			result = result .. ")"
+			Console:Log(result,{color = Console.quality_colors.rare})
+			orig_print(...)
+		end
+		
+elseif __print_behavior == 3 then 
+	
+	--only output to console
+		function _G.print(...) 
+			local result = "print( "
+			for k,item in pairs({...}) do
+				result = result .. tostring(item) .. " "
+			end
+			result = result .. ")"
+			Console:Log(result,{color = Console.quality_colors.rare})
+		end
+		
+elseif __print_behavior == 4 then
+
+	function _G.print(...)
+		--do nothing; probably increases performance somewhat
+	end
+	
+end
+	
 
 function _G.Log(...)
 	Console:Log(...)
@@ -455,6 +599,10 @@ function Console:new_log_line(params)
 	local v_div = params.new_cmd and font_size or 0
 
 	local panel = self._panel
+	if not panel then 
+		--Console is not fully init yet
+		return
+	end
 	local frame = panel:child("command_history_frame")
 	local history = frame:child("command_history_panel")
 	local line
@@ -558,7 +706,7 @@ function Console:t_log(tbl,name,tier_limit,result,tier,return_result)
 	table.insert(result,"}")
 	for _,line in pairs(result) do
 --Console:t_log({rwby = {r = "ruby",w = "weiss",b = "blake",y = "yang",{cfvy = {c = "coco",f = "fox",v = "velvet",y = "yatsuhashi"}},tacobell = {delicious = true,healthy = false,cost = 11.95,favorite = "dorito"}}},"waifus")		
-		self:Log("| " .. tostring(line),{color = self.quality_colors.rare})
+		self:Log("| " .. tostring(line),{color = self.quality_colors.solar})
 	end
 	
 	
@@ -855,16 +1003,21 @@ function Console:cmd_unbind(key_name)
 			self._custom_keybinds[key_name] = nil
 		end
 	end
+	self:SaveKeybinds()
 end
 
 function Console:cmd_unbindall()
+	self._custom_keybinds = {}
+	--[[
 	for id,keybind_data in pairs(self._custom_keybinds) do 
 		keybind_data = nil
-	end
+	end--]]
+	--save data?
+	self:SaveKeybinds()
 end
 
-function Console:cmd_bind(key_name,func_str,held,...) --func is actually a string which is fed into Console's command interpreter
-	if (key_name == "help") then --or (not func_str) then
+function Console:cmd_bind(key_name,input_str,held,...) --func is actually a string which is fed into Console's command interpreter
+	if (key_name == "help") then
 		self:Log("Syntax: /bindid [string: key_name] [function to execute; or string to parse] [optional bool: held]",{color = Color.yellow})
 		self:Log("Usage: Bind a key to execute a Lua snippet or Console command.",{color = Color.yellow})
 		self:Log("Example: /bind a Console:Log(\"I just pressed (a)!\")",{color = Color.yellow})
@@ -872,28 +1025,42 @@ function Console:cmd_bind(key_name,func_str,held,...) --func is actually a strin
 	elseif (key_name == "list") then 
 		self:Log("List of bound keybinds:")
 		for id,keybind_data in pairs(self._custom_keybinds) do 
-			self:Log(id .. " : " .. keybind_data.func_name)
+			local k_category = keybind_data.k_category or "key_name"
+			self:Log(((k_category == "key_name" and "key ") or "BLT ") .. id .. " : " .. keybind_data.func_str)
 		end
 		return
-	elseif not func_str then 
-		self:Log("Error: You must supply a command, code, or function to execute!")
-		return
+	else
+		local err = false
+		if (not key_name) or (key_name == "") then 
+			self:Log("Error: You must supply a key to bind!",{color = Color.red})
+			err = true
+		end
+		if not input_str then 
+			self:Log("Error: You must supply a command, code, or function to execute!",{color = Color.red})
+			err = true
+		end
+		-- show non-exclusive error messages
+		if err then 
+			return
+		end
 	end
+	self:Log("Bound " .. key_name,{color = Color.blue})
+	--[[
 	if key_name then 
-		local func,name = self:InterpretInput(func_str)
+		local func,func_str = self:InterpretInput(input_str)
 
 		if func then 
 			if self._custom_keybinds[key_name] then --if nil or invalid func parameter then show current bind
-				self:Log(tostring(key_name) .. " is already bound to [" .. self._custom_keybinds[key_name].func_name .. "]!",{color = Color.yellow})
-				self:Log("Rebinding " .. tostring(key_name) .. " to [" .. tostring(func_str) .. "]",{color = Color.yellow})
+				self:Log(tostring(key_name) .. " is already bound to [" .. self._custom_keybinds[key_name].func_str .. "]!",{color = Color.yellow})
+				self:Log("Rebinding " .. tostring(key_name) .. " to [" .. tostring(input_str) .. "]",{color = Color.yellow})
 				self._custom_keybinds[key_name].func = func
-				self._custom_keybinds[key_name].func_name = name
+				self._custom_keybinds[key_name].func_str = func_str
 				return
 			else
 				self._custom_keybinds[key_name] = {
 					persist = held or false,
 					func = func,
-					func_name = name,
+					func_str = func_str,
 					category = "key_name"
 				}
 				self:Log("Bound " .. tostring(key_name) .. " to [" .. tostring(func_str) .. "]",{color = Color.yellow})
@@ -901,38 +1068,67 @@ function Console:cmd_bind(key_name,func_str,held,...) --func is actually a strin
 		else
 			--send error
 		end
---[[	gnawed remains of old method where func_str was compiled directly; this meant that func_str had to be a lua snippet, and /commands were not allowed.
-		local func,error_msg = loadstring(func_str)
-		if error_msg then 
-			return
-		elseif func then 
-		end
---]]
 	end
+	--]]
+	self:AddBind("key_name",key_name,input_str,held)
 end
 
-function Console:AddBind(category,id,func_str,held) --todo-
-	if id and (id ~= "") then 
-		local func,error_msg = ""
+function Console:AddBind(category,id,input_str,held) --todo
+	input_str = input_str and tostring(input_str)
+	if not input_str then 
+		self:Log("ERROR: AddBind(): You must supply a command, code, or function to execute!",{color = Color.red})
+		return
 	end
+	local func, func_str = self:InterpretInput(input_str) --loadstring and parsing
+	if not func then
+		self:Log("ERROR: Invalid func_str to " .. (category == "key_name" and "/bind" or "/bindid"),{color = Color.red})
+		return 
+	end
+	if self._custom_keybinds[id] then --overwrite bind
+		self:Log(tostring(id) .. " is already bound to [" .. self._custom_keybinds[id].func_str .. "]!",{color = Color.yellow})
+		self:Log("Rebinding " .. tostring(id) .. " to [" .. tostring(func_str) .. "]",{color = Color.yellow})
+		self._custom_keybinds[id].func = func
+		self._custom_keybinds[id].func_str = func_str
+		self._custom_keybinds[id].category = category --not my problem if someone decides to name their BLT mod's keybind id to "a", i roll with the punches
+	else	
+		self._custom_keybinds[id] = {
+			func = func, --function to execute
+			func_str = func_str, --input: this can be a /command or a lua snippet (parsed automatically by InterpretInput() )
+			category = category --"key_name" or "bind_id"
+		}
+		self:Log("Bound " .. tostring(id) .. " to [" .. tostring(func_str) .. "]",{color = Color.yellow})
+	end
+	self:SaveKeybinds()
 end
 
-function Console:cmd_bindid(keybind_id,func_str,held,...)
+function Console:cmd_bindid(keybind_id,input_str,held,...)
 --todo popup box req HoldTheKey
 	if (keybind_id == "help") then 
 		self:Log("Syntax: /bind [string: keybind_id] [function to execute; or string to parse] [optional bool: held]",{color = Color.yellow})
 		self:Log("Usage: Bind a key to execute a Lua snippet or Console commmand.",{color = Color.yellow})
 		self:Log("Example: /bindid keybindid_taclean_left Console:Log(\"I just pressed (keybindid_taclean_left)!\")",{color = Color.yellow})
 		return
-	elseif not func_str then 
-		self:Log("Error: You must supply a command, code, or function to execute!")
+	elseif (keybind_id == "list") then 
+		self:Log("List of bound keybinds:")
+		for id,keybind_data in pairs(self._custom_keybinds) do 
+			local k_category = keybind_data.k_category or "key_name"
+			self:Log(((k_category == "key_name" and "key ") or "BLT ") .. id .. " : " .. keybind_data.func_str)
+		end
+		return
+	else
+		if (not keybind_id) or (keybind_id == "") then 
+			self:Log("Error: You must supply a BLT keybind_id to bind!",{color = Color.red})
+		end
+		if not input_str then 
+			self:Log("Error: You must supply a command, code, or function to execute!",{color = Color.red})
+		end
 		return
 	end
-
+--[[
 	if keybind_id then --todo check blt.keybinds for valid keybind registration
-		local func, name = self:InterpretInput(func_str)
+		local func, func_str = self:InterpretInput(func_str)
 		if self._custom_keybinds[keybind_id] then
-			self:Log(tostring(key_name) .. " is already bound to [" .. self._custom_keybinds[key_name].func_name .. "]!",{color = Color.yellow})	
+			self:Log(tostring(key_name) .. " is already bound to [" .. self._custom_keybinds[key_name].func_str .. "]!",{color = Color.yellow})	
 			return self._custom_keybinds[keybind_id]
 		elseif not func then
 			self:Log("Error: You must supply a command, code, or function to execute!")
@@ -941,16 +1137,19 @@ function Console:cmd_bindid(keybind_id,func_str,held,...)
 			self._custom_keybinds[keybind_id] = {
 				persist = held or false,
 				func = func,
-				func_name = name,
+				func_str = func_str,
 				category = "bind_id"
 			}
 		end
 	end
+--]]
+	self:AddBind("bind_id",keybind_id,input_str,held)
 end
 
 function Console:cmd_help(cmd_name)
-	if cmd_name and self.command_list[cmd_name] and string.find(self.command_list[cmd_name].str,"$ARGS") then 
-		self:Log("Try '/" .. cmd_name .. "help'.",{color = Color.yellow}) 
+	if cmd_name and self.command_list[cmd_name] then -- and string.find(self.command_list[cmd_name].str,"$ARGS") then 
+--		self:Log("Try '/" .. cmd_name .. " help'.",{color = Color.yellow}) 
+		self:Log(tostring(self.command_list[cmd_name].desc),{color = Color.yellow})
 	else
 		self:Log("Available commands:",{color = Color.green})
 		for name,_ in pairs(self.command_list) do 
@@ -978,12 +1177,43 @@ function Console:cmd_info(target) --not implemented
 	--get info about selected unit here?
 end
 
-function Console:cmd_time()
-	self:Log(tostring(os.time()))
+function Console:cmd_epoch(custom_format)
+	self:Log(os.time(custom_format),{color = Color.yellow})
 end
 
-function Console:cmd_date()
-	self:Log(tostring(os.date()))
+function Console:cmd_runtime()
+	self:Log(os.clock(),{color = Color.yellow})
+end
+
+function Console:cmd_time(custom_format)
+	local options = {
+		hour = "%I",
+		hours = "%I",
+		us = "%H",
+		minute = "%M",
+		minutes = "%M",
+		["min"] = "%M",
+		h = "%I",
+	}
+	custom_format = (custom_format and options[custom_format]) or custom_format or "%X"
+	self:Log(os.date(custom_format),{color = Color.yellow})
+end
+
+function Console:cmd_date(custom_format)
+	local options = {
+		weekday = "%A",
+		shortday = "%a",
+		day = "%d",
+		shortmonth = "%b",
+		month = "%m",
+		fullmonth = "%B",
+		year = "%Y",
+		shortyear = "%y"
+	}
+
+	custom_format = (custom_format and options[custom_format]) or custom_format or "%x"
+	self:Log(os.date(custom_format),{color = Color.yellow})
+--	self:Log(tostring(os.date()))
 end
 
 function Console:cmd_whisper(target,message)
@@ -993,11 +1223,14 @@ function Console:cmd_whisper(target,message)
 		return
 	end
 	target = tonumber(target)
-	if not target then return end --log error
-	if managers.network:session() and managers.chat then
-		local channel = managers.chat._channel_id
+	if not target then	
+		self:Log("ERROR: /whisper: argument#1 must be a number 1-4")
+		return
+	end --log error
+	if managers.network:session() and managers.chat and managers.network:session():peers() then
+		local channel = managers.chat._channel_id or 1
 		local msg_str
-		for peer_id, peer in pairs(peers) do
+		for peer_id, peer in pairs( managers.network:session():peers() ) do
 			if peer and (peer_id == target) and peer:ip_verified() then
 				peer:send("send_chat_message", channel, message)
 				local name = peer:name()
@@ -1017,11 +1250,11 @@ function Console:cmd_say(message)
 		self:Log("ERROR: /say: You must include a message!")
 		return
 	end
-	if managers.chat and managers.network then 
-		local channel = managers.chat._channel_id
-		local sender_name = managers.network.account:username() or "Someone"
+	if managers.chat then 
+		local channel = managers.chat._channel_id or tonumber(ChatManager.GAME) or 1
+		local sender_name = (managers.network and managers.network.account:username()) or "Someone"
 		managers.chat:send_message(channel, sender_name, message)
-		managers.chat:_receive_message(channel,sender_name,message,Color.white) --todo peerid color
+--		managers.chat:_receive_message(channel,sender_name,message,tweak_data.chat_colors[managers.network:session():local_peer():id()])
 	else
 		self:Log("Command [/say " .. tostring(message) .. "] failed: no ChatManager present. Are you in an active lobby?")
 	end
@@ -1149,10 +1382,29 @@ function Console:cmd_sens_aim(new_sens) --not used; --currently identical to cmd
 	return "Not implemented yet"
 end
 
-function Console:cmd_ping(peerid) --not implemented
-	if not peerid then 
+function Console:cmd_ping(peerid)
+	peerid = tonumber(peerid)
 	
+	local ping = -1
+	local _peer = peerid and managers.network:session() and managers.network:session():peer(peerid)
+	if peerid then 
+		if not _peer then 
+			self:Log("Invalid peer: " .. tostring(peerid),{color = self.quality_colors.strange})
+			return
+		end
+		
+		ping = _peer:qos().ping
+		self:Log(tostring(peerid) .. ": " .. tostring(ping) .. " ms",{color = tweak_data.chat_colors[peerid]})
+	else
+		
+		for i = 1, 4 do --id,peer in pairs() do
+			local peer = managers.network:session() and managers.network:session():peer(i)
+			ping = (peer and peer:qos().ping)
+			ping = (ping and (ping .. " ms")) or "-"
+			self:Log(tostring(i) .. ": " .. tostring(ping),{color = tweak_data.chat_colors[i]})
+		end
 	end
+	
 end
 
 function Console:cmd_writetodisk(data,pathname) --yeah turns out there's already a BLT Util for this, SaveTable() / Utils.DoSaveTable. SO i'm just gonna redirect to that. 
@@ -1187,38 +1439,6 @@ function Console:cmd_stop(process_id) --untested; todo ban certain process names
 		--don't cancel removing the persist script, just in case some joker named their persist script "help"
 	end
 	return self:RemovePersistScript(process_id)
-end
-
-function Console:GetEscBehavior()
-	return self.settings.esc_behavior
-end
-
-function Console:string_excise(str,s,e,replacement) --obsolete; not consistently inclusive to e
---removes the selected part of a string (non inclusive) and returns the modified string
---optional: arg "replacement" can be inserted in place of the excised substring
-	replacement = tostring(replacement or "")
-	local result = ""
-	str = tostring(str)
-	local str_len = str:len()
-	local start = math.max(1,s - 1)
-	local finish = math.min(str_len,e + 1)
-	
-	if s <= 1 then --insert at start
-		result = replacement .. str:sub(finish,str_len)
-	elseif finish > str_len then --insert at end
-		result = str:sub(1,start) .. replacement
-	else
-		result = str:sub(1,s) .. replacement .. str:sub(finish,str_len)
-	end
-	return result
-end
-
-function Console:GetFontSize()
-	return self.settings.font_size
-end
-
-function Console:GetScrollSpeed()
-	return self.settings.scroll_speed
 end
 
 function Console:ClearConsole()
@@ -1314,6 +1534,7 @@ end
 
 function Console:GetCharList()
 	--local region = System:region() or "US" or whatever i guess
+	local region = self:GetKeyboardRegion()
 	if not self._console_charlist then 
 		self._console_charlist = self:BuildCharList(region)
 	end
@@ -1321,14 +1542,23 @@ function Console:GetCharList()
 end
 
 function Console:BuildCharList(region) --i'm either a genius or an idiot, depends on who you talk to
---This is set up for US keyboards. Sorry, I don't know how else to do it!
-	local raw = {
-		alpha = { ["abcdefghijklmnopqrstuvwxyz"] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
-		numeric = {["1234567890"] = "!@#$%^&*()"},
-		symbol = {["-=[]\\;,./"] = "_+{}|:<>?"},
---		tilde = {["`"] = "~"}, --this gets its own conditional in update_key_press()
-		special = {["'"] = "\""}
+	local characters = {
+		us = {
+			alpha = { ["abcdefghijklmnopqrstuvwxyz"] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
+			numeric = {["1234567890"] = "!@#$%^&*()"},
+			symbol = {["-=[]\\;,./\'"] = "_+{}|:<>?\""}
+	--		tilde = {["`"] = "~"}, --this gets its own conditional in update_key_press()
+		},
+		uk = {
+			alpha = { ["abcdefghijklmnopqrstuvwxyz"] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
+			numeric = { ["14567890"] = "!$%^&*()"},
+			symbol = { ["-=[];#,./"] = "_+{}:~<>?"},
+			special = { ["2\'"] = '\"@' }, -- 2 = ", ' = @
+			helpmeiaminhell = { ["3"] = "L"}--"₤" }--string.char(194) } --yeah that doesn't work. why.
+		}
 	}
+
+	local raw = characters[region] or characters.us
 	
 	local charlist = {}
 	
@@ -1381,6 +1611,10 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 	local input_text = panel:child("input_text")
 	
 	local cmd_raw = input_text:text()
+	if cmd_raw == "" then 
+		--empty command; do nothing
+		return
+	end
 	input_text:set_text("")
 	
 	local success,result
@@ -1546,19 +1780,122 @@ function Console:old_enter_key_callback(from_history)
 	table.insert(self.command_history,{name = is_command and orig_cmd or cmd, func = func})
 end
 
-function Console:split_cmd(str,postargs)
-	postargs = postargs or 1
-	--postargs was meant to be the number of mandatory, single-word args
-	
+function Console:split_two(str,postargs) --splits first by postargs, then by 
+	local skip_semi = false
+	postargs = postargs or 0
 	local args = {}
-	local cmd_id
+
+	if not string.find(str,";") then skip_semi = true end
+	local pair = {}
+	local first = 1
+	local last
+	for i = 1, string.len(str),1 do --split by ";"
+		local this_char = string.sub(str,i,i)
+		if (postargs > 0) or (skip_semi) then
+			if i == string.len(str) then
+				if first then 
+					table.insert(args,string.sub(str,first,i))
+					if not skip_semi then
+						postargs = postargs - 1
+					end
+					first = nil
+				end
+			elseif (this_char == " ") then 
+				if first then 
+					
+					last = i - 1
+					table.insert(args,string.sub(str,first,last))
+					first = i + 1
+					if not skip_semi then
+						postargs = postargs - 1	
+					end
+					if postargs <= 0 and not skip_semi then 
+						first = i + 1
+					end
+					last = nil
+				else
+					first = i + 1
+				end
+			end
+		else
+			if i == string.len(str) then 
+				if first then 
+					if this_char == ";" then 
+						last = i - 1
+					else
+						last = i
+					end
+					table.insert(args,string.sub(str,first,last))
+				end
+			elseif this_char == ";" then 
+				if first then 
+					last = i - 1
+					table.insert(args,string.sub(str,first,last))
+					first = i + 1
+					last = nil
+				else
+					first = i + 1
+				end
+			elseif this_char == " " then 
+				if first then
+					if first == i then 
+						first = i + 1
+					end
+				end
+			end
+		end
+    end
+	return args
+end
+
+function Console:split_cmd(str)
+	if not (str and string.len(str) >= 1) then
+		self:Log("No str provided",{color = Color.red})
+		return
+	end
+	local result
+	for i=1, string.len(str),1 do 
+		local this_char = string.sub(str,i,i)
+		if i > 1 then -- any command with a space following the slash should return nil/error
+			if i == string.len(str) then 
+				return str,""
+			elseif this_char == " " then 
+				return string.sub(str,1,i - 1),string.sub(str,i + 1)
+			end
+		end
+	end
+	return --error
+	--[[
+	local postargs --the number of mandatory, single-word args
+	local split = string.split(str," ",false,1)
+	return split and split[1] or ""
+	--]]
+--[[	
+	if true then 
+		for word in string.gmatch(str,"%a+") do 
+			self:Log(word,{color = Color.green})
+		end
+		return args, cmd_id
+	end
+	if true then 
+		cmd_id = string.split(str," ",false,1) or {}
+		self:t_log(cmd_id,"split")
+		cmd_id = cmd_id and cmd_id[1]
+		self:Log("Has cmd_id " .. tostring(cmd_id))
+		local index = string.find(str,cmd_id) + string.len(cmd_id)
+		self:Log("New string would be " .. string.sub(str,index))
+		self:Log("string.find " .. string.find(str,cmd_id))
+		return args, cmd_id
+	end
+	--]]
+	--[[
 	
 	--parse commmand name from string (first argument, no semicolon (;) )
 	for i = 1, string.len(str),1 do
         if string.sub(str,i,i) == " " then
 			cmd_id = cmd_id or string.sub(str,1,i-1)
         	if (cmd_id) then --and (postargs <= 0) then 
-				self:Log("Break: Has cmd_id [" .. tostring(cmd_id) .. "]")
+--				self:Log("Break: Has cmd_id [" .. tostring(cmd_id) .. "]")
         		break
         	end  
 			
@@ -1572,6 +1909,7 @@ function Console:split_cmd(str,postargs)
 	for i = 1, string.len(str),1 do --split by ";"
 		if first then 
 			if string.sub(str,i,i) == " " then 
+				self:Log("Found space at position " .. i .. ": " .. string.sub(str,1,i))
                 last = i
             else
     			table.insert(pair,{first = first,last = last})
@@ -1579,6 +1917,10 @@ function Console:split_cmd(str,postargs)
                 last = nil
             end
         elseif string.sub(str,i,i) == ";" then
+			local foo_div = string.split(str," ")
+			if foo_div then 
+				self:t_log(foo_div,"Found first argument")
+			end
             first = i
         end
         if first and i == string.len(str) then 
@@ -1592,23 +1934,23 @@ function Console:split_cmd(str,postargs)
 		local i = tbl.first
 		local j = tbl.last
 		if j and string.len(str) >= j then 
+			self:Log("Adding argument " .. tostring(string.sub(str,first,i))) --!
 			result = result .. string.sub(str,first,i)
 			first = j + 1
+		else
+			self:Log("Not adding argument " .. k)
 		end
 	end
 	if first and str:len() >= (first + 1) then 
+		self:Log("adding " .. string.sub(str,first) .. " to " .. str)
 		result = result .. string.sub(str,first)
 	end
       
 	if string.len(str) > 0 then 
 		args = string.split(result,";")
 	end
-	return args,cmd_id
+	return args,cmd_id--]]
 end
-
-
-
-
 
 function Console:split_parse(str,sep,pairchars)
 --i didn't put this in under the string class because reasons
@@ -1687,7 +2029,27 @@ function Console:split_parse(str,sep,pairchars)
 	return new
 end
 
-function Console:old_split_parse(str,sep,pairchars)
+function Console:string_excise(str,s,e,replacement) --obsolete; not consistently inclusive to e
+--removes the selected part of a string (non inclusive) and returns the modified string
+--optional: arg "replacement" can be inserted in place of the excised substring
+	replacement = tostring(replacement or "")
+	local result = ""
+	str = tostring(str)
+	local str_len = str:len()
+	local start = math.max(1,s - 1)
+	local finish = math.min(str_len,e + 1)
+	
+	if s <= 1 then --insert at start
+		result = replacement .. str:sub(finish,str_len)
+	elseif finish > str_len then --insert at end
+		result = str:sub(1,start) .. replacement
+	else
+		result = str:sub(1,s) .. replacement .. str:sub(finish,str_len)
+	end
+	return result
+end
+
+function Console:old_split_parse(str,sep,pairchars) --obsolete
 	
 --[[
 	like string.split, but does not split spaces between characters on the blacklist
@@ -1820,9 +2182,16 @@ function Console:InterpretInput(input_str)
 		result = string.sub(input_str,space_len)
 	end
 	local func,error_msg
-	local args,cmd_id,command,argument_string
+	local args,cmd_id,command
+	local argument_string = ""
 	local is_command
-	local postargs = 2
+	local postargs
+	
+	if result == "" then 
+		--don't even bother throwing an error
+		return
+	end
+	
 	if string.sub(result,1,1) == "/" then 
 		if result == "//" then --repeat last
 			local history_data = self.command_history[#self.command_history] or {}
@@ -1832,39 +2201,37 @@ function Console:InterpretInput(input_str)
 			is_command = true
 --			self:Log(tostring(is_command) .. "?")
 			if string.match(result,"'") then 
-				self:Log("ERROR: Console:InterpretInput(" .. input_str .. ") failed: apostrophe (') is not allowed. Please use a set of quotation marks (\") instead.",{color = Color.red})
+				string.gsub(result,"'","\\'")
+--				self:Log("ERROR: Console:InterpretInput(" .. input_str .. ") failed: apostrophe (') is not allowed. Please use a set of quotation marks (\") instead.",{color = Color.red})
+--				return
+			end
+			result = string.sub(result,2) -- remove beginning forward slash (/)
+
+			cmd_id,result = self:split_cmd(result) --remove cmd_id from input_str
+			if not cmd_id then 
+				self:Log("Invalid command!",{color = Color.red})
 				return
 			end
-			result = string.sub(result,2) -- remove beginning foorward slash (/)
-			if string.match(result,";") then 
-				args,cmd_id = self:split_cmd(result,1)
-				argument_string = args[1]
-				postargs = 1
-			else
-				args = self:split_parse(result," ")
-				cmd_id = args and args[1]			
-				argument_string = args[2]
-				postargs = 2
-			end
-			
-			command = cmd_id and self.command_list[cmd_id] and self.command_list[cmd_id].str
-			if argument_string then 
-				argument_string = "'" .. argument_string .. "'"
-			else
-				argument_string = ""
-			end
-			for k,argument in pairs(args) do 
-				if k > postargs and (argument ~= "") then 
-				-- table.concat but ignoring the first argument, which is the cmd_id
-					argument_string = argument_string .. ",'" .. argument .. "'"
-				end
-			end
-			
-			if command then 
-				result = string.gsub(command,"$ARGS",argument_string) --format with arguments
-			elseif cmd_id then 
+			command = self.command_list[cmd_id]
+--			self:Log("cmd_id " .. cmd_id)
+			if not command then
 				self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = self.color_data.fail_color})
---				return
+				return 
+			end
+			postargs = command.postargs
+			args = self:split_two(result,postargs)
+--				self:t_log(args,"args")
+
+			if #args > 0 then 
+				argument_string = "'" .. string.gsub(table.concat(args,","),",","','") .. "'"
+			end
+			if command.str then 
+				result = string.gsub(command.str,"$ARGS",argument_string) --format with arguments
+			elseif cmd_id then 
+
+				self:Log("> " .. input_str,{color = Color.white:with_alpha(0.7),h_margin = 0}) --log the input str to console
+				self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = self.color_data.fail_color})
+				return
 			else
 				self:Log("Error: empty command",{color = self.color_data.fail_color})
 --				return
@@ -2017,7 +2384,16 @@ function Console:update_key_down(o,k,t)
 		local ids = self:GetCharList()[tostring(k)]
 		if ids then 
 			if shift_held then 
-				new_char = tostring(ids.uppercase or "_")
+				if k == Idstring("3") and self:GetKeyboardRegion() == "uk" then 
+					--so something about text:replace() doesn't work right with the pound symbol
+					--instead, i have to macro it in with string.gsub()
+					
+					new_char = "$POUND_SYMBOL"--string.char(194)
+					--self.loathing = self.loathing + 999
+					--hahah i made a funny joke
+				else
+					new_char = tostring(ids.uppercase or "_")
+				end
 			else
 				new_char = tostring(ids.lowercase or "_")
 			end
@@ -2051,6 +2427,11 @@ function Console:update_key_down(o,k,t)
 		text:replace_text(new_char)
 		text:set_selection(s+1,s+1)
 		text:set_alpha(1)
+		
+		if string.len(text:text()) > 0 then 
+			text:set_text(string.gsub(text:text(),"$POUND_SYMBOL","£")) --extremely hacky workaround.
+		end
+		
 	else
 		if k == Idstring("backspace") then --delete selection or text character behind caret
 			if s == e and s > 0 then
@@ -2400,6 +2781,14 @@ function Console:update_hud(t,dt)
 	local name = hud:child("info_unit_name")
 	local hp = hud:child("info_unit_hp")
 	local team = hud:child("info_unit_team")
+	local unit_marker = hud:child("marker")
+	
+	if not self.show_debug_hud then 
+		unit_marker:set_visible(false)
+		return
+	else
+		unit_market:set_visible(true)
+	end
 	
 	local viewport_cam = managers.viewport:get_current_camera()
 
@@ -2418,7 +2807,6 @@ function Console:update_hud(t,dt)
 	
 	--todo application debug draw 3d shapes for unit "beam"
 	--todo draw hitboxes
-	local unit_marker = hud:child("marker")
 	if unit and alive(unit) and unit:character_damage() and unit:base() then 
 		local unit_pos = unit:position()
 --unit:movement():team() ~= self._unit:movement():team() and unit:movement():friendly_fire()
@@ -2803,8 +3191,15 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 		Console:TagPosition("aim")
 	end
 	MenuCallbackHandler.commandprompt_resetsettings = function(self) --button
-		
+		Console:ResetSettings() --todo confirm prompt
 	end
+
+	
+	MenuCallbackHandler.commandprompt_keybind_debughud = function(self)
+		Console.show_debug_hud = not Console.show_debug_hud
+	end
+	
+	
 	MenuCallbackHandler.commandprompt_setescbehavior = function(self,item) --multiplechoice
 		Console.settings.esc_behavior = item:value()
 	end
@@ -2815,41 +3210,33 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 		Console.settings.font_size = tonumber(item:value())
 		--save?
 	end
+	
+	MenuCallbackHandler.commandprompt_setkeyboardregion = function(self,item)
+		Console.settings.keyboard_region = tonumber(item:value())
+		Console._console_charlist = nil --to require regenerating the charlist again next input
+	end
+	
+	MenuCallbackHandler.commandprompt_setprintbehavior = function(self,item)
+		Console.settings.print_behavior = tonumber(item:value())
+	end
+	
+	MenuCallbackHandler.commandprompt_setprintbehavior = function(self,item)
+		Console.settings.print_behavior = tonumber(item:value())
+	end
+	
 	MenuCallbackHandler.commandprompt_toggle = function(self) --keybind
 		if (Input and Input:keyboard() and not Console:_shift()) then 
 			Console:ToggleConsoleFocus()
 		end
+	end	
+	MenuCallbackHandler.callback_dcc_close = function(self)
+		Console:Save()
 	end
+
+--	Console:Load()
+	Console:LoadKeybinds()
 	MenuHelper:LoadFromJsonFile(Console.options_path, Console, Console.settings) --no settings, just the two keybinds
 end)
-
-function Console:SaveKeybinds()
-	
-end
-
-function Console:LoadKeybinds()
-	
-end
-
-function Console:Load()
-	local file = io.open(self.save_path, "r")
-	if (file) then
-		for k, v in pairs(json.decode(file:read("*all"))) do
-			self.settings[k] = v
-		end
-	else
-		self:Save()
-	end
-end
-
-function Console:Save()
-	local file = io.open(self.save_path,"w+")
-	if file then
-		file:write(json.encode(self.settings))
-		file:close()
-	end
-end
-
 
 function Console:Calcium(a,b) --just fooling around with bones; does nothing of value atm
 	if not Console.tagged_unit then
