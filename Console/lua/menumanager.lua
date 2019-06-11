@@ -1,4 +1,4 @@
---[[ TODO: FEATURES BEFORE PUBLIC 1.0
+--[[ TODO
 
 **************** HIGH PRIORITY ****************
 ===============================================
@@ -7,39 +7,14 @@
 
 - Block input when console is open
 - Create/enable console window in main menu
-Scroll Bar: 
-	- Fix the goddamn scroll bar
-		-update on any scroll action (scrollwheel, pgup, pgdn, new log)
-		- scroll blocks should render over scroll bar
-		- scroll bar should move properly
-		- scroll bad should be inside a frame so as not to render over other things
-		
-		- Scroll bar at top: earliest logs
-		- Scroll bar at bottom: latest logs
-		
-		- Scroll height: (frame_h - history_h)
-			- decreases after history_h > frame_h, down to [min] at history_h == frame_h * [10] 
-		
-
-		if history_h <= frame_h then 
-			scroll_h = frame_h
-		else
-			scroll_h = history_h / (frame_h * 10)
-		end
-		
-		- scroll_h = frame_h / history_h
 
 ===============================================
 
-- Save keybinds by string to a table; currently they reset on restart
 
 - Finish hitbox/hit proc visualization
 (hit proc must hook to raycast in all likelihood)
 
-Console:
-	* Formatted timestamp in Console 
-		* Options: Game time or system time
-	* /time_raw to epoch
+- Timestamp in Console
 	
 Command "/bind":
 	* blacklist ids of subcommands like:
@@ -76,15 +51,13 @@ Settings
 Debug HUD
 	- wrap Debug HUD unit info in nice safe pcall() (whichever isn't already)
 	- add more unit info 
-	- add unit info keybind to hide interface
 	- add unit info /shortcommands to display info (accessible through chat)
 
-- Enable Console in main menu (init console window somewhere other than where it is in hudmanager)
-			
 - Import chat commands from OffyLib + allow chat in Offline Mode (disabled by default)
 	
 - fix application:close crashing instead of quitting
 	...Application:quit()?
+	CoreSetup:quit() doesn't do anything lol
 	
 Keybinds functions:
 	* Hold [modifier key] to select enemy and freeze AI
@@ -99,8 +72,6 @@ Keybinds functions:
 Command Help
 	- Add remaining syntax + usage + /help
 	- Add command tooltips
-
-- re-absorb upd_caret to update_scroll for var efficiency
 
 - Instead of adding vspace by value, check against previous log's xy/wh values and add to those (also solves v whitespace issue)
 	- Add remaining passed params to new_log_line()
@@ -150,27 +121,9 @@ Command Help
 	
 -----------------
 changes from last version:
-
-	Added menu option to display the output of print()
-		* This can do: 
-			* Default: Do not change print() at all
-			* Tap: Output print() result to Console, and also execute original print() (useful if you have changed print, or want to view it in the BLT log as well)
-			* Overwrite: Only output print() to Console
-			* Empty: Do nothing. Increases performance probably
-			
-	Added menu option to change between US/UK keyboard layout
-	
-	Updated /time and /date to show locale-accurate formatted system time/date
-
-	Fixed /say not working
-	
-	Renamed /time_raw with /epoch to show seconds since Unix epoch
-	
-	Added /ping; returns connection latency in ms. this can take one argument as a number 1-4 representing peerid. else, prints all teammates' ping to Console
-	
-	Console Keybinds are now saved and persist through heist restarts and executable restarts.
+	(previous patchnote i forgot) Changed method of split_parse and split_cmd 
+	Fixed scroll bar and adjusted scroll bar blocks
 --]]
-
 
 _G.Console = {}
 
@@ -178,7 +131,7 @@ Console.default_settings = {
 	font_size = 12,
 	margin = 2,
 	scroll_speed = 12, --pixels per scroll action
-	scroll_page_speed = 720, --pixels per page scroll action
+	scroll_page_speed = 688, --pixels per page scroll action
 	esc_behavior = 1,
 	print_behavior = 1, --1 = default (do not modify behavior); 2 = tap (print() output to console, and also performs original print() ); 3 = overwrite (reroute to console); 4 = empty; print() executes no code (increases performance)
 	keyboard_region = 1	--1 = us, 2 = uk
@@ -224,7 +177,7 @@ Console.tagged_position = nil --used for waypoint/position manipulation
 Console._failsafe = false --used for logall() debug function; probably should not be touched
 --todo slap these in an init() function and call it at start
 Console.show_debug_hud = false --off by default; enabled by keybind
-
+Console.disable_achievements = true
 Console.command_history = {
 --	[1] = { name = "/say thing", func = (function value) } --as an example
 }
@@ -263,8 +216,7 @@ Console.quality_colors = {
 Console._tagunit_brush = Draw:brush(Console.color_data.debug_brush_enemies) --arg2 is lifetime; since this updates every frame, should be nil
 Console._tagworld_brush = Draw:brush(Console.color_data.debug_brush_world)
 
-
---todo /kick
+--todo /kick, /ban
 Console.command_list = { --in string form so that they can be called with loadstring() and run safely in a pcall; --todo update
 	help = {
 		str = "Console:cmd_help($ARGS)",
@@ -310,7 +262,8 @@ Console.command_list = { --in string form so that they can be called with loadst
 	god = {
 		str = "Console:cmd_godmode($ARGS)",
 		desc = "Sorry, kids, you don't get the kool cheats unless you're me",
-		postargs = 0
+		postargs = 0,
+		hidden = true
 	},
 	exec = {
 		str = "Console:cmd_dofile($ARGS)",
@@ -386,6 +339,12 @@ Console.command_list = { --in string form so that they can be called with loadst
 		str = "Console:cmd_stop($ARGS)",
 		desc = "Stops existing persist scripts, or any current logall() process.",
 		postargs = 0
+	},
+	adventure = {
+		str = "Console:cmd_adventure($ARGS)",
+		desc = "",
+		postargs = 1,
+		hidden = true
 	}
 }
 
@@ -397,12 +356,6 @@ Console._keybind_cache = { --whether the key is currently being held (or was las
 --	[keybind_Id_2] = false
 }
 Console._custom_keybinds = {
-	--[[
-	[keybind_id] = {
-		clbk = callback(Class,SelfArg,"functionname",'additional_arguments'), --function to run
-		persist = true --if true, run every frame; else, run only on pressed (once per press)
-	}
-	--]]
 }
 
 Console._persist_scripts = { --any scripts in this table will run every frame (as they are persist scripts) until they are removed. see documentation/help for how to use this.	
@@ -424,7 +377,7 @@ Console._persist_trackers = { --storage for HUD elements; todo rename
 }
 
 function Console:cmd_godmode(...)
---just make your own cheats
+--just make your own cheats jeez
 	if OffyLib then 
 		OffyLib:EnableInvuln(...)
 	else
@@ -432,11 +385,42 @@ function Console:cmd_godmode(...)
 	end
 end
 
+
+function Console:RegisterCommand(id,data)
+	if not id then
+		self:Log("ERROR: RegisterCommand(" .. tostring(id)..") failed: Bad command name",{color = Color.red}) 
+		return
+	elseif (type(data) ~= "table") or not data.str then 
+		self:Log("ERROR: RegisterCommand(" .. tostring(id)..") failed: Bad command data",{color = Color.red}) 
+		return
+	end
+	self.command_list[id] = {
+		str = data.str or "",
+		desc = data.desc,
+		postargs = data.postargs,
+		hidden = data.hidden
+	}
+end
+
 function Console:OnInternalLoad() --called on event PlayerManager:_internal_load()
 	--load keybinds
 	--do stuff for Console development here such as creating tracker elements
-	self:SetupHitboxes()
+	self:refresh_scroll_handle()
 	local tracker_a = self:CreateTracker("trackera")
+	local tracker_b = self:CreateTracker("trackerb")
+	local tracker_c = self:CreateTracker("trackerc")
+	local tracker_d = self:CreateTracker("trackerd")
+	local tracker_e = self:CreateTracker("trackere")
+	tracker_a:set_x(200)
+	tracker_a:set_y(250)
+	tracker_b:set_x(200)
+	tracker_b:set_y(300)
+	tracker_c:set_x(200)
+	tracker_c:set_y(350)
+	tracker_d:set_x(200)
+	tracker_d:set_y(400)
+	tracker_e:set_x(200)
+	tracker_e:set_y(450)
 	--[[
 	local function d ()
 		local held = HoldTheKey:Key_Held("a")
@@ -502,6 +486,7 @@ function Console:LoadKeybinds()
 						func_str = func_str,
 						category = k_category,
 					}
+					self:Log("Restoring saved keybinds: Bound " .. keybind_id " to " .. func_str,{color = self.quality_colors.unique})
 				else
 					local cat = data.k_category or "[nil bind type]"
 					self:Log("Could not read saved " .. cat .. " : " .. tostring(keybind_id),{color = Color.red})			
@@ -567,13 +552,12 @@ elseif __print_behavior == 3 then
 		
 elseif __print_behavior == 4 then
 
-	function _G.print(...)
+	function _G.print()
 		--do nothing; probably increases performance somewhat
 	end
 	
 end
 	
-
 function _G.Log(...)
 	Console:Log(...)
 end
@@ -608,7 +592,8 @@ function Console:new_log_line(params)
 	local line
 	local v_margin = self.v_margin
 	local h_margin = params.h_margin or self.h_margin
-	history:set_h(history:h() + font_size + v_margin)
+	history:set_h(history:h() + font_size)
+	history:child("history_size_debug"):set_h(history:h())
 	local new_x = h_margin
 	local new_y = (2 + self.num_lines) * font_size
 	if not history:child("history_cmd_" .. tostring(self.num_lines)) then 
@@ -972,8 +957,11 @@ function Console:RemovePersistScript(id)
 	self._persist_scripts[tostring(id)] = nil -- very complex as you can see
 end
 
---[[
-function Console:cmd_adventure(toggle)
+function Console:AdventureInput(str) --unused
+	Console.__adventure:ReceiveInput(str)
+end
+
+function Console:cmd_adventure(toggle) --unused
 	if (toggle == true) or (toggle == false) then --if state given, set to state
 		--continue to ADVENTURE
 	else --if no state given, invert state
@@ -994,7 +982,6 @@ function Console:cmd_adventure(toggle)
 	self._adventure = toggle
 	
 end
---]]
 
 function Console:cmd_unbind(key_name)
 	key_name = key_name and tostring(key_name)
@@ -1152,8 +1139,10 @@ function Console:cmd_help(cmd_name)
 		self:Log(tostring(self.command_list[cmd_name].desc),{color = Color.yellow})
 	else
 		self:Log("Available commands:",{color = Color.green})
-		for name,_ in pairs(self.command_list) do 
-			self:Log(name)
+		for name,data in pairs(self.command_list) do 
+			if not data.hidden then 
+				self:Log(name)
+			end
 		end
 	end
 	self:Log("Please visit https://github.com/offyerrocker/PD2-Console/wiki for more thorough documentation.",{color = Color.yellow})
@@ -1301,6 +1290,7 @@ function Console:cmd_quit(skip_confirm)
 end
 
 function Console:cmd_teleport(x,y,z)--, camx, camy, camz)
+	self.disable_achievements = true
 	local player = managers.player:local_player()
 	local camera = player:camera_unit()
 	local pos
@@ -1345,8 +1335,6 @@ function Console:cmd_restart(timer)
 --		self:Log("Restarted the game! JK",{color = Color.green})
 		managers.game_play_central:restart_the_game()
 	elseif timer then 
-		self:Log("RESTARTING IN " .. string.format("%i",tostring(timer)) .. " SECONDS.",{color = Color.yellow})
-
 		self._restart_timer = nil
 		self._restart_timer_t = Application:time() + timer
 	--do delayed callback bs
@@ -1442,18 +1430,20 @@ function Console:cmd_stop(process_id) --untested; todo ban certain process names
 end
 
 function Console:ClearConsole()
+	local history = self._panel:child("command_history_panel")
 	for i=1,self.num_lines,1 do 
 		local line = history:child("history_cmd_" .. tostring(i))
 		if line and alive(line) then 
 			line:remove()
 		end
 	end
+	history:set_h(self:GetFontSize())
 	self.num_lines = 1
 end
 
 function Console:held(key)
 	if HoldTheKey then
---		return HoldTheKey:key_held(key)
+		return HoldTheKey:Key_Held(key)
 	end
 	
 	if not (managers and managers.hud) or managers.hud._chat_focus then
@@ -1530,6 +1520,10 @@ end
 
 function Console:GetTaggedUnit()
 	return self.tagged_unit
+end
+
+function Console:AchievementsDisabled()
+	return self.disable_achievements and not self.settings.dev
 end
 
 function Console:GetCharList()
@@ -1617,6 +1611,11 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 	end
 	input_text:set_text("")
 	
+	if self._adventure then
+		self:AdventureInput(cmd_raw)
+		return
+	end
+	
 	local success,result
 	local func,cmd = self:InterpretInput(cmd_raw) 
 	
@@ -1637,150 +1636,10 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 		self:Log("Command execution failed")
 	end
 	table.insert(self.command_history,{name = cmd or cmd_raw,func = func})
+	self:refresh_scroll_handle()
 end
 
-function Console:old_enter_key_callback(from_history)
-	local auto_evaluate = false --and self.settings.auto_evaluate --should be taken from setting
-	local v_margin = 6 or self.v_margin --done margin, not normal v margin
-	local panel = self._panel
-	local input_text = panel:child("input_text")
-	local history_data,history_func,history_success,history_result
-	local cmd = input_text:text() --input string to work with
-
-	local orig_cmd = cmd --copy original input string for logging purposes; cmd will be extensively changed in following command parsing
-	input_text:set_text("") --wipe input box
-	
-						
-		
-	if from_history and self.selected_history then
-		history_data = self.command_history[self.selected_history] or {}
-		if not (history_data.name and history_data.name == cmd) then
-			self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: modified cmd. Only use CTRL-ENTER for re-executing command history!",{color = Color.red})
-			return
-		end
-	elseif cmd == "//" then --note: no whitespace removal, as this conditional is before that bit. string must match EXACTLY
-		history_data = self.command_history and self.command_history[#self.command_history] or {}
-		cmd = history_data.name
-		from_history = true
-		if not cmd then 
-			self:Log("Attempt to run repeat command (using //) from history failed: invalid command name in history.",{color = Color.red})
-			return 
-		end
-	end
-	
-	if history_data then 
-		history_func = history_data.func
-		history_success,history_result = pcall(history_func)
-		self:Log("> " .. tostring(cmd),{new_cmd = true,color = Color.white:with_alpha(0.7),h_margin = 0})
-		if history_success then
-			if (history_result ~= nil) then 
-				self:Log("Command successfully ran from history with result:",{color = Color.blue})
-				self:Log(tostring(history_result),{color = Color(0.1,0.5,1)})
-			else
-				self:Log("Command successfully ran from history with no result",{color = Color.yellow})
-			end
-		else
-			self:Log("Command run from history failed",{color = Color.red}) --todo get error from when loadstring() was called at original command
-		end
-		table.insert(self.command_history,{name = cmd, func = history_func}) --save to history as last used command
-		self.selected_history = nil --reset selected command_history 
-		return
-	elseif from_history then
-		self:Log("Attempt to run command " .. tostring(cmd) .. " from history failed: invalid history data.",{color = Color.red})
-		return
-		--don't clear selected command history if failure
-	end
-	self.selected_history = nil --reset selected command_history 
-
---	local is_command = false
-	
-	local input_len = string.len(cmd)
-	
-	if input_len <= 0 then 
-		return --invalid/empty input
-	else
-		--check for empty space before cmd and remove it
-		local space_len = 0 --index 
-		for i = 1, input_len,1 do
-			if string.sub(cmd,i,i) == " " then --note to self: add other future blacklisted "prefix" characters and check against blacklist table here
-				space_len = i
-			else
-				break --if next character is not a space
-			end
-		end
-		if space_len > 0 then 
-			cmd = string.sub(cmd,space_len) 
-		end
-	end
-	input_len = string.len(cmd) --set len again
-	if cmd == "" or (input_len <= 0) then 
-		return --check for invalid cmd again since we just changed it
-	end
-
-	self:Log("> " .. cmd,{new_cmd = true,color = Color.white:with_alpha(0.7),h_margin = 0}) --log the input str to console
-
-	if string.sub(cmd,1,1) == "/" then --command indicator
-		is_command = true
-		self:Log(tostring(is_command) .. " ?")
-		if string.match(cmd,"'") then 
-			self:Log("Error: Illegal character (') in shortcommand",{color = Color.red}) 
-			return 
-		end
-		
-		cmd = string.sub(cmd,2)
-		local args = string.split(cmd," ") --parse args from input string
-		local cmd_id = args and args[1] --
-		local command = cmd_id and self.command_list[cmd_id] and self.command_list[cmd_id].str
-		local argument_string = args[2]
-		if argument_string then 
-			argument_string = "'" .. argument_string .. "'"
-		else
-			argument_string = ""
-		end
-		for k,argument in pairs(args) do 
-			if k > 2 and (argument ~= "") then 
-				--basically table.concat but i need to ignore the first argument because it's actually the "function"
-				argument_string = argument_string .. ",'" .. argument  .. "'"
-			end
-		end
-		
-		if command then 
-			cmd = string.gsub(command,"$ARGS",argument_string) --replace original string, and preserve "command" for logging the original function name (eg. "Console:cmd_about()")
---			self:Log("Writing command " .. tostring(command) .. " to result " .. tostring(cmd))
-		elseif cmd_id then 
-			self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = Color.red})
-			return
-		else
-			self:Log("Error: empty command string",{color = Color.red})
-			return 
-		end
-	end
-	local success,result,func,error_message
-	if auto_evaluate then 
-		func,error_message = loadstring("Console:evaluate(" .. cmd .. ")")
-	else
-		func,error_message = loadstring(cmd)
-	end
-	if error_message or not func then 
-		self:Log("Command " .. tostring(func or "") .. " failed: " .. error_message,{color = Color.red})
-	else
-		success,result = pcall(func) --!
-		if success then
-			if result ~= nil then 
-				self:Log(result,{color = Color(0.1,0.5,1)})
-			elseif not is_command then
-				self:Log("Done",{color = Color.yellow})
-			elseif is_command then
-				self:Log("Done (command)",{color = Color.yellow})
-			end
-		else -- command fail
-			self:Log("Command failed (no error given) " .. (result and (" with result:[" .. tostring(result) .. "]") or ""),{color = Color.red})
-		end
-	end
-	table.insert(self.command_history,{name = is_command and orig_cmd or cmd, func = func})
-end
-
-function Console:split_two(str,postargs) --splits first by postargs, then by 
+function Console:split_two(str,postargs)
 	local skip_semi = false
 	postargs = postargs or 0
 	local args = {}
@@ -1844,7 +1703,7 @@ function Console:split_two(str,postargs) --splits first by postargs, then by
 				end
 			end
 		end
-    end
+	end
 	return args
 end
 
@@ -1892,17 +1751,17 @@ function Console:split_cmd(str)
 	
 	--parse commmand name from string (first argument, no semicolon (;) )
 	for i = 1, string.len(str),1 do
-        if string.sub(str,i,i) == " " then
+		if string.sub(str,i,i) == " " then
 			cmd_id = cmd_id or string.sub(str,1,i-1)
-        	if (cmd_id) then --and (postargs <= 0) then 
+			if (cmd_id) then --and (postargs <= 0) then 
 --				self:Log("Break: Has cmd_id [" .. tostring(cmd_id) .. "]")
-        		break
-        	end  
+				break
+			end  
 			
 			self:Log("Adding string:" .. str .. "=" .. string.sub(str,i+1))
 			str = string.sub(str,i + 1) --remove extraneous spaces? idk lol
 --			postargs = postargs - 1
-        end
+		end
 	end
 	local pair = {}
 	local first,last
@@ -1910,24 +1769,24 @@ function Console:split_cmd(str)
 		if first then 
 			if string.sub(str,i,i) == " " then 
 				self:Log("Found space at position " .. i .. ": " .. string.sub(str,1,i))
-                last = i
-            else
-    			table.insert(pair,{first = first,last = last})
-                first = nil
-                last = nil
-            end
-        elseif string.sub(str,i,i) == ";" then
+				last = i
+			else
+				table.insert(pair,{first = first,last = last})
+				first = nil
+				last = nil
+			end
+		elseif string.sub(str,i,i) == ";" then
 			local foo_div = string.split(str," ")
 			if foo_div then 
 				self:t_log(foo_div,"Found first argument")
 			end
-            first = i
-        end
-        if first and i == string.len(str) then 
+			first = i
+		end
+		if first and i == string.len(str) then 
 			table.insert(pair,{first = first,last = i})
-        end
-    end
-            
+		end
+	end
+			
 	local result = ""
 	first = 1
 	for k,tbl in ipairs(pair) do 
@@ -1945,7 +1804,7 @@ function Console:split_cmd(str)
 		self:Log("adding " .. string.sub(str,first) .. " to " .. str)
 		result = result .. string.sub(str,first)
 	end
-      
+	  
 	if string.len(str) > 0 then 
 		args = string.split(result,";")
 	end
@@ -2049,107 +1908,6 @@ function Console:string_excise(str,s,e,replacement) --obsolete; not consistently
 	return result
 end
 
-function Console:old_split_parse(str,sep,pairchars) --obsolete
-	
---[[
-	like string.split, but does not split spaces between characters on the blacklist
-	
-	sumamry: 
-		takes a string as input,
-		divides the string to sub-strings which 
-	
-
-str
-	input to split; must be string
-sep 
-	separator by which to split; must be single character string
-pairchars
-	(optional)
-	must be a table whose indices are single characters; values of these indicies must be single characters, 
-		ideally matching closing characters to the index in question, 
-		or non-false/non-nil values
-]]--
-	pairchars = pairchars or {
-		["{"] = "}",
---		["\'"] = "\'", 
-		["\""] = "\""
-	}
-	if not (sep and str and (type(pairchars) == "table")) then 
-		--log error
-		return
-	end
-	local result = {}
-	local amounts = {}
-	
-	local ends = {}
-	for k,v in pairs(pairchars) do 
-		ends[v] = k --inverse of pairchars
-	end
-	
-	local last_close = 1
-	for i = 1, string.len(str),1 do
-		local skip_sep = false
-		local s = string.sub(str,i,i) --opening char
-		local c = pairchars[s]--closing char
-		if c then --if opening char found
-			Console:Log("s " .. s,{color = Color(0,1,1)})
---			last_close = i
-			if not amounts[s] then 
-				amounts[s] = 1
-				Console:Log("opening; Set amount 1",{color = Console.quality_colors.haunted})
-			elseif c == s then --if identical close/opening (such as for quotation marks) then only need 0/1 pairs
-				amount[s] = (amount[s] + 1) % 2
-				Console:Log("identical open/close; Increment [+1 %2] " .. amounts[s],{color = Console.quality_colors.haunted})
-			else --if different close/opening chars then incr+1 for opening char, -1 for closing chars
-			--opening char
-				Console:Log("opening " .. s,{color = Color(0,1,1)})
-				amounts[s] = amounts[s] + 1
---					Console:Log("Increment [+1] " .. amounts[s],{color = Console.quality_colors.haunted})
-			end
-		elseif ends[s] then --closing char
-			if amounts[s] then 
-				amounts[s] = amounts[s] - 1	
-			else
-				amounts[s] = 1
-			end
-			Console:Log("closing " .. s,{color = Color(0,1,1)})
---					Console:Log("Increment [-1] " .. amounts[s],{color = Console.quality_colors.haunted})
-			
-			
-		elseif (s == sep) then --if found separator character
-			for k,v in pairs(amounts) do 
-				if (v > 0) then -- and ((i - last_close) > 1) then 
-					skip_sep = true
-					break
-				end
-				Console:Log(v,{color = Color.purple})
-			end
-	--local str = "what the {fuck} did you{ just say }about me, you little bitch?"; local foo = string.split_parse(str," "); return table.concat(foo,"|"); Console:Log(str);
-			--str = "what the {fuck} did you{ just say }about me, you little bitch?"
-		--foo = string.split_parse(str," ")
-		--return table.concat(foo,"|")
-			if not skip_sep then
-				local r
-				if #result >= 1 then 
-					r = string.sub(str,last_close,i-1)
-				else
-					r = string.sub(str,last_close - 1,i-1)
-				end
-				if r then 
-					table.insert(result,r)
-				end
-				Console:Log(last_close,{color = Color.red})
-				Console:Log(i,{color = Color.blue})
-				Console:Log(r,{color = Color.green})
-				last_close = i + 1
-			end
-		end
-	end
-	table.insert(result,string.sub(str,last_close,string.len(str)))
-	Console:Log(string.sub(str,last_close,string.len(str)),{color = Color.green})
-	return result
-end
-
 function Console:InterpretInput(input_str)
 	--[[
 		1. copy input string (do not modify original)
@@ -2197,6 +1955,10 @@ function Console:InterpretInput(input_str)
 			local history_data = self.command_history[#self.command_history] or {}
 			func = history_data.func
 			result = history_data.name
+			if not (result and func) then 
+				self:Log("No command history found")
+				return
+			end
 		else
 			is_command = true
 --			self:Log(tostring(is_command) .. "?")
@@ -2215,6 +1977,8 @@ function Console:InterpretInput(input_str)
 			command = self.command_list[cmd_id]
 --			self:Log("cmd_id " .. cmd_id)
 			if not command then
+				self:Log("> " .. input_str,{color = Color.white:with_alpha(0.7),h_margin = 0}) 
+			
 				self:Log("No such command found: " .. "/" .. tostring(cmd_id),{color = self.color_data.fail_color})
 				return 
 			end
@@ -2400,29 +2164,6 @@ function Console:update_key_down(o,k,t)
 		end
 	end
 	if new_char then 
-	--[[	
-		if (s == e) then --insert text at (after) caret
-			if s >= current_len then --insert at end; implicitly s > 1
-				text:set_text(current .. new_char)
-				text:set_selection(s+1,s+1)
-				self:Log("==")
-			elseif s <= 1 then --insert at start
---				text:set_text(new_char .. current:sub(1,current_len))
-				text:replace_text(new_char)
-				text:set_selection(s+1,s+1) --todo TEXT-INS mode?
-				self:Log("<=")
-			elseif s < current_len then --insert somewhere in middle
-				text:set_text(current:sub(1,s) .. new_char .. current:sub(s + 1,current_len))
-				text:set_selection(s+1,s+1)
-				self:Log("<")
-			end
-			text:replace_text(new_char)
-			text:set_selection(s+1,s+1)
-		else --if s ~= e then --replace selection
-			self:Log("else")
---			text:set_text(self:string_excise(current,s,e,new_char))
-		end
-			--]]
 		self.selected_history = false
 		text:replace_text(new_char)
 		text:set_selection(s+1,s+1)
@@ -2534,48 +2275,6 @@ function Console:update_key_down(o,k,t)
 			else
 --				self:Log("No new_text for selection index " .. tostring(self.selected_history),{color = Color.yellow})
 			end
-			
-			--[[
-		
-			if not self.selected_history then 
-				self.command_history[0] = {name = current, func = nil}
-				self.selected_history = 1 --set at newest command
-				
-			else
-
-				if self.selected_history <= 0 then --revert to line in progress
-					self.selected_history = 0
-					new_text = self.command_history[self.selected_history]
-					if new_text then 
-						new_text = new_text.name
-						text:set_text(new_text)
-						text:set_alpha(1)
-						return
-					end
-					
-				else
-					if self.selected_history >= num_commands then -- next command
-						self.selected_history = 1
-					elseif num_commands > 1 then 
-						self.selected_history = self.selected_history + 1
-						new_text = new_text and new_text.name --set to history command
-					end
-
-					new_text = self.selected_history and self.command_history[self.selected_history] -- get history command
-					
-					--doing history, so lower alpha and update input
-					--then update selection caret
-					if new_text then 
-						new_text = new_text.name
-						text:set_alpha(0.5)
-						text:set_text(new_text)
-						current_len = string.len(new_text)
-						text:set_selection(current_len,current_len)
-					end
-					
-				end
-			end
-			--]]
 		elseif k == Idstring("up") then 
 			
 			new_text = false
@@ -2607,72 +2306,7 @@ function Console:update_key_down(o,k,t)
 					text:set_alpha(0.5)
 					text:set_text(new_text)
 				end
-				
-			else
---				self:Log("No new_text for selection_index " .. tostring(self.selected_history),{color = Color.yellow})
 			end
-			
-				
---			current_len = new_text 
---				self.selected_history - (self.selected_history + 1) 
-			
-
-	--[[
-			if not self.selected_history then --evaluate count
-				self.command_history[0] = current
-				self.selected_history = num_commands --set at oldest command
-			elseif self.selected_history <= 1 then --reached minimum; reset to 0; do not wraparound order
-				new_text = self.command_history[0]
-				if new_text then 
-					text:set_text(new_text)
-					self.command_history[0] = nil
-				end
-				self.selected_history = false
-				return 
-			elseif num_commands > 1 then --and self.selected_history > 1 by default 
-				self.selected_history = self.selected_history - 1
-			end
-		
-			new_text = self.selected_history and self.command_history[self.selected_history]
-			new_text = new_text and new_text.name
-			if new_text then 
-				text:set_alpha(0.5)
-				text:set_text(new_text)
-				current_len = string.len(new_text)
-				text:set_selection(current_len,current_lent)
-			end
-			--]]
-		
-		
-		
-		--[[
-		
-			if not self.selected_history then 
-				self.selected_history = num_commands --set at oldest command
-				self.command_history[0] = current
-			else
-				if self.selected_history <= 1 then 
-					self.selected_history = false
-					new_text = self.command_history[0]
-					if new_text then 
-						text:set_text(new_text) 
-					end
-					self.command_history[0] = current
-				elseif num_commands > 1 then --and self.selected_history > 1 by default 
-					self.selected_history = self.selected_history - 1
-				end
-			end
-			
-			new_text = self.selected_history and self.command_history[self.selected_history]
-			new_text = new_text and new_text.name
-			if new_text then 
-				text:set_alpha(0.5)
-				text:set_text(new_text)
-				current_len = string.len(new_text)
-				text:set_selection(current_len,current_lent)
-			end
-			
-			--]]
 		elseif k == Idstring("home") then 
 			text:set_selection(0, 0)
 		elseif k == Idstring("end") then 
@@ -2783,13 +2417,12 @@ function Console:update_hud(t,dt)
 	local team = hud:child("info_unit_team")
 	local unit_marker = hud:child("marker")
 	
-	if not self.show_debug_hud then 
-		unit_marker:set_visible(false)
+	local visible = self.show_debug_hud
+	self._debug_hud:set_visible(self.show_debug_hud)
+	if not visible then 
 		return
-	else
-		unit_market:set_visible(true)
 	end
-	
+	self:GenerateHitboxes()
 	local viewport_cam = managers.viewport:get_current_camera()
 
 --		self._hud_access_camera:draw_marker(i, self._workspace:world_to_screen(cam, pos)) -- returns vector3
@@ -2801,6 +2434,7 @@ function Console:update_hud(t,dt)
 	local pos = self.tagged_position or fwd_ray.position
 	
 	local player = managers.player:local_player()
+	
 	if player then 
 		--create look + pos coordinates
 	end
@@ -2910,7 +2544,7 @@ end
 function Console:update_restart_timer(t,dt)
 	--if host then blah blah blah
 	if self._restart_timer_t then --time at which heist will restart
-		local time_left = math.floor(self._restart_timer_t - t) --seconds left to restart
+		local time_left = math.ceil(self._restart_timer_t - t) --seconds left to restart
 		if (not self._restart_timer) or (self._restart_timer - time_left) >= 1 then --output only once, not every update
 			self._restart_timer = self._restart_timer or time_left 
 			self._restart_timer = time_left
@@ -2946,19 +2580,27 @@ function Console:update_scroll(t,dt)
 		self:update_key_down(input_text,self._key_pressed,t)
 		
 		local new_y
---		local y_sign
+		local bottom_scroll = frame:h() - history:h()
 		if self:held(mwu) then --console scroll
-			new_y = math.max(history:y() - scroll_speed,-history:h())
-			
---			y_sign = math.sign(new_y)
+		
+			if (history:y() + history:h() > frame:h()) then 
+				new_y = math.max(bottom_scroll,history:y() - scroll_speed)
+			else
+				new_y = bottom_scroll
+			end
 			history:set_y(new_y)
 			self:refresh_scroll_handle()
 		elseif self:held(mwd) then 
+			frame:h()
 			new_y = math.min(history:y() + scroll_speed,0)
---			y_sign = math.sign(new_y)
 			history:set_y(new_y)
 			self:refresh_scroll_handle()
 		end
+
+--		self:SetTrackerValue("trackera","history y " .. history:y())
+--		self:SetTrackerValue("trackerb","max position " .. bottom_scroll)
+--		self:SetTrackerValue("trackerb","history h " .. history:h())
+--		self:SetTrackerValue("trackerc","history bottom " .. history:bottom())
 	end
 end
 
@@ -2999,41 +2641,52 @@ function Console:upd_caret(t) --position, selection and blink
 
 end
 
-function Console:refresh_scroll_handle()
-	--local lines_ratio = self.lines_ratio
-	local frame = self._panel:child("command_history_frame")
-	local history = frame:child("command_history_panel")
-	--return Console._panel:child("command_history_frame"):child("command_history_panel"):h()
-	local page_h = frame:h()
-	local total_h = history:h()
-	local history_y = history:y()
-	
-	local size_ratio = page_h / total_h
-	
-	
---	local num_lines = self.num_lines
-	
-	
-	local scroll_handle = self._panel:child("scroll_handle")
---	local history_tracker = self:CreateTracker("history_debug")
-	
-	scroll_handle:set_h(math.max(page_h * size_ratio,8))
-	scroll_handle:set_y(history_y * size_ratio)
-	
---	history_tracker:set_text(history_y)
-	--[[
---	local scroll_tracker = self:CreateTracker("scroll_debug")
---	scroll_tracker:set_text(tostring(num_lines))
-	scroll_handle:set_y(page_h - (history_y * size_ratio))
-	scroll_handle:set_h(console_h / Console.num_lines)
-	scroll_handle:set_y(scroll_speed * (history:y() / (scroll_speed * Console.num_lines)))
+function Console:refresh_scroll_handle(adjust_pos)
 
-	scroll_handle:set_h(console_h / Console.num_lines)
-	scroll_handle:set_y(scroll_speed * (history:y() / (scroll_speed * Console.num_lines)))
---]]
+	local panel = self._panel
+	local frame = panel:child("command_history_frame")
+	local history = frame:child("command_history_panel")
+	local scroll_handle = panel:child("scroll_handle")
+	
+	local block_bottom = panel:child("scroll_block_bottom")
+	local bottom_y = block_bottom:top()
+	
+	local block_top = panel:child("scroll_block_top")
+	local top_y = block_top:bottom()
+	
+	if adjust_pos then 
+--		scroll_handle:set_y(
+	end
+	
+	local scroll_handle_height = (bottom_y - top_y) --max height
+	local bottom_range = 0
+	local top_range = history:h() - frame:h()
+
+
+
+	local num_lines = self.num_lines
+	local result
+	if num_lines > 256 then
+--		scroll_handle:set_h(self.num_lines
+	else
+		result = scroll_handle_height * ((256 - num_lines) / 256)
+		
+		scroll_handle:set_h(result)
+	end
+
+
+
+--handle height is dictated by the distance to the two blocks
+	local ratio = math.abs((history:y() - bottom_range) / top_range)
+	local handle_y = top_y + (ratio * (scroll_handle_height - result))
+	
+	scroll_handle:set_y(handle_y)
 end
 
 function Console:logall(obj,max_amount)
+--generally best used to log all of the properties of a Class:
+--functions;
+--and values, such as numbers, strings, tables, etc.
 	local type_colors = {
 		["function"] = Color.blue,
 		["string"] = Color.grey,
@@ -3047,14 +2700,6 @@ function Console:logall(obj,max_amount)
 		self:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
 		return
 	end
-	--[[ old method using globals; i realised that this was a bad idea.
-	if _G[tostring(global_failsafe)] == nil then 
-		self:Log("No global failsafe for argument2 [" .. tostring(global_failsafe) .. "]",{color = Color.red})
-		return
-	end
-	local before_state = _G[tostring(global_failsafe)]
-	while _G[tostring(global_failsafe)] == before_state do
-	--]]
 	local i = max_amount and 0
 	Console._failsafe = false
 	while not Console._failsafe do 
@@ -3071,9 +2716,6 @@ function Console:logall(obj,max_amount)
 		end
 		Console._failsafe = true --process can be stopped with "/stop" if log turns out to be recursive or too long in general
 	end
-	
-	
-	
 end
 
 local orig_togglechat = MenuManager.toggle_chatinput
@@ -3123,11 +2765,6 @@ function Console:TagPosition(position)
 	
 end
 
-function Console:SetupHitboxes()
-	local hitboxes = callback(Console,Console,"GenerateHitboxes")
-	Console:RegisterPersistScript("hitboxes",hitboxes)
-end
-
 function Console:GenerateHitboxes(mask,radius,distance) --slight misnomer, it just generates the debug shapes of the hitboxes, not the actual hitboxes themselves
 	local slot_mask = managers.slot:get_mask(mask or "enemies" or "bullet_impact_targets")
 	local player = managers.player:local_player()
@@ -3138,9 +2775,19 @@ function Console:GenerateHitboxes(mask,radius,distance) --slight misnomer, it ju
 	distance = tonumber(distance or 1000)
 	size = 10
 	
+	--todo armor hitbox stuff
+	--[[
+	local fwd_ray = self:GetFwdRay()
+	if fwd_ray and fwd_ray.unit and fwd_ray.body then 
+		if fwd_ray.body and fwd_ray.body:name() == Idstring("body_plate") then 
+			self._tagunit_brush:sphere(fwd_ray.position,3)
+		end
+	end
+	--]]
+	
 	local tagged_pos = self:GetTaggedPosition()
 	if tagged_pos then --and (type(Console.tagged_position) == "Vector3") then 
-		self._tagworld_brush:sphere(tagged_pos,100)
+		self._tagworld_brush:sphere(tagged_pos,30)
 	end
 	local tagged = self:GetTaggedUnit()
 	if tagged and alive(tagged) then 
@@ -3194,11 +2841,9 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 		Console:ResetSettings() --todo confirm prompt
 	end
 
-	
 	MenuCallbackHandler.commandprompt_keybind_debughud = function(self)
 		Console.show_debug_hud = not Console.show_debug_hud
 	end
-	
 	
 	MenuCallbackHandler.commandprompt_setescbehavior = function(self,item) --multiplechoice
 		Console.settings.esc_behavior = item:value()
@@ -3238,62 +2883,3 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 	MenuHelper:LoadFromJsonFile(Console.options_path, Console, Console.settings) --no settings, just the two keybinds
 end)
 
-function Console:Calcium(a,b) --just fooling around with bones; does nothing of value atm
-	if not Console.tagged_unit then
-		self:Log("No tagged unit",{color = Color.red})
-		return
-	end
-	local unit = Console.tagged_unit
-	local dmg = unit and unit:character_damage()
-	local bones = dmg._impact_bones
-	
---	local bone = Console.tagged_calcium
---	local parent = Console.tagged_calcium_parent
-	
-	b = b or 0
-	local i = 0
-	if a == -1 then
-		if unit.anim_state_machine and unit:anim_state_machine() then
-			local machine = unit:anim_state_machine()
-			machine:set_enabled(false)
-		end
-	elseif a == 0 then 
-		Console.tagged_calcium = nil
-		Console.tagged_calcium_parent = nil
-		self:Log("Reset tagged bone + parent")
-	elseif a == 1 then
-		for _, bone_name in pairs(bones) do
-			i = i + 1
-			
-			local bone_obj = unit:get_object(bone_name)
-			self:Log(i .. ":" .. tostring(bone_name))
-	--		local bone_dist_sq = mvector3.distance_sq(position, bone_obj:position())
-
-	--		if not closest_bone or bone_dist_sq < closest_dist_sq then
-	--			closest_bone = bone_obj
-	--			closest_dist_sq = bone_dist_sq
-	--		end
-			if b == i then 
-				Console.tagged_calcium = bone_obj
-			end
-		end
-		self:Log("Selected bone " .. tostring(bone_name),{color = Color.yellow})
-	elseif a == 2 then
-		if Console.tagged_calcium then
-			Console.tagged_calcium_parent = Console.tagged_calcium:parent()
---			Console.calcium_name = bone_name
-			self:Log("Set tagged parent to " .. tostring(Console.tagged_calcium_parent),{color = Color.yellow})
-		end
-	elseif a == 3 then 
-		if Console.tagged_calcium then
-			self:Log("Attempted to move bone " .. tostring(Console.tagged_calcium),{color = Color.yellow})
-			
-			Console.tagged_calcium:set_position(Console.tagged_calcium:position() + Vector3(0,100,0))
-		end
-	elseif a == 4 then 
-		if Console.tagged_calcium then 
-			self:Log("Attempted to move parent bone " .. tostring(Console.tagged_calcium_parent),{color = Color.yellow})
-			Console.tagged_calcium:set_position(Console.tagged_calcium_parent:position() + Vector3(0,100,0))
-		end
-	end
-end

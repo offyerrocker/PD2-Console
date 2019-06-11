@@ -2,36 +2,6 @@ Hooks:PostHook(HUDManager,"_setup_player_info_hud_pd2","commandprompt_setup_work
 	self:_create_commandprompt()
 end)
 
---[[
-Hooks:PostHook(HUDManager,"access_camera_track","commandprompt_test12",function(self,i,cam,pos)
-	local name = Console._debug_hud:child("info_unit_name")
-	local hp = Console._debug_hud:child("info_unit_hp")
-	
-	if name then 
-		name:set_text(tostring(i))
-	end
-	if hp then 
-		hp:set_text(tostring(cam))
-	end
-	local herp = Console:GetTrackerElementByName("herp")
-	herp = herp or Console:CreateTracker("herp")
-	
-	
-	herp:set_text(tostring(pos))
-	
-	local derp = Console:GetTrackerElementByName("derp")
-	derp = derp or Console:CreateTracker("derp")
-	
-	local result = self._workspace:world_to_screen(cam,pos)
-	Console:Log("result: " .. tostring(result),{color = Color.green})
-	derp:set_text(result)
-	
-	
-	
-end)
-
---]]
-
 function HUDManager:_create_commandprompt()
 	if not self:alive(PlayerBase.PLAYER_INFO_HUD_PD2) then 
 		return
@@ -42,7 +12,7 @@ function HUDManager:_create_commandprompt()
 	local orig_hud = managers.hud:script(PlayerBase.PLAYER_INFO_HUD_PD2).panel
 	
 	local console_w = orig_hud:w()
-	local console_h = orig_hud:h()
+	local console_h = orig_hud:h() --720
 	
 	local font_size = Console:GetFontSize()
 	
@@ -125,10 +95,11 @@ function HUDManager:_create_commandprompt()
 		name = "command_history_frame",
 		layer = 100,
 		x = h_margin,
-		y = font_size + v_margin,
+		y = 0,
 		w = console_w,
-		h = console_h - (font_size + v_margin + v_margin)
+		h = console_h - (v_margin + font_size)
 	})
+
 	
 	local command_history_bg = command_history_frame:rect({
 		name = "command_history_bg",
@@ -139,10 +110,17 @@ function HUDManager:_create_commandprompt()
 	})
 	local command_history_panel = command_history_frame:panel({
 		name = "command_history_panel",
-		h = 32, --increased with each Log()
+		h = h_margin + 12, --increased with each Log()
 		layer = 100
 	})
 	
+	local history_size_debug = command_history_panel:rect({
+		name = "history_size_debug",
+		layer = 98,
+		visible = false,
+		color = Console.quality_colors.arc:with_alpha(0.5)
+	})
+		
 	local scroll_handle = console_base:rect({
 		name = "scroll_handle",
 		layer = 101,
@@ -154,19 +132,19 @@ function HUDManager:_create_commandprompt()
 	
 	local scroll_block_top = console_base:rect({	
 		name = "scroll_block_top",
-		layer = 100,
+		layer = 102,
 		w = 12,
 		h = 12,
-		y = 20,
+		y = 0,
 		color = Color.white:with_alpha(0.7)
 	})
 	
 	local scroll_block_bottom = console_base:rect({	
 		name = "scroll_block_bottom",
-		layer = 100,
+		layer = 102,
 		w = 12,
 		h = 12,
-		y = 700,
+		y = console_h - (v_margin + font_size + 12),
 		color = Color.white:with_alpha(0.7)
 	})
 	
@@ -174,7 +152,7 @@ function HUDManager:_create_commandprompt()
 		name = "scroll_bg",
 		layer = 99,
 		w = 12,
-		h = console_h - font_size,
+		h = console_h - (font_size + v_margin),
 		color = Color.white:with_alpha(0.3)
 	})
 	
