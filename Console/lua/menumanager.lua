@@ -1,11 +1,16 @@
 --[[ TODO
 
+
+* fix t_log not working for some reason
+	do i gotta import kinetichud's version again?
+
 **************** HIGH PRIORITY ****************
 ===============================================
 
+- Fix only returning one value in a pair (output as {...}, read table)
+
 - Fix postargs; should be max number of args instead
 
-- Block input when console is open
 - Create/enable console window in main menu
 
 ===============================================
@@ -19,7 +24,7 @@
 Command "/bind":
 	* blacklist ids of subcommands like:
 		* help
-		* list
+		* /bind [key] or /bind [keyid] should return the bound action when no action argument is supplied
 
 Command "/teleport":
 	* optional "+" before value to do teleport jump relative to coordinates
@@ -121,8 +126,14 @@ Command Help
 	
 -----------------
 changes from last version:
-	(previous patchnote i forgot) Changed method of split_parse and split_cmd 
-	Fixed scroll bar and adjusted scroll bar blocks
+- More thoroughly disabled input while Console is open
+	- This still does not stop BLT keybinds from triggering
+- Fixed crash on load when using saved keybinds from /bind 
+- Fixed /quit crashing and generating a crashlog instead of nicely closing
+- fixed broken persist/held setting for custom keybinds
+Console:logall() now has a global reference because I got tired of typing it all 
+Console:ClearConsole() is fixed and now works again + clears hhistory properly so that the next logs are not still a million miles long
+added /clear which calls ClearConsole()
 --]]
 
 _G.Console = {}
@@ -131,7 +142,6 @@ Console.default_settings = {
 	font_size = 12,
 	margin = 2,
 	scroll_speed = 12, --pixels per scroll action
-	scroll_page_speed = 688, --pixels per page scroll action
 	esc_behavior = 1,
 	print_behavior = 1, --1 = default (do not modify behavior); 2 = tap (print() output to console, and also performs original print() ); 3 = overwrite (reroute to console); 4 = empty; print() executes no code (increases performance)
 	keyboard_region = 1	--1 = us, 2 = uk
@@ -178,6 +188,8 @@ Console._failsafe = false --used for logall() debug function; probably should no
 --todo slap these in an init() function and call it at start
 Console.show_debug_hud = false --off by default; enabled by keybind
 Console.disable_achievements = true
+
+
 Console.command_history = {
 --	[1] = { name = "/say thing", func = (function value) } --as an example
 }
@@ -278,6 +290,11 @@ Console.command_list = { --in string form so that they can be called with loadst
 	teleport = {
 		str = "Console:cmd_teleport($ARGS)",
 		desc = "Moves you to the location of your choice. Can be a waypoint or a manually input location.",
+		postargs = 0
+	},
+	clear = {
+		str = "Console:ClearConsole()",
+		desc = "Clears the console window's recent commands and results.",
 		postargs = 0
 	},
 	tp = {
@@ -402,15 +419,15 @@ function Console:RegisterCommand(id,data)
 	}
 end
 
-function Console:OnInternalLoad() --called on event PlayerManager:_internal_load()
+Hooks:Add("PlayerManager_on_internal_load","console_oninternalload",function()  --called on event PlayerManager:_internal_load()
 	--load keybinds
 	--do stuff for Console development here such as creating tracker elements
-	self:refresh_scroll_handle()
-	local tracker_a = self:CreateTracker("trackera")
-	local tracker_b = self:CreateTracker("trackerb")
-	local tracker_c = self:CreateTracker("trackerc")
-	local tracker_d = self:CreateTracker("trackerd")
-	local tracker_e = self:CreateTracker("trackere")
+	Console:refresh_scroll_handle()
+	local tracker_a = Console:CreateTracker("trackera")
+	local tracker_b = Console:CreateTracker("trackerb")
+	local tracker_c = Console:CreateTracker("trackerc")
+	local tracker_d = Console:CreateTracker("trackerd")
+	local tracker_e = Console:CreateTracker("trackere")
 	tracker_a:set_x(200)
 	tracker_a:set_y(250)
 	tracker_b:set_x(200)
@@ -430,8 +447,7 @@ function Console:OnInternalLoad() --called on event PlayerManager:_internal_load
 	
 	self:RegisterPersistScript("trackera_persist",d)
 	--]]
-	
-end
+end)
 
 function Console:GetEscBehavior()
 	return self.settings.esc_behavior
@@ -486,7 +502,7 @@ function Console:LoadKeybinds()
 						func_str = func_str,
 						category = k_category,
 					}
-					self:Log("Restoring saved keybinds: Bound " .. keybind_id " to " .. func_str,{color = self.quality_colors.unique})
+					self:Log("Restoring saved keybinds: Bound " .. keybind_id .. " to " .. func_str,{color = self.quality_colors.unique})
 				else
 					local cat = data.k_category or "[nil bind type]"
 					self:Log("Could not read saved " .. cat .. " : " .. tostring(keybind_id),{color = Color.red})			
@@ -562,6 +578,45 @@ function _G.Log(...)
 	Console:Log(...)
 end
 
+
+function Console:logall(obj,max_amount)
+--generally best used to log all of the properties of a Class:
+--functions;
+--and values, such as numbers, strings, tables, etc.
+	local type_colors = {
+		["function"] = Color.blue,
+		["string"] = Color.grey,
+		["number"] = Color.orange,
+		["Vector3"] = Color.purple,
+		["table"] = Color.yellow,
+		["userdata"] = Color.red
+	}
+	
+	if not obj then 
+		Console:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
+		return
+	end
+	local i = max_amount and 0
+	Console._failsafe = false
+	while not Console._failsafe do 
+		if i then 
+			i = i + 1
+			if i > max_amount then
+				Console:Log("Reached manual log limit " .. tostring(max_amount),{color = Color.yellow})
+				return
+			end
+		end
+		for k,v in pairs(obj) do 
+			local data_type = type(v)
+			Console:Log("Index [" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = type_colors[data_type]})
+		end
+		Console._failsafe = true --process can be stopped with "/stop" if log turns out to be recursive or too long in general
+	end
+end
+
+
+_G.logall = _G.logall or Console.logall
+
 function Console:Log(info,params)
 --	local color = params and params.color or Color.white
 --	local margin = params and params.h_margin
@@ -635,6 +690,47 @@ function Console:new_log_line(params)
 	return line
 end
 
+function Console:angle_between_pos(a,b,c,d)
+	a = a or "nil"
+	b = b or "nil"
+	c = c or "nil"
+	d = d or "nil"
+	local vectype = type(Vector3())
+	local function do_angle(x1,y1,x2,y2)
+		local angle = 0
+		local x = x2 - x1 --x diff
+		local y = y2 - y1 --y diff
+		if x ~= 0 then 
+			angle = math.atan(y / x) % 180
+			if y == 0 then 
+				if x > 0 then 
+					angle = 180 --right
+				else
+					angle = 0 --left 
+				end
+			elseif y > 0 then 
+				angle = angle - 180
+			end
+		else
+			if y > 0 then
+				angle = 270 --up
+			else
+				angle = 90 --down
+			end
+		end
+		
+		return angle
+	end
+	if (type(a) == vectype) and (type(b) == vectype) then  --vector pos diff
+		return do_angle(a.x,a.y,b.x,b.y)
+	elseif (type(a) == "number") and (type(b) == "number") and (type(c) == "number") and (type(d) == "number") then --manual x/y pos diff
+		return do_angle(a,b,c,d)
+	else
+		self:Log("ERROR: angle_between_pos(" .. table.concat({a,b,c,d},",") .. ") failed - bad/mismatched arg types")
+		return
+	end
+end
+
 function Console:c_log(...)
 	local arg = {...}
 	local message
@@ -670,6 +766,9 @@ function Console:t_log(tbl,name,tier_limit,result,tier,return_result)
 	result = result or {
 		tostring(name) .. " = {"
 	}
+	if tier > tier_limit then 
+		return
+	end
 	if type(tbl) == "table" then 
 		for k,v in pairs(tbl) do
 			if type(v) == "table" then 
@@ -1080,6 +1179,7 @@ function Console:AddBind(category,id,input_str,held) --todo
 	else	
 		self._custom_keybinds[id] = {
 			func = func, --function to execute
+			persist = held,
 			func_str = func_str, --input: this can be a /command or a lua snippet (parsed automatically by InterpretInput() )
 			category = category --"key_name" or "bind_id"
 		}
@@ -1272,7 +1372,7 @@ function Console:cmd_quit(skip_confirm)
 --causes:
 --[string "core/lib/system/coreengineaccess.lua"]:67: Application:quit(...) has been hidden by core. Use CoreSetup:quit(...) instead!
 --...interesting
-		CoreSetup:quit()
+		Setup:quit()
 	end
 	local menu_title = managers.localization:text("dcc_qtd_prompt_title")
 	local menu_desc = managers.localization:text("dcc_qtd_prompt_desc")
@@ -1430,15 +1530,17 @@ function Console:cmd_stop(process_id) --untested; todo ban certain process names
 end
 
 function Console:ClearConsole()
-	local history = self._panel:child("command_history_panel")
+	local history = self._panel:child("command_history_frame"):child("command_history_panel")
 	for i=1,self.num_lines,1 do 
 		local line = history:child("history_cmd_" .. tostring(i))
 		if line and alive(line) then 
-			line:remove()
+			history:remove(line)
 		end
 	end
 	history:set_h(self:GetFontSize())
+	self.num_commands = 1
 	self.num_lines = 1
+	self.command_history = {}
 end
 
 function Console:held(key)
@@ -1472,6 +1574,33 @@ function Console:_ctrl()
 	return k:down(Idstring("left ctrl")) or k:down(Idstring("right ctrl")) or k:down(Idstring("ctrl"))
 end
 
+
+function Console:mouse_moved(o,x,y)
+--	self:SetTrackerValue("tracker_a",tostring(x) .. "," .. tostring(y))
+--	self:Log("Mousemoved " .. tostring(x) .. "," .. tostring(y))
+	if true then return end
+	
+	if not self._panel:inside(x,y) then 
+		return 
+	end
+	
+	
+	
+	
+end
+
+function Console:mouse_clicked(o,button,x,y)
+--	self:Log("Mouseclicked")
+	if true then return end
+	
+	if button ~= Idstring("0") or not self._panel:inside(x,y) then 
+		return
+	end
+	
+	
+	
+end
+
 function Console:ToggleConsoleFocus(focused)
 	if not managers.hud then return end
 	if (focused == true) or (focused == false) then 
@@ -1482,17 +1611,33 @@ function Console:ToggleConsoleFocus(focused)
 	self._panel:set_visible(self._focus)
 
 	if self._focus then 
+	
+		local data = {
+			mouse_move = callback(self, self, "mouse_moved"),
+			mouse_click = callback(self, self, "mouse_clicked"),
+			id = "console_test_mousepointer"
+		}
+		
+		game_state_machine:_set_controller_enabled(false);
+		managers.mouse_pointer:use_mouse(data);	
+	
 		self._enter_text_set = false
 		self._ws:connect_keyboard(Input:keyboard())
 
-		self._panel:child("input_text"):key_press(callback(self, self, "key_press")) --i have no idea how this works but it does
+		self._enabled = true
+	
+		self._panel:child("input_text"):key_press(callback(self, self, "key_press"))
 		self._panel:child("input_text"):key_release(callback(self, self, "key_release"))
 
 	else
 		self._ws:disconnect_keyboard()
-	
+		self._panel:key_release(nil)
+		managers.mouse_pointer:remove_mouse("console_test_mousepointer")	
+		game_state_machine:_set_controller_enabled(true)
+		self._enabled = false
 	end
 end
+
 
 function Console:GetFwdRay(item)
 	local player = managers.player:local_player()
@@ -1724,91 +1869,6 @@ function Console:split_cmd(str)
 		end
 	end
 	return --error
-	--[[
-	local postargs --the number of mandatory, single-word args
-	local split = string.split(str," ",false,1)
-	return split and split[1] or ""
-	--]]
---[[	
-	if true then 
-		for word in string.gmatch(str,"%a+") do 
-			self:Log(word,{color = Color.green})
-		end
-		return args, cmd_id
-	end
-	if true then 
-		cmd_id = string.split(str," ",false,1) or {}
-		self:t_log(cmd_id,"split")
-		cmd_id = cmd_id and cmd_id[1]
-		self:Log("Has cmd_id " .. tostring(cmd_id))
-		local index = string.find(str,cmd_id) + string.len(cmd_id)
-		self:Log("New string would be " .. string.sub(str,index))
-		self:Log("string.find " .. string.find(str,cmd_id))
-		return args, cmd_id
-	end
-	--]]
-	--[[
-	
-	--parse commmand name from string (first argument, no semicolon (;) )
-	for i = 1, string.len(str),1 do
-		if string.sub(str,i,i) == " " then
-			cmd_id = cmd_id or string.sub(str,1,i-1)
-			if (cmd_id) then --and (postargs <= 0) then 
---				self:Log("Break: Has cmd_id [" .. tostring(cmd_id) .. "]")
-				break
-			end  
-			
-			self:Log("Adding string:" .. str .. "=" .. string.sub(str,i+1))
-			str = string.sub(str,i + 1) --remove extraneous spaces? idk lol
---			postargs = postargs - 1
-		end
-	end
-	local pair = {}
-	local first,last
-	for i = 1, string.len(str),1 do --split by ";"
-		if first then 
-			if string.sub(str,i,i) == " " then 
-				self:Log("Found space at position " .. i .. ": " .. string.sub(str,1,i))
-				last = i
-			else
-				table.insert(pair,{first = first,last = last})
-				first = nil
-				last = nil
-			end
-		elseif string.sub(str,i,i) == ";" then
-			local foo_div = string.split(str," ")
-			if foo_div then 
-				self:t_log(foo_div,"Found first argument")
-			end
-			first = i
-		end
-		if first and i == string.len(str) then 
-			table.insert(pair,{first = first,last = i})
-		end
-	end
-			
-	local result = ""
-	first = 1
-	for k,tbl in ipairs(pair) do 
-		local i = tbl.first
-		local j = tbl.last
-		if j and string.len(str) >= j then 
-			self:Log("Adding argument " .. tostring(string.sub(str,first,i))) --!
-			result = result .. string.sub(str,first,i)
-			first = j + 1
-		else
-			self:Log("Not adding argument " .. k)
-		end
-	end
-	if first and str:len() >= (first + 1) then 
-		self:Log("adding " .. string.sub(str,first) .. " to " .. str)
-		result = result .. string.sub(str,first)
-	end
-	  
-	if string.len(str) > 0 then 
-		args = string.split(result,";")
-	end
-	return args,cmd_id--]]
 end
 
 function Console:split_parse(str,sep,pairchars)
@@ -2126,7 +2186,8 @@ function Console:update_key_down(o,k,t)
 	
 	local num_commands = #self.command_history
 	local text = panel:child("input_text")	
-	local history = panel:child("command_history_frame"):child("command_history_panel")
+	local frame = panel:child("command_history_frame")
+	local history = frame:child("command_history_panel")
 	local new_char
 	local shift_held = self:_shift()
 	local ctrl_held = self:_ctrl()
@@ -2251,17 +2312,12 @@ function Console:update_key_down(o,k,t)
 				self.selected_history = false
 			end
 			
-			
---			new_text = self.command_history[self.selected_history]
-			
---			new_next = new_text and new_text.name
 			if new_text then 
 				if not self.selected_history then 
 --					self:Log("ERROR! No self.selected_history for DOWNARROW input",{color = Color.red})
 				elseif self.selected_history <= 0 then
 					text:set_alpha(1)
 					text:set_text(new_text)
---					self.command_history[0] = {name = current; func = nil} --no func, to disable CTRL-ENTER
 				else
 					text:set_alpha(0.5)
 					text:set_text(new_text)
@@ -2269,8 +2325,7 @@ function Console:update_key_down(o,k,t)
 
 				current_len = new_text and string.len(tostring(new_text))
 				
---do not change selection				
-				--text:set_selection(current_len,current_len)
+				--do not change selection
 --				self:Log("Success for selection index " .. tostring(self.selected_history))
 			else
 --				self:Log("No new_text for selection index " .. tostring(self.selected_history),{color = Color.yellow})
@@ -2311,12 +2366,25 @@ function Console:update_key_down(o,k,t)
 			text:set_selection(0, 0)
 		elseif k == Idstring("end") then 
 			text:set_selection(n, n)
-		elseif k == Idstring("page down") then 
-			history:set_y(history:y() - (Console.settings.scroll_page_speed))
-			--move history window up by 14 * (math.floor(frame:h() / 14))
-			self:refresh_scroll_handle()
 		elseif k == Idstring("page up") then 
-			history:set_y(history:y() + (Console.settings.scroll_page_speed))
+		
+			history:set_y(math.min(history:y() + frame:h(),0))
+			self:refresh_scroll_handle()
+			
+--			history:set_y(history:y() - (Console.settings.scroll_page_speed))
+
+			self:refresh_scroll_handle()
+		elseif k == Idstring("page down") then 
+--			history:set_y(history:y() + (Console.settings.scroll_page_speed))
+
+			local bottom_scroll = frame:h() - history:h()
+			if (history:y() + history:h() > frame:h()) then 
+				history:set_y(math.max(bottom_scroll,history:y() - frame:h()))
+			else
+				history:set_y(bottom_scroll)
+			end
+			
+
 			self:refresh_scroll_handle()
 			--same as pgup except move down
 		elseif k == Idstring("esc") and type(self._esc_callback) ~= "number" then
@@ -2475,6 +2543,19 @@ function Console:update_hud(t,dt)
 	
 --		unit_marker:set_y(hud_pos.y)
 		
+		--*************STUFF GOES HERE THAT IS VERY IMPORTANT
+--[[
+		Console:SetTrackerValue("trackera",tostring(mvector3.distance_sq(player:position(), unit:position())))
+--		Console:SetTrackerValue("trackerc",tostring(head_pos - viewport_cam:position()))
+--		Console:SetTrackerValue("trackere",tostring(angle_to_person))
+local angle_between_asdkfjalsd = self:angle_between_pos(head_pos,viewport_cam:position())
+		self:SetTrackerValue("trackera",viewport_cam:rotation():yaw() % 360)
+		self:SetTrackerValue("trackerb",angle_between_asdkfjalsd)
+		self:SetTrackerValue("trackerc",(angle_between_asdkfjalsd + -viewport_cam:rotation():yaw() + -90) % 360)
+		self:SetTrackerValue("trackerb",mvector3.distance(head_pos,viewport_cam:position()))
+		--]]
+		--*************VERY IMPORTANT STUFF 
+		
 		name:set_text(tostring(unit:base()._tweak_table or "ERROR"))
 		name:set_color(Color.yellow)
 		team:set_text(tostring(unit:movement():team().id))
@@ -2591,7 +2672,6 @@ function Console:update_scroll(t,dt)
 			history:set_y(new_y)
 			self:refresh_scroll_handle()
 		elseif self:held(mwd) then 
-			frame:h()
 			new_y = math.min(history:y() + scroll_speed,0)
 			history:set_y(new_y)
 			self:refresh_scroll_handle()
@@ -2665,8 +2745,9 @@ function Console:refresh_scroll_handle(adjust_pos)
 
 
 	local num_lines = self.num_lines
-	local result
-	if num_lines > 256 then
+	local result --height of scrcoll handle (diminishes with length)
+	if num_lines > 246 then
+		result = 10
 --		scroll_handle:set_h(self.num_lines
 	else
 		result = scroll_handle_height * ((256 - num_lines) / 256)
@@ -2681,41 +2762,6 @@ function Console:refresh_scroll_handle(adjust_pos)
 	local handle_y = top_y + (ratio * (scroll_handle_height - result))
 	
 	scroll_handle:set_y(handle_y)
-end
-
-function Console:logall(obj,max_amount)
---generally best used to log all of the properties of a Class:
---functions;
---and values, such as numbers, strings, tables, etc.
-	local type_colors = {
-		["function"] = Color.blue,
-		["string"] = Color.grey,
-		["number"] = Color.orange,
-		["Vector3"] = Color.purple,
-		["table"] = Color.yellow,
-		["userdata"] = Color.red
-	}
-	
-	if not obj then 
-		self:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
-		return
-	end
-	local i = max_amount and 0
-	Console._failsafe = false
-	while not Console._failsafe do 
-		if i then 
-			i = i + 1
-			if i > max_amount then
-				self:Log("Reached manual log limit " .. tostring(max_amount),{color = Color.yellow})
-				return
-			end
-		end
-		for k,v in pairs(obj) do 
-			local data_type = type(v)
-			self:Log("Index [" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = type_colors[data_type]})
-		end
-		Console._failsafe = true --process can be stopped with "/stop" if log turns out to be recursive or too long in general
-	end
 end
 
 local orig_togglechat = MenuManager.toggle_chatinput
