@@ -1,0 +1,120 @@
+{
+	"menu_id" : "dcc_options",
+	"parent_menu_id" : "blt_options",
+	"title" : "dcc_title",
+	"back_callback" : "callback_dcc_close",
+	"items" : [
+		{
+			"type" : "keybind",
+			"id" : "id_dcc_toggle",
+			"title" : "dcc_toggle_title",
+			"description" : "dcc_toggle_desc",
+			"keybind_id" : "dcc_commandprompt_toggle",
+			"run_in_game" : true,
+			"run_in_menu" : true,
+			"func" : "commandprompt_toggle"
+		},
+		{
+			"type" : "keybind",
+			"id" : "id_dcc_keybind_debughud",
+			"title" : "dcc_keybind_debughud_title",
+			"description" : "dcc_keybind_debughud_desc",
+			"keybind_id" : "dcc_keybind_debughud",
+			"run_in_game" : true,
+			"func" : "commandprompt_keybind_debughud"
+		},
+		{
+			"type" : "keybind",
+			"id" : "id_dcc_tagunit",
+			"title" : "dcc_tagunit_title",
+			"description" : "dcc_tagunit_desc",
+			"keybind_id" : "dcc_commandprompt_tagunit",
+			"run_in_game" : true,
+			"func" : "commandprompt_tagunit"
+		},
+		{
+			"type" : "keybind",
+			"id" : "id_dcc_tagposition_aim",
+			"title" : "dcc_tagposition_aim_title",
+			"description" : "dcc_tagposition_aim_desc",
+			"keybind_id" : "dcc_commandprompt_tagposition_aim",
+			"run_in_game" : true,
+			"func" : "commandprompt_tagposition_aim"
+		},
+		{
+			"type" : "divider",
+			"size" : 8
+		},
+		{
+			"type" : "DISABLED_toggle",
+			"id" : "id_dcc_toggle_1",
+			"title" : "dcc_toggle_title_1",
+			"description" : "dcc_toggle_desc_1",
+			"callback" : "commandprompt_toggle_1",
+			"value" : "none"
+		},
+		{
+			"type" : "multiple_choice",
+			"id" : "id_dcc_printbehavior",
+			"title" : "dcc_printbehavior_title",
+			"description" : "dcc_printbehavior_desc",
+			"callback" : "commandprompt_setprintbehavior",
+			"items" : [
+				"printbehavior_default",
+				"printbehavior_tap",
+				"printbehavior_overwrite",
+				"printbehavior_empty"
+			],
+			"value" : "print_behavior"
+		},
+		{
+			"type" : "multiple_choice",
+			"id" : "id_dcc_setkeyboardregion",
+			"title" : "dcc_setkeyboardregion_title",
+			"description" : "dcc_setkeyboardregion_desc",
+			"callback" : "commandprompt_setkeyboardregion",
+			"items" : [
+				"setkeyboardregion_us",
+				"setkeyboardregion_uk"
+			],
+			"value" : "keyboard_region"
+		},
+		{
+			"type" : "DISABLED_multiple_choice",
+			"id" : "id_dcc_escbehavior",
+			"title" : "dcc_escbehavior_title",
+			"description" : "dcc_escbehavior_desc",
+			"callback" : "commandprompt_setescbehavior",
+			"items" : [
+				"escbehavior_clear",
+				"escbehavior_hybrid",
+				"escbehavior_close",
+				"escbehavior_combo"
+			],
+			"value" : "esc_behavior"
+		},
+		{
+			"type" : "divider",
+			"size" : 8
+		},
+		{
+			"type" : "DISABLED_slider",
+			"id" : "id_dcc_setfontsize",
+			"title" : "dcc_setfontsize_title",
+			"description" : "dcc_setfontsize_desc",
+			"callback" : "commandprompt_setfontsize",
+			"value" : "font_size",
+			"default_value" : 1,
+			"min" : 1,
+			"max" : 96,
+			"step" : 1
+		},
+		{
+			"type" : "button",
+			"id" : "id_dcc_reset_settings",
+			"title" : "dcc_reset_settings_title",
+			"description" : "dcc_reset_settings_desc",
+			"callback" : "commandprompt_resetsettings"
+		}
+	]
+}
