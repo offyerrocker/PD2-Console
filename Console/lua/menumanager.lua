@@ -125,15 +125,15 @@ Command Help
 	without arguments, /time will output "hh:mm:ss"
 	
 -----------------
-changes from last version:
+v0.81 changes from last version:
 - More thoroughly disabled input while Console is open
 	- This still does not stop BLT keybinds from triggering
 - Fixed crash on load when using saved keybinds from /bind 
 - Fixed /quit crashing and generating a crashlog instead of nicely closing
 - fixed broken persist/held setting for custom keybinds
-Console:logall() now has a global reference because I got tired of typing it all 
-Console:ClearConsole() is fixed and now works again + clears hhistory properly so that the next logs are not still a million miles long
-added /clear which calls ClearConsole()
+- Console:logall() now has a global reference because I got tired of typing it all 
+- Console:ClearConsole() is fixed and now works again + clears history properly so that the next logs are not still a million miles long
+- Added `/clear` command which calls ClearConsole()
 --]]
 
 _G.Console = {}
@@ -189,6 +189,119 @@ Console._failsafe = false --used for logall() debug function; probably should no
 Console.show_debug_hud = false --off by default; enabled by keybind
 Console.disable_achievements = true
 
+Console.popups_count = 0
+Console.popups = { --manage debug popups
+}
+
+function Console:Add_Popup(params)
+	local panel = self._ws:panel()
+	local name = tostring(params.name or self.popups_count)
+	if self.popups[name] then 
+		self:Log("ERROR: Add_Popup() [" .. name .. "] already exists!",{color = Color(0.5,1,0)}) --orange
+		return
+	end
+	local parent = params.parent
+	local position = params.position
+	local lifetime = params.lifetime
+	
+	local result = {
+		label = params.label,
+		update = params.update,
+		destroy = params.destroy,
+		style = params.style,
+		color = params.color,
+		text = params.text,
+		bitmap = params.bitmap
+	}
+	
+	if parent and alive(parent) then 
+		result.unit = parent
+		result.position = position or parent:m_pos()
+	elseif position then 
+		result.position = position
+		result.lifetime = params.lifetime or 5
+	else 
+		self:Log("ERROR: Add_Popup() No source or parent",{color = Color.red})
+		return
+	end
+
+	if result.text then 
+		if result.label then 
+			result.text.text = result.label
+		end
+		result.text_element = panel:text(text)
+	elseif result.label then 
+		result.text_element = panel:text({
+			name = "popup_" .. name,
+			text = result.label,
+			layer = 1,
+--			align = "center",
+			x = 0,
+			y = 0,
+			font = tweak_data.hud.medium_font,
+			font_size = tweak_data.hud_players.name_size,
+			color = result.color or Color.white
+		})
+	end
+	
+	if result.bitmap then	
+		result.bitmap_element = panel:bitmap(result.bitmap)
+	end
+	
+	self.popups_count = self.popups_count + 1
+	self.popups[name] = result
+end
+function Console:Remove_Popup(name)
+	local panel = self._ws:panel()
+	local popup = self.popups[name] 
+	if popup then 
+		if alive(popup.text_element) then 
+			panel:remove(popup.text_element)
+		end
+		if alive(popup.bitmap_element) then 
+			panel:remove(popup.bitmap_element)
+		end
+		
+		if popup.destroy then 
+			popup.destroy(popup)
+		end
+		self.popups[name] = nil
+	else
+--		self:Log("ERROR: No popup [" .. name .. "]",{color = Color.red})
+		return
+	end
+end
+function Console:update_hud_popups(t,dt)
+	if not self._ws then return end
+	
+	local panel = self._ws:panel()
+	for k,v in pairs(self.popups) do 
+		
+		local pos = nil
+		if v.position and type(v.position) == "Vector3" then 
+			pos = v.position
+		elseif (v.unit ~= nil) and alive(v.unit) then 
+			pos = v.unit:m_pos()
+			if v.position == "head" then 
+				pos = v.unit:movement():m_head_pos()
+			end
+		end
+		if pos then 
+			local hud_pos = (self._ws:world_to_screen(managers.viewport:get_current_camera(),pos)) or {}
+			local _,_,text_w,_ = v.text_element:text_rect()
+			v.text_element:set_x((hud_pos.x or 0) - (text_w / 2))
+			v.text_element:set_y(hud_pos.y or 0)
+			if v.bitmap_element then 
+				v.bitmap_element:set_x(hud_pos.x or 0)
+				v.bitmap_element:set_y(hud_pos.y or 0)
+			end
+			
+		end
+		if v.update then
+			v.update(t,dt,v)
+		end
+	end
+end
 
 Console.command_history = {
 --	[1] = { name = "/say thing", func = (function value) } --as an example
@@ -1654,7 +1767,10 @@ end
 function Console:SetFwdRayUnit(unit) 
 	if unit and alive(unit) and unit:character_damage() then --and not filtered_type(unit)
 		self.tagged_unit = unit
+		Console:Remove_Popup("selected")
+		Console:Add_Popup({name = "selected",parent = unit,position = "head",lifetime = nil,color = Color.yellow,label = unit:base()._tweak_table})
 	else
+		Console:Remove_Popup("selected")
 		self.tagged_unit = nil
 	end
 end
@@ -2417,10 +2533,29 @@ function Console:update(t,dt)
 	self:update_scroll(t)
 	
 	self:update_hud(t,dt)
+
+	self:update_hud_popups(t,dt)
 	
 	self:update_persist_scripts(t,dt)
 	
 	self:update_restart_timer(t,dt)
+	
+		--[[
+	local player = managers.player:local_player()
+	if player then 
+		local movement = player:movement()
+		local head_pos = movement:m_head_pos()
+		local head_angle = movement:m_head_rot():y().y
+		local head_rot = mvector3.copy(movement:m_head_rot():y())
+		local yaw = math.deg(head_rot)
+		Console:SetTrackerValue("trackera",tostring(yaw))
+		Console:SetTrackerValue("trackerb",tostring(movement:m_head_rot()))
+		Console:SetTrackerValue("trackerc",tostring(movement:m_head_rot():yaw()))
+		Console:SetTrackerValue("trackerd",tostring(movement:m_head_rot():pitch()))
+		Console:SetTrackerValue("trackere",tostring(movement:m_head_rot():roll()))	
+	end
+		--]]
+	
 end
 
 function Console:update_persist_scripts(t,dt)
@@ -2575,7 +2710,6 @@ local angle_between_asdkfjalsd = self:angle_between_pos(head_pos,viewport_cam:po
 		hp:set_color(Color.red:with_alpha(0.3))
 --		unit_marker:set_visible(false)
 	end
-	
 end
 
 function Console:update_custom_keybinds(t,dt)
