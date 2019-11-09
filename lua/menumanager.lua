@@ -1481,25 +1481,12 @@ function Console:cmd_quit(skip_confirm)
 	end
 
 	if (tostring(skip_confirm) == "true") then
---		Application:quit() 
---causes:
---[string "core/lib/system/coreengineaccess.lua"]:67: Application:quit(...) has been hidden by core. Use CoreSetup:quit(...) instead!
---...interesting
-		Setup:quit()
+--		Application:quit() and Setup:quit() do nothing (unless you have The Fixes, in which case Setup:quit() does stuff
+--		os.execute('taskkill /IM "payday2_win32_release.exe" /F') --this also works
+		MenuCallbackHandler:_dialog_quit_yes()
+		return
 	end
-	local menu_title = managers.localization:text("dcc_qtd_prompt_title")
-	local menu_desc = managers.localization:text("dcc_qtd_prompt_desc")
-	local options = {
-		{
-			text = managers.localization:text("dcc_qtd_cancel"),
-			is_cancel_button = true
-		},
-		{
-			text = managers.localization:text("dcc_qtd_confirm"),
-			callback = callback(self,self,"cmd_quit",true)
-		}
-	}
-	QuickMenu:new(menu_title,menu_desc,options):show()
+	MenuCallbackHandler:quit_game()
 end
 
 function Console:cmd_teleport(x,y,z)--, camx, camy, camz)
@@ -3062,4 +3049,3 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 	Console:LoadKeybinds()
 	MenuHelper:LoadFromJsonFile(Console.options_path, Console, Console.settings) --no settings, just the two keybinds
 end)
-

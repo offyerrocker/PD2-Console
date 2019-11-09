@@ -1,10 +1,6 @@
 {
 	"dcc_title" : "Command Console Options",
 	"dcc_desc" : "Options options options!",
-	"dcc_qtd_prompt_title" : "Are you sure you want to quit?",
-	"dcc_qtd_prompt_desc" : "The game will close immediately.",
-	"dcc_qtd_cancel" : "No, I changed my mind! I want to live!",
-	"dcc_qtd_confirm" : "Yes, I'm gonna go play a GOOD video game now, like Bad Rats.",
 	"dcc_setkeyboardregion_title" : "Set Keyboard Region",
 	"dcc_setkeyboardregion_desc" : "Choose your keyboard type",
 	"setkeyboardregion_us" : "US",
