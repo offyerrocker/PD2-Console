@@ -450,6 +450,11 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "Outputs system date to console.",
 		postargs = 0
 	},
+	pause = {
+		str = "Console:cmd_pause($ARGS)",
+		desc = "In offline mode, pauses the game. In multiplayer, sets game speed to very, very, very slow.",
+		postargs = 0
+	},
 	quit = {
 		str = "Console:cmd_quit($ARGS)", 
 		desc = "Closes PAYDAY 2 executable (after a confirm prompt).",
@@ -691,8 +696,7 @@ function _G.Log(...)
 	Console:Log(...)
 end
 
-
-function Console:logall(obj,max_amount)
+function _G.logall(obj,max_amount)
 --generally best used to log all of the properties of a Class:
 --functions;
 --and values, such as numbers, strings, tables, etc.
@@ -727,8 +731,9 @@ function Console:logall(obj,max_amount)
 	end
 end
 
-
-_G.logall = _G.logall or Console.logall
+function Console:logall(...)
+	return logall(...)
+end
 
 function Console:Log(info,params)
 --	local color = params and params.color or Color.white
@@ -1124,7 +1129,7 @@ function Console:SetTrackerXY(id,x,y) --setting x/y only; can be used for update
 	end
 end
 
-function Console:cmd_unit(subcmd,id,...)
+function Console:cmd_unit(subcmd,id,...) --not implemented
 	if subcmd == "select" then 
 		
 	end
@@ -1513,6 +1518,28 @@ function Console:cmd_teleport(x,y,z)--, camx, camy, camz)
 	end
 end
 
+function Console:cmd_pause(active)
+	if Global.game_settings.single_player then
+		if active then
+			Application:set_pause(true)
+			managers.menu:post_event("game_pause_in_game_menu")
+			SoundDevice:set_rtpc("ingame_sound", 0)
+
+			local player_unit = managers.player:player_unit()
+
+			if alive(player_unit) and player_unit:movement():current_state().update_check_actions_paused then
+				player_unit:movement():current_state():update_check_actions_paused()
+			end
+		else
+			Application:set_pause(false)
+			managers.menu:post_event("game_resume")
+			SoundDevice:set_rtpc("ingame_sound", 1)
+		end
+	else
+		
+	end
+end
+
 function Console:cmd_restart(timer)
 	if timer == "help" then 
 		self:Log("Syntax: /restart [optional (number: timer) or (string: cancel)]",{color = Color.yellow})
@@ -1702,7 +1729,11 @@ function Console:mouse_clicked(o,button,x,y)
 end
 
 function Console:ToggleConsoleFocus(focused)
-	if not managers.hud then return end
+	if not alive(self._panel) then 
+		log("Console:ToggleConsoleFocus() ERROR: Attempted to open console window, but Console window does not exist")
+		return
+	end
+	
 	if (focused == true) or (focused == false) then 
 		self._focus = focused
 	else
@@ -1712,6 +1743,10 @@ function Console:ToggleConsoleFocus(focused)
 
 	if self._focus then 
 	
+		if managers.menu and managers.menu:active_menu() and managers.menu:active_menu().renderer then 
+			managers.menu:active_menu().renderer:disable_input(math.huge)
+		end
+		
 		local data = {
 			mouse_move = callback(self, self, "mouse_moved"),
 			mouse_click = callback(self, self, "mouse_clicked"),
@@ -1730,12 +1765,20 @@ function Console:ToggleConsoleFocus(focused)
 		self._panel:child("input_text"):key_release(callback(self, self, "key_release"))
 
 	else
+		if managers.menu and managers.menu:active_menu() and managers.menu:active_menu().renderer then 
+			managers.menu:active_menu().renderer:disable_input(0)
+		end
+
+		
 		self._ws:disconnect_keyboard()
 		self._panel:key_release(nil)
 		managers.mouse_pointer:remove_mouse("console_test_mousepointer")	
 		game_state_machine:_set_controller_enabled(true)
 		self._enabled = false
 	end
+	
+	--self:cmd_pause(self._focus)
+	
 end
 
 
@@ -3037,6 +3080,7 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 	end
 	
 	MenuCallbackHandler.commandprompt_toggle = function(self) --keybind
+		log("*********************Pressed Console togglebutton")
 		if (Input and Input:keyboard() and not Console:_shift()) then 
 			Console:ToggleConsoleFocus()
 		end
@@ -3047,5 +3091,218 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 
 --	Console:Load()
 	Console:LoadKeybinds()
+	
+	Console:_create_commandprompt(1280,700)
 	MenuHelper:LoadFromJsonFile(Console.options_path, Console, Console.settings) --no settings, just the two keybinds
 end)
+
+function Console:_create_commandprompt(console_w,console_h)
+--		log("CONSOLE: Error: bad parent panel")
+--	Console._menu = managers.menu:register_menu("console_menu")
+	Console._ws = Console._ws or managers.gui_data:create_fullscreen_workspace()
+	local ws = Console._ws:panel()
+--	local orig_hud = managers.menu_component and managers.menu_component._fullscreen_ws --or managers.hud:script(PlayerBase.PLAYER_INFO_HUD_PD2).panel
+	
+	console_w = console_w or ws:w()
+	console_h = console_h or ws:h()
+	
+	local font_size = Console:GetFontSize()
+	
+	local h_margin = Console.h_margin
+	
+	local v_margin = Console.v_margin
+	
+	local debug_hud_base = ws:panel({
+		name = "debug_hud_base", --used for trackers
+		visible = true
+	})
+	Console._debug_hud = debug_hud_base
+	
+	local unit_marker = debug_hud_base:bitmap({
+		name = "marker",
+		texture = "guis/textures/access_camera_marker",
+		layer = 02,
+		color = Color.white,
+		x = 1,
+		y = 1
+	})
+	
+	local unit_name = debug_hud_base:text({
+		name = "info_unit_name",
+		layer = 90,
+		x = 700, --just to the right of crosshair
+		y = 400,
+		text = "unit_name",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		color = Color.white
+	})
+	
+	local unit_hp = debug_hud_base:text({
+		name = "info_unit_hp",
+		layer = 90,
+		x = 700, --just under unit name
+		y = 420,
+		text = "unit_hp",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		color = Color.white
+	})
+	
+	local unit_team = debug_hud_base:text({
+		name = "info_unit_team",
+		layer = 90,
+		x = 700, --just under unit hp
+		y = 440,
+		text = "unit_team",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		color = Color.white
+	})
+	
+
+	local console_base = ws:panel({
+		name = "console_base",
+		visible = false --hidden by default, activated by keybind
+	})
+	
+	Console._panel = console_base
+	
+	local console_bg = console_base:rect({
+		name = "console_bg",
+		layer = 98,
+		color = Color.black:with_alpha(0.6)
+	})
+	local bg_blur = console_base:bitmap({
+		texture = "guis/textures/test_blur_df",
+		name = "bg_blur",
+		valign = "grow",
+		halign = "grow",
+		render_template = "VertexColorTexturedBlur3D",
+		layer = -2
+	})
+	bg_blur:set_size(console_base:size())
+
+	local command_history_frame = console_base:panel({
+		name = "command_history_frame",
+		layer = 100,
+		x = h_margin,
+		y = 0,
+		w = console_w,
+		h = console_h - (v_margin + font_size)
+	})
+
+	
+	local command_history_bg = command_history_frame:rect({
+		name = "command_history_bg",
+		layer = 99,
+		h = console_h - (font_size + v_margin),
+		visible = false, --draws in front of everything for whatever reason
+		color = Color.black:with_alpha(0.1)
+	})
+	local command_history_panel = command_history_frame:panel({
+		name = "command_history_panel",
+		h = h_margin + 12, --increased with each Log()
+		layer = 100
+	})
+	
+	local history_size_debug = command_history_panel:rect({
+		name = "history_size_debug",
+		layer = 98,
+		visible = false,
+		color = Console.quality_colors.arc:with_alpha(0.5)
+	})
+		
+	local scroll_handle = console_base:rect({
+		name = "scroll_handle",
+		layer = 101,
+		w = 8,
+		x = 2,
+		h = console_h - font_size,
+		color = Console.color_data.scroll_handle
+	})
+	
+	local scroll_block_top = console_base:rect({	
+		name = "scroll_block_top",
+		layer = 102,
+		w = 12,
+		h = 12,
+		y = 0,
+		color = Color.white:with_alpha(0.7)
+	})
+	
+	local scroll_block_bottom = console_base:rect({	
+		name = "scroll_block_bottom",
+		layer = 102,
+		w = 12,
+		h = 12,
+		y = console_h - (v_margin + font_size + 12),
+		color = Color.white:with_alpha(0.7)
+	})
+	
+	local scroll_bg = console_base:rect({
+		name = "scroll_bg",
+		layer = 99,
+		w = 12,
+		h = console_h - (font_size + v_margin),
+		color = Color.white:with_alpha(0.3)
+	})
+	
+	local caret = console_base:text({
+		name = "caret",
+		layer = 103,
+		x = h_margin,
+		y = console_h - (font_size + v_margin),
+		text = "|",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		color = Color.white:with_alpha(0.7)
+	})
+	
+	local selection_box = console_base:rect({
+		name = "selection_box",
+		layer = 102,
+		x = h_margin,
+		y = console_h - (font_size + v_margin),
+		w = 3,
+		h = font_size,
+		color = Color.white,
+		blend_mode = "sub"
+	})
+	
+	local input_text = console_base:text({
+		name = "input_text",
+		layer = 104,
+		x = h_margin,
+		y = console_h - (font_size + v_margin),
+		text = "",
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		blend_mode = "add",
+		color = Color.white
+	})
+
+	local prompt = console_base:text({
+		name = "prompt",
+		text = "> ",
+		layer = 102,
+		x = 0,
+		y = console_h - (font_size + v_margin),
+		font = tweak_data.hud.medium_font,
+		font_size = font_size,
+		blend_mode = "add",
+		color = Color.white
+	})
+	
+	local input_bg = console_base:rect({
+		name = "input_bg",
+		layer = 101,
+		h = font_size,
+		y = input_text:y(),
+		color = Color.black:with_alpha(0.7)
+	})
+	
+	Console._charlist = Console:BuildCharList()
+--	self:create_dot_test(ws)
+	
+end
