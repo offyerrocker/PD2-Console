@@ -751,6 +751,41 @@ function _G.logall(obj,max_amount)
 	end
 end
 
+function _G.search_class(class,s)
+    s = tostring(s)
+    Console:Log("Searching class " .. tostring(class) .. " for " .. s)
+    if type(class) == "table" then 
+        for i,j in pairs(class) do 
+            local msg = "CLASS"
+            local col = Color.white
+            if string.match(i,s) then
+                local t = type(j)
+                if t == "function" then 
+                    col = Color(1,0.5,0.5)
+                    msg = ":" .. i .. "()"
+                else
+                    if t == "number" then 
+                        col = Color.white
+                    elseif t == "string" then 
+                        col = Color.yellow
+                    else
+                        col = Color(0,0.5,1)
+                    end
+                    msg = "." .. i .. " = " .. tostring(j)
+                end
+                Console:Log(msg,{color = col})
+            end
+            
+        end
+    else
+        Console:Log("Type is not table/class!",{color = Color.orange})
+    end
+end
+
+function Console:searchall(...)
+	return search_class(...)
+end
+
 function Console:logall(...)
 	return logall(...)
 end
@@ -1598,6 +1633,10 @@ function Console:cmd_pause(active)
 end
 
 function Console:cmd_restart(timer)
+	if not managers.game_play_central then 
+		self:Log("You must be in a game in order to restart it!",{color = Color.red})
+		return
+	end
 	if timer == "help" then 
 		self:Log("Syntax: /restart [optional (number: timer) or (string: cancel)]",{color = Color.yellow})
 		self:Log('Usage: Restarts the heist day after [timer] seconds, or cancels countdown if argument is "cancel".',{color = Color.yellow})
