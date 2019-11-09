@@ -7,14 +7,19 @@
 **************** HIGH PRIORITY ****************
 ===============================================
 
+- Fix failing to auto-newline scroll for new logs
+
 - Fix only returning one value in a pair (output as {...}, read table)
 
 - Fix postargs; should be max number of args instead
 
-- Create/enable console window in main menu
+- Allow (i forgot what the rest of this sentence was meant to be)
+
 
 ===============================================
 
+Mouse Control for scroll bar
+Investigate viability of copying text/other mouse interactions with Console?
 
 - Finish hitbox/hit proc visualization
 (hit proc must hook to raycast in all likelihood)
@@ -29,7 +34,9 @@ Command "/bind":
 Command "/teleport":
 	* optional "+" before value to do teleport jump relative to coordinates
 		* eg. "/teleport +-500 300 -400" would move you back 500 units x, forward 300 units y, and -400 units z relative to your current position
+	* optional single arg for teleporting n units forward in the direction of your aim
 	* optional 3 args for rotlook
+	
 
 Persist Scripts:
 	* Option to add by command string with InterpretInput(), as with "/tracker track"
@@ -60,10 +67,6 @@ Debug HUD
 
 - Import chat commands from OffyLib + allow chat in Offline Mode (disabled by default)
 	
-- fix application:close crashing instead of quitting
-	...Application:quit()?
-	CoreSetup:quit() doesn't do anything lol
-	
 Keybinds functions:
 	* Hold [modifier key] to select enemy and freeze AI
 	- Select deployable at fwd_ray
@@ -87,9 +90,6 @@ Command Help
 	- Overflow to newline for character limits (should check against max length setting)
 		- \n works for standard strings and hud text panels
 
-
-- Reset movement when opening console (so that positive input is not "stuck" if opening console while applying input)
-	
 - Fix [I stopped typing here because I got distracted and never finished the thought. I guess I'll never know what it is that needed to be fixed]
 
 - Localize the whole damn thing
@@ -410,6 +410,11 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "Clears the console window's recent commands and results.",
 		postargs = 0
 	},
+	pos = {
+		str = "Console:cmd_pos($ARGS)",
+		desc = "Prints the player's world position to the console window. Optional: Specify peer_id of target player.",
+		postargs = 0
+	},
 	tp = {
 		str = "Console:cmd_teleport($ARGS)",
 		desc = "Moves you to the location of your choice. Can be a waypoint or a manually input location.",
@@ -520,7 +525,6 @@ function Console:cmd_godmode(...)
 	end
 end
 
-
 function Console:RegisterCommand(id,data)
 	if not id then
 		self:Log("ERROR: RegisterCommand(" .. tostring(id)..") failed: Bad command name",{color = Color.red}) 
@@ -538,6 +542,8 @@ function Console:RegisterCommand(id,data)
 end
 
 Hooks:Add("PlayerManager_on_internal_load","console_oninternalload",function()  --called on event PlayerManager:_internal_load()
+--since console should work in all environments (main menu, beardlib editor environments, and in-game), this event hook should be phased out
+
 	--load keybinds
 	--do stuff for Console development here such as creating tracker elements
 	Console:refresh_scroll_handle()
@@ -701,12 +707,17 @@ function _G.logall(obj,max_amount)
 --functions;
 --and values, such as numbers, strings, tables, etc.
 	local type_colors = {
-		["function"] = Color.blue,
-		["string"] = Color.grey,
-		["number"] = Color.orange,
-		["Vector3"] = Color.purple,
-		["table"] = Color.yellow,
-		["userdata"] = Color.red
+		["function"] = Color(0.5,1,1),
+		["string"] = Color(0.5,0.5,0.5),
+		["number"] = Color(0.66,1,0),
+		["Vector3"] = Color(1,0.5,1),
+		["Rotation"] = Color(0.7,0.5,1),
+		["Panel"] = Color(0.5,0.6,1),
+		["Bitmap"] = Color(0.3,1,0.7),
+		["Color"] = Color(1,0.7,0.7),
+		["Unit"] = Color(1,1,0.3),
+		["table"] = Color(1,1,0),
+		["userdata"] = Color(1,0,0)
 	}
 	
 	if not obj then 
@@ -725,6 +736,15 @@ function _G.logall(obj,max_amount)
 		end
 		for k,v in pairs(obj) do 
 			local data_type = type(v)
+			if data_type == "userdata" then 
+				for i,j in pairs(type_colors) do 
+					if _G[i] and _G[i].type_id == v.type_id then 
+						data_type = i
+						break
+					end
+				end
+			end
+			
 			Console:Log("Index [" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = type_colors[data_type]})
 		end
 		Console._failsafe = true --process can be stopped with "/stop" if log turns out to be recursive or too long in general
@@ -750,6 +770,9 @@ function Console:Log(info,params)
 end
 
 function Console:new_log_line(params)
+
+
+	
 	params = params or {}
 	local font_size = self:GetFontSize()
 	local color = params.color or Color.white:with_alpha(1)
@@ -762,6 +785,7 @@ function Console:new_log_line(params)
 	end
 	local frame = panel:child("command_history_frame")
 	local history = frame:child("command_history_panel")
+		
 	local line
 	local v_margin = self.v_margin
 	local h_margin = params.h_margin or self.h_margin
@@ -805,6 +829,8 @@ function Console:new_log_line(params)
 	end
 	self:refresh_scroll_handle()
 	self.num_lines = self.num_lines + 1
+
+--	history:set_y(history:y() + scroll_speed,0)
 	return line
 end
 
@@ -1494,10 +1520,33 @@ function Console:cmd_quit(skip_confirm)
 	MenuCallbackHandler:quit_game()
 end
 
-function Console:cmd_teleport(x,y,z)--, camx, camy, camz)
+function Console:cmd_pos(peer_id)
+	local player = managers.player:player_unit(peer_id)
+	if not alive(player) then 
+		self:Log("ERROR: /pos: Player unit is not alive")
+		return
+	end
+	
+	self:Log(player:movement():m_pos())
+end
+
+function Console:cmd_rot(peer_id)
+	local player = managers.player:player_unit()
+	if not alive(player) then 
+		self:Log("ERROR: /rot: Player unit is not alive")
+		return
+	end
+	return player:camera():rotation()
+end
+
+function Console:cmd_teleport(x,y,z,camx,camy)
 	self.disable_achievements = true
 	local player = managers.player:local_player()
-	local camera = player:camera_unit()
+	if not alive(player) then 
+		self:Log("Can't teleport if you're dead!",{color = Color.red})
+		return
+	end
+	local camera = player:camera()
 	local pos
 	if x and type(x) == "string" then 
 		if x == "aim" then
@@ -1506,15 +1555,23 @@ function Console:cmd_teleport(x,y,z)--, camx, camy, camz)
 	end
 	
 	if not (x and y and z) then --teleport to aim if no arguments supplied
-		pos = Console:GetTaggedPosition()
+		if x and not (y or z) then --assume x is 
+			pos = mvector3.copy(player:movement():m_pos())
+			local rot = mvector3.copy(camera:rotation():y())
+			mvector3.multiply(rot,x)
+			mvector3.add(pos,rot)
+--			Log("Teleporting a distance of " .. tostring(rot) .. " from " .. tostring(player:movement():m_pos()) .. " (Moved " .. tostring(x) .. " units across attitude " .. tostring(rot) .. ")")
+--			Log(player:movement():m_pos() .. " + " .. tostring(rot) .. " = " .. tostring(rot + player:movement():m_pos()))
+		else
+			pos = Console:GetTaggedPosition()
+		end
 --			pos = pos or Console:GetFwdRay().position
 	end
 	pos = pos or Vector3(tonumber(x or 0), tonumber(y or 0), tonumber(z or 0))
---	camx = tonumber(camx or 0)
---	camy = tonumber(camy or 0)
---	camz = tonumber(camz or 0)
-	if player and pos then 
-		managers.player:warp_to(pos,player:rotation())
+	camx = tonumber(camx or player:rotation():yaw()) or player:rotation():yaw()
+	camy = tonumber(camy or player:rotation():pitch()) or player:rotation():pitch()
+	if player and pos then
+		managers.player:warp_to(pos,Rotation(camx,camy,0))
 	end
 end
 
@@ -1701,7 +1758,6 @@ function Console:_ctrl()
 	return k:down(Idstring("left ctrl")) or k:down(Idstring("right ctrl")) or k:down(Idstring("ctrl"))
 end
 
-
 function Console:mouse_moved(o,x,y)
 --	self:SetTrackerValue("tracker_a",tostring(x) .. "," .. tostring(y))
 --	self:Log("Mousemoved " .. tostring(x) .. "," .. tostring(y))
@@ -1766,7 +1822,7 @@ function Console:ToggleConsoleFocus(focused)
 
 	else
 		if managers.menu and managers.menu:active_menu() and managers.menu:active_menu().renderer then 
-			managers.menu:active_menu().renderer:disable_input(0)
+			managers.menu:active_menu().renderer:disable_input(0.1)
 		end
 
 		
@@ -1780,7 +1836,6 @@ function Console:ToggleConsoleFocus(focused)
 	--self:cmd_pause(self._focus)
 	
 end
-
 
 function Console:GetFwdRay(item)
 	local player = managers.player:local_player()
@@ -2840,8 +2895,7 @@ function Console:update_scroll(t,dt)
 			history:set_y(new_y)
 			self:refresh_scroll_handle()
 		end
-
---		self:SetTrackerValue("trackera","history y " .. history:y())
+		self:SetTrackerValue("trackera","history y:" .. tostring(history:y()))
 --		self:SetTrackerValue("trackerb","max position " .. bottom_scroll)
 --		self:SetTrackerValue("trackerb","history h " .. history:h())
 --		self:SetTrackerValue("trackerc","history bottom " .. history:bottom())
@@ -3080,7 +3134,7 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 	end
 	
 	MenuCallbackHandler.commandprompt_toggle = function(self) --keybind
-		log("*********************Pressed Console togglebutton")
+--		log("*********************Pressed Console togglebutton")
 		if (Input and Input:keyboard() and not Console:_shift()) then 
 			Console:ToggleConsoleFocus()
 		end

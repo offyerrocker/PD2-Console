@@ -7,7 +7,6 @@ function PlayerStandard:_get_input(t, dt, paused,...)
 	if Console._focus then 
 		return {}
 	end
---	paused = OffyLib.console_focus or paused
 	return orig_input(self,t,dt,paused,...)
 end
 
