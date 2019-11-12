@@ -144,7 +144,8 @@ Console.default_settings = {
 	scroll_speed = 12, --pixels per scroll action
 	esc_behavior = 1,
 	print_behavior = 1, --1 = default (do not modify behavior); 2 = tap (print() output to console, and also performs original print() ); 3 = overwrite (reroute to console); 4 = empty; print() executes no code (increases performance)
-	keyboard_region = 1	--1 = us, 2 = uk
+	keyboard_region = 1,	--1 = us, 2 = uk
+	also_blt_log = false --whether console also logs its contents to BLT's log
 }
 Console.settings = deep_clone(Console.default_settings)
 
@@ -418,6 +419,11 @@ Console.command_list = { --in string form so that they can be called with loadst
 	tp = {
 		str = "Console:cmd_teleport($ARGS)",
 		desc = "Moves you to the location of your choice. Can be a waypoint or a manually input location.",
+		postargs = 0
+	},
+	sound = {
+		str = "Console:cmd_sound($ARGS)",
+		desc = "Play a specified voiceline. Sync is off by default.",
 		postargs = 0
 	},
 	bind = {
@@ -789,14 +795,15 @@ end
 function Console:logall(...)
 	return logall(...)
 end
-
 function Console:Log(info,params)
 --	local color = params and params.color or Color.white
 --	local margin = params and params.h_margin
 	if not info then
 --		return --todo setting to disable logging if nil value? optional parameter?
 	end
-	
+	if self:should_blt_log() then 
+		log("CONSOLE: " .. tostring(info))
+	end
 	local line = self.num_lines
 	local new_line = self:new_log_line(params)
 	if new_line and alive(new_line) then 
@@ -867,6 +874,10 @@ function Console:new_log_line(params)
 
 --	history:set_y(history:y() + scroll_speed,0)
 	return line
+end
+
+function Console:should_blt_log()
+	return self.settings.also_blt_log
 end
 
 function Console:angle_between_pos(a,b,c,d)
@@ -1563,6 +1574,18 @@ function Console:cmd_pos(peer_id)
 	end
 	
 	self:Log(player:movement():m_pos())
+end
+
+function Console:cmd_sound(sound,sync)
+	if sync == nil then 
+		sync = false
+	end
+	local player = managers.player:local_player()
+	if not alive(player) then 
+		self:Log("ERROR: /play: Player unit is not alive")
+		return
+	end
+	player:sound():say(tostring(sound),true,sync)
 end
 
 function Console:cmd_rot(peer_id)
@@ -2934,7 +2957,7 @@ function Console:update_scroll(t,dt)
 			history:set_y(new_y)
 			self:refresh_scroll_handle()
 		end
-		self:SetTrackerValue("trackera","history y:" .. tostring(history:y()))
+--		self:SetTrackerValue("trackera","history y:" .. tostring(history:y()))
 --		self:SetTrackerValue("trackerb","max position " .. bottom_scroll)
 --		self:SetTrackerValue("trackerb","history h " .. history:h())
 --		self:SetTrackerValue("trackerc","history bottom " .. history:bottom())
