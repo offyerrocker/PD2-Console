@@ -730,7 +730,8 @@ function _G.logall(obj,max_amount)
 		Console:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
 		return
 	end
-	local i = max_amount and 0
+	local i = type(max_amount) == "number" and max_amount and 0
+	max_amount = max_amount and type(max_amount) == "number" or 0
 	Console._failsafe = false
 	while not Console._failsafe do 
 		if i then 
@@ -1581,9 +1582,10 @@ function Console:cmd_sound(sound,sync)
 		sync = false
 	end
 	local player = managers.player:local_player()
-	if not alive(player) then 
-		self:Log("ERROR: /play: Player unit is not alive")
-		return
+	if not alive(player) then
+		managers.menu:post_event(sound)
+--		self:Log("ERROR: /play: Player unit is not alive")
+--		return
 	end
 	player:sound():say(tostring(sound),true,sync)
 end
@@ -2024,25 +2026,35 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 		return
 	end
 	
-	local success,result
+	local result = {}
 	local func,cmd = self:InterpretInput(cmd_raw) 
 	
 	if func then 
-		success,result = pcall(func)
+		result = {pcall(func)}
 	else
 --		self:Log("Execution failed.",{color = Color.red})
 --		return
 	end
 	
-	if success then 
-		if result ~= nil then
-			self:Log(result,{color = self.color_data.result_color})
-		else
+	if #result > 0 and result[1] == true then 
+		if #result > 1 then
+			for k,v in pairs(result) do 
+				if k > 1 then 
+					self:Log(v,{color = self.color_data.result_color})
+				elseif k ~= 1 then
+					self:Log("IDK what this iis!!!! " .. tostring(k))
+				end
+			end
+--			self:logall(result,{color = self.color_data.result_color})
+		elseif #result == 1 then
 			self:Log("Done",{color = Color.yellow})
+--		else
+--			logall(result,{color = Color.green})
 		end
 	else
 		self:Log("Command execution failed")
 	end
+	
 	table.insert(self.command_history,{name = cmd or cmd_raw,func = func})
 	self:refresh_scroll_handle()
 end
