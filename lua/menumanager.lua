@@ -190,6 +190,8 @@ Console._failsafe = false --used for logall() debug function; probably should no
 Console.show_debug_hud = false --off by default; enabled by keybind
 Console.disable_achievements = true
 
+Console.last_coords = {0,0,0}
+
 Console.popups_count = 0
 Console.popups = { --manage debug popups
 }
@@ -758,12 +760,12 @@ function _G.logall(obj,max_amount)
 	end
 end
 
-function _G.search_class(class,s)
+function _G.search_class(tbl,s)
     s = tostring(s)
-    Console:Log("Searching class " .. tostring(class) .. " for " .. s)
-    if type(class) == "table" then 
-        for i,j in pairs(class) do 
-            local msg = "CLASS"
+    Console:Log("Searching table " .. tostring(tbl) .. " for \"" .. s .. "\"")
+    if type(tbl) == "table" then 
+        for i,j in pairs(tbl) do 
+            local msg = "TABLE"
             local col = Color.white
             if string.match(i,s) then
                 local t = type(j)
@@ -1297,7 +1299,7 @@ function Console:cmd_bind(key_name,input_str,held,...) --func is actually a stri
 	if (key_name == "help") then
 		self:Log("Syntax: /bindid [string: key_name] [function to execute; or string to parse] [optional bool: held]",{color = Color.yellow})
 		self:Log("Usage: Bind a key to execute a Lua snippet or Console command.",{color = Color.yellow})
-		self:Log("Example: /bind a Console:Log(\"I just pressed (a)!\")",{color = Color.yellow})
+		self:Log("Example: /bind a; Console:Log(\"I just pressed (a)!\")",{color = Color.yellow})
 		return
 	elseif (key_name == "list") then 
 		self:Log("List of bound keybinds:")
@@ -1313,15 +1315,20 @@ function Console:cmd_bind(key_name,input_str,held,...) --func is actually a stri
 			err = true
 		end
 		if not input_str then 
-			self:Log("Error: You must supply a command, code, or function to execute!",{color = Color.red})
-			err = true
+			if self._custom_keybinds[key_name] then 
+				self:Log("[" .. key_name .. "] is currently bound to " .. tostring(self._custom_keybinds[key_name].func_str),{color = Color.yellow})
+				return
+			else
+				self:Log("Error: You must supply a command, code, or function to execute!",{color = Color.red})
+				err = true
+			end
 		end
 		-- show non-exclusive error messages
 		if err then 
 			return
 		end
 	end
-	self:Log("Bound " .. key_name,{color = Color.blue})
+--	self:Log("Bound [" .. key_name .. "] to " .. tostring(input_str),{color = Color.blue})
 	--[[
 	if key_name then 
 		local func,func_str = self:InterpretInput(input_str)
@@ -1398,7 +1405,13 @@ function Console:cmd_bindid(keybind_id,input_str,held,...)
 			self:Log("Error: You must supply a BLT keybind_id to bind!",{color = Color.red})
 		end
 		if not input_str then 
-			self:Log("Error: You must supply a command, code, or function to execute!",{color = Color.red})
+			if self._custom_keybinds[keybind_id] then 
+				self:Log("[" .. keybind_id .. "] is currently bound to " .. tostring(self._custom_keybinds[keybind_id].func_str),{color = Color.yellow})
+				return
+			else
+				self:Log("Error: You must supply a command, code, or function to execute!",{color = Color.red})
+				err = true
+			end
 		end
 		return
 	end
@@ -1497,29 +1510,46 @@ function Console:cmd_date(custom_format)
 end
 
 function Console:cmd_whisper(target,message)
+	message = tostring((message ~= nil) and message or "")
+	local multiple_recipients = false
 	if target == "help" then 
 		self:Log("Syntax: /whisper [peer_id (1-4)] [message]",{color = Color.yellow})
 		self:Log("Usage: Send a private message to a single player without other players reading it.",{color = Color.yellow})
 		return
+	elseif type(target) == "table" then 
+		multiple_recipients = true
+	else
+		target = tonumber(target)
 	end
-	target = tonumber(target)
 	if not target then	
-		self:Log("ERROR: /whisper: argument#1 must be a number 1-4")
+		self:Log("ERROR: /whisper: argument#1 must be a number 1-4, or table containing numbers 1-4")
 		return
 	end --log error
 	if managers.network:session() and managers.chat and managers.network:session():peers() then
 		local channel = managers.chat._channel_id or 1
 		local msg_str
-		for peer_id, peer in pairs( managers.network:session():peers() ) do
-			if peer and (peer_id == target) and peer:ip_verified() then
-				peer:send("send_chat_message", channel, message)
-				local name = peer:name()
-				msg_str = "[To" .. name .. "]: " .. message --todo timestamp
-				managers.chat:receive_message_by_peer(channel,managers.network:session():local_peer(),msg_str,Color(0.7,0.1,0.6))
-				self:Log(msg_str,{color = Color(0.7,0.1,0.6)})
+		
+		if multiple_recipients then 
+			local success
+			for peer_id, peer in pairs( managers.network:session():peers() ) do
+				if peer and (peer_id == target) and peer:ip_verified() and target[peer_id] then
+					peer:send("send_chat_message", channel, message)
+					msg_str = "[To" .. tostring(peer:name()) .. "]: " .. message --todo timestamp
+					managers.chat:receive_message_by_peer(channel,managers.network:session():local_peer(),msg_str,Color(0.7,0.1,0.6))
+					self:Log(msg_str,{color = Color(0.7,0.1,0.6)})
+					success = true
+				end
+			end	
+			if not success then 			
+				self:Log("Private message failed")
 				return
 			end
-		end			
+		else
+			local peer = managers.network:session():peer(target)
+			peer:send("send_chat_message",channel,message)
+			managers.chat:receive_message_by_peer(channel,managers.network:session():local_peer(),"[To" .. tostring(peer:name()) .. "]: " .. message,Color(0.7,0.1,0.6))			
+			return
+		end
 	end
 	self:Log("Private message failed")
 	return
@@ -1611,6 +1641,9 @@ function Console:cmd_teleport(x,y,z,camx,camy)
 	if x and type(x) == "string" then 
 		if x == "aim" then
 			pos = Console:GetTaggedPosition()
+		elseif x == "back" then 
+			pos = Console.last_coords
+			Console.last_coords = player:position()
 		end
 	end
 	
@@ -1930,6 +1963,10 @@ end
 
 function Console:GetTaggedUnit()
 	return self.tagged_unit
+end
+
+function Console:CreateCameraDebugs()
+	--
 end
 
 function Console:AchievementsDisabled()
