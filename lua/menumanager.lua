@@ -1638,32 +1638,35 @@ function Console:cmd_teleport(x,y,z,camx,camy)
 	end
 	local camera = player:camera()
 	local pos
-	if x and type(x) == "string" then 
-		if x == "aim" then
-			pos = Console:GetTaggedPosition()
-		elseif x == "back" then 
-			pos = Console.last_coords
-			Console.last_coords = player:position()
+	if x == "aim" then 
+		pos = Console:GetTaggedPosition()
+	elseif x == "back" then
+		pos = Console.last_coords
+		if not pos then
+			Log("ERROR: /tp back: No coordinates to go back to",{color=Color.red})
+			return
 		end
-	end
-	
-	if not (x and y and z) then --teleport to aim if no arguments supplied
-		if x and not (y or z) then --assume x is 
-			pos = mvector3.copy(player:movement():m_pos())
-			local rot = mvector3.copy(camera:rotation():y())
-			mvector3.multiply(rot,x)
-			mvector3.add(pos,rot)
---			Log("Teleporting a distance of " .. tostring(rot) .. " from " .. tostring(player:movement():m_pos()) .. " (Moved " .. tostring(x) .. " units across attitude " .. tostring(rot) .. ")")
---			Log(player:movement():m_pos() .. " + " .. tostring(rot) .. " = " .. tostring(rot + player:movement():m_pos()))
-		else
-			pos = Console:GetTaggedPosition()
+		Console.last_coords = player:position()
+	else
+		if not (x and y and z) then --teleport to aim if no arguments supplied
+			if x and not (y or z) then --assume x is 
+				pos = mvector3.copy(player:movement():m_pos())
+				local rot = mvector3.copy(camera:rotation():y())
+				mvector3.multiply(rot,x)
+				mvector3.add(pos,rot)
+	--			Log("Teleporting a distance of " .. tostring(rot) .. " from " .. tostring(player:movement():m_pos()) .. " (Moved " .. tostring(x) .. " units across attitude " .. tostring(rot) .. ")")
+	--			Log(player:movement():m_pos() .. " + " .. tostring(rot) .. " = " .. tostring(rot + player:movement():m_pos()))
+			else
+				pos = Console:GetTaggedPosition()
+			end
 		end
 --			pos = pos or Console:GetFwdRay().position
+		pos = pos or Vector3(tonumber(x or 0), tonumber(y or 0), tonumber(z or 0))
+		camx = tonumber(camx or player:rotation():yaw()) or player:rotation():yaw()
+		camy = tonumber(camy or player:rotation():pitch()) or player:rotation():pitch()
 	end
-	pos = pos or Vector3(tonumber(x or 0), tonumber(y or 0), tonumber(z or 0))
-	camx = tonumber(camx or player:rotation():yaw()) or player:rotation():yaw()
-	camy = tonumber(camy or player:rotation():pitch()) or player:rotation():pitch()
 	if player and pos then
+		Console.last_coords = player:position()
 		managers.player:warp_to(pos,Rotation(camx,camy,0))
 	end
 end
