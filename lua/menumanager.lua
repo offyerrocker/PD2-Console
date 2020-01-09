@@ -310,6 +310,72 @@ Console.command_history = {
 --	[1] = { name = "/say thing", func = (function value) } --as an example
 }
 
+Console.type_data = {
+	--base data types
+	["function"] = {
+		color = Color(0.5,1,1)
+	},
+	["string"] = {
+		color = Color(0.5,0.5,0.5)
+	},
+	["number"] = {
+		color = Color(0.66,1,0)
+	},
+	["table"] = {
+		color = Color(1,1,0)
+	},
+	["boolean"] = {
+		color = Color(0.3,0.3,1)
+	},
+	["userdata"] = {
+		color = Color(1,0.3,0.3)
+	},
+	["thread"] = {
+		color = Color(1,1,0.5)
+	},
+	["nil"] = {
+		color = Color(0.3,0.3,0.3)
+	},
+	
+	--userdata 
+	["Camera"] = {
+		color = Color(0.3,0.3,1),
+		example = managers.viewport and managers.viewport:get_current_camera()
+	},
+	["Workspace"] = {
+		color = Color(1,0.3,0.3),
+		example = managers.hud and managers.hud._workspace
+	},
+	["SoundSource"] = {
+		color = Color(1,0,1)
+--			managers.environmenteffect
+	},
+	["Vector3"] = {
+		color = Color(1,0.5,1),
+		example = Vector3()
+	},
+	["Rotation"] = {
+		color = Color(0.7,0.5,1),
+		example = Rotation()
+	},
+	["Panel"] = {
+		color = Color(0.5,0.6,1),
+		example = managers.hud and managers.hud._workspace:panel()
+	},
+	["Bitmap"] = {
+		color = Color(0.3,1,0.7)
+		--
+	},
+	["Color"] = {
+		color = Color(1,0.7,0.7),
+		example = Color.white
+	},
+	["Unit"] = {
+		color = Color(1,1,0.3),
+		example = managers.criminals and managers.criminals:get_any_unit()
+	}
+}
+
 Console.color_data = { --for ui stuff
 	scroll_handle = Color(0.1,0.3,0.7),
 	chat_color = Color("8650AC"),
@@ -328,7 +394,7 @@ Console.quality_colors = {
 	strange = Color("CF6A32"), --desat orangey
 	unusual = Color("8650AC"), --purple
 	haunted = Color("38F3AB"), --turquoise
-	collector = Color("AA0000"), --collector's, but i hate dealing with release + quotes in strings. dark red
+	collector = Color("AA0000"), --collector's, but i hate dealing with escape + quotes in strings. dark red
 	decorated = Color("FAFAFA"), --lighter grey?
 	community = Color("70B04A"), --also self-made; magenta
 	valve = Color("A50F79"), --burgundy?
@@ -714,19 +780,10 @@ function _G.logall(obj,max_amount)
 --generally best used to log all of the properties of a Class:
 --functions;
 --and values, such as numbers, strings, tables, etc.
-	local type_colors = {
-		["function"] = Color(0.5,1,1),
-		["string"] = Color(0.5,0.5,0.5),
-		["number"] = Color(0.66,1,0),
-		["Vector3"] = Color(1,0.5,1),
-		["Rotation"] = Color(0.7,0.5,1),
-		["Panel"] = Color(0.5,0.6,1),
-		["Bitmap"] = Color(0.3,1,0.7),
-		["Color"] = Color(1,0.7,0.7),
-		["Unit"] = Color(1,1,0.3),
-		["table"] = Color(1,1,0),
-		["userdata"] = Color(1,0,0)
-	}
+
+	
+	--i don't really know how else to do this
+--todo save this as a global to Console so that i can create and delete examples but save their references
 	
 	if not obj then 
 		Console:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
@@ -746,15 +803,15 @@ function _G.logall(obj,max_amount)
 		for k,v in pairs(obj) do 
 			local data_type = type(v)
 			if data_type == "userdata" then 
-				for i,j in pairs(type_colors) do 
-					if _G[i] and _G[i].type_id == v.type_id then 
-						data_type = i
+				for type_name,data in pairs(Console.type_data) do 
+					if data.example and getmetatable(data.example).__index == getmetatable(v).__index then
+						data_type = type_name
 						break
 					end
 				end
 			end
 			
-			Console:Log("Index [" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = type_colors[data_type]})
+			Console:Log("Index [" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = Console.type_data[data_type] and Console.type_data[data_type].color or Color(1,0.3,0.3)})
 		end
 		Console._failsafe = true --process can be stopped with "/stop" if log turns out to be recursive or too long in general
 	end
@@ -763,32 +820,41 @@ end
 function _G.search_class(tbl,s)
     s = tostring(s)
     Console:Log("Searching table " .. tostring(tbl) .. " for \"" .. s .. "\"")
+	local done_any = false
     if type(tbl) == "table" then 
-        for i,j in pairs(tbl) do 
+        for k,v in pairs(tbl) do 
+			local name = tostring(k)
             local msg = "TABLE"
             local col = Color.white
-            if string.match(i,s) then
-                local t = type(j)
-                if t == "function" then 
-                    col = Color(1,0.5,0.5)
-                    msg = ":" .. i .. "()"
-                else
-                    if t == "number" then 
-                        col = Color.white
-                    elseif t == "string" then 
-                        col = Color.yellow
-                    else
-                        col = Color(0,0.5,1)
-                    end
-                    msg = "." .. i .. " = " .. tostring(j)
-                end
+            if string.match(name,s) then
+				done_any = true
+                local t = type(v)
+				if t == "userdata" then 
+					for type_name,data in pairs(Console.type_data) do 
+						if data.example and getmetatable(data.example).__index == getmetatable(v).__index then 
+							t = type_name
+							break
+						end
+					end
+					msg = tostring(t) .. "." .. name .. " = " .. tostring(v)
+				else
+					if t == "function" then 
+						msg = tostring(t) .. ":" .. name .. "()"
+					else
+						msg = tostring(t) .. "." .. name .. " = " .. tostring(v)
+					end
+				end
+				col = Console.type_data[t] and Console.type_data[t].color or col
+
                 Console:Log(msg,{color = col})
             end
-            
         end
     else
-        Console:Log("Type is not table/class!",{color = Color.orange})
+        Console:Log("Type is not table/class!",{color = Color.red})
     end
+	if not done_any then 
+		Console:Log("No results for '" .. tostring(s) .."' in " .. tostring(tbl),{color = Console.quality_colors.strange})
+	end
 end
 
 function Console:searchall(...)
