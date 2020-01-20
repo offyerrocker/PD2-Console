@@ -519,6 +519,11 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "Shows the current system time, formatted.",
 		postargs = 0
 	},
+	getinfo = {
+		str = "Console:cmd_getinfo($ARGS)",
+		desc = "Calls debug.getinfo() with supplied arguments",
+		postargs = 0
+	},
 	epoch = {
 		str = "Console:cmd_epoch($ARGS)",
 		desc = "Displays the current time in seconds after epoch.",
@@ -804,9 +809,15 @@ function _G.logall(obj,max_amount)
 			local data_type = type(v)
 			if data_type == "userdata" then 
 				for type_name,data in pairs(Console.type_data) do 
-					if data.example and getmetatable(data.example).__index == getmetatable(v).__index then
-						data_type = type_name
-						break
+					if data.example then
+						local a1 = getmetatable(data.example)
+						local a2 = a1 and a1.__index
+						local b1 = getmetatable(v)
+						local b2 = b1 and b1.__index
+						if (b2 and a2) and (b2 == a2) then
+							data_type = type_name
+							break
+						end
 					end
 				end
 			end
@@ -1843,6 +1854,10 @@ function Console:cmd_ping(peerid)
 		end
 	end
 	
+end
+
+function Console:cmd_getinfo(...)
+	logall(debug.getinfo(...))
 end
 
 function Console:cmd_writetodisk(data,pathname) --yeah turns out there's already a BLT Util for this, SaveTable() / Utils.DoSaveTable. SO i'm just gonna redirect to that. 
