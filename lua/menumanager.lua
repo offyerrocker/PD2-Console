@@ -9,8 +9,6 @@
 
 - Fix failing to auto-newline scroll for new logs
 
-- Fix only returning one value in a pair (output as {...}, read table)
-
 - Fix postargs; should be max number of args instead
 
 - Allow (i forgot what the rest of this sentence was meant to be)
@@ -458,6 +456,11 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "Sorry, kids, you don't get the kool cheats unless you're me",
 		postargs = 0,
 		hidden = true
+	},
+	state = {
+		str = "Console:cmd_state($ARGS)",
+		desc = "Get or set local player state. Subcommands: set, get",
+		postargs = 0
 	},
 	exec = {
 		str = "Console:cmd_dofile($ARGS)",
@@ -1894,6 +1897,34 @@ function Console:cmd_stop(process_id) --untested; todo ban certain process names
 	return self:RemovePersistScript(process_id)
 end
 
+
+function Console:cmd_state(subcommand,value)
+	if not alive(managers.player:local_player()) then 
+		self:Log("PlayerState() ERROR: Player is not alive!",{color=Color.red})
+		return
+	end
+	local movement = managers.player:local_player():movement()
+	if not subcommand or subcommand == "get" then 
+		if not value then 
+			--todo get teammate state
+		end
+		self:Log("Current player state is " .. tostring(movement:current_state_name()),{color=Color("FFD700")})
+	elseif subcommand == "set" then 
+		--do that here
+		if value and movement._states[value] then 
+			value = tostring(value)
+			self:Log("Setting state to " .. value,{color = Color("FFD700")})
+			movement:change_state(value)
+			return
+		else
+			self:Log("ERROR: PlayerState(" .. tostring(subcommand) .. "," .. tostring(value) .. "): Unknown state",{color=Color.red})
+			return
+		end
+	end
+	self:Log("ERROR: PlayerState(" .. tostring(subcommand) .. "," .. tostring(value) .. "): Unknown subcommand",{color=Color.red})
+end
+
+
 function Console:ClearConsole()
 	local history = self._panel:child("command_history_frame"):child("command_history_panel")
 	for i=1,self.num_lines,1 do 
@@ -2820,6 +2851,60 @@ function Console:update(t,dt)
 	
 	self:update_restart_timer(t,dt)
 	
+	
+	--[[
+			local dir = self.tagged_position
+			if dir and managers.player:local_player() then 
+				local result
+				local diff = managers.viewport:get_current_camera():position() - dir 
+				local angle = managers.viewport:get_current_camera():rotation():yaw() % 360
+				local polar = (math.atan(diff.y/diff.x))
+				local x = diff.x
+				local y = diff.y
+				if y < 0 and x < 0 then 					
+				end
+				Console:SetTrackerValue("trackerc","X: " .. tostring(x))
+				Console:SetTrackerValue("trackerd","Y: " .. tostring(y))
+				Console:SetTrackerValue("trackera","polar: " .. tostring(polar))
+				Console:SetTrackerValue("trackerb","view angle: " .. tostring(angle))
+				result = (angle - NobleHUD.angle_from(managers.viewport:get_current_camera():position(),dir)) % 360
+--				Console:SetTrackerValue("trackerc",tostring(result))
+				
+				Console:SetTrackerValue("trackere","result: " .. tostring(math.abs(90 - result)))
+--				Console:SetTrackerValue("trackere","result: " .. tostring(result))
+--				local dir = Vector3()
+--				mvector3.set(dir,pos)
+--				mvector3.subtract(dir,pos)
+--				mvector3.normalize(dir)
+--				local dot = mvector3.dot(managers.viewport:get_current_camera():rotation(),dir)
+				
+--				local test = (100 * dir.x * 360) % 360
+--				Console:SetTrackerValue("trackera",dot)
+--				Console:SetTrackerValue("trackerb",tostring(test))
+--				Console:SetTrackerValue("trackerc",dot - test)
+--				Console:SetTrackerValue("trackerb",tostring((100 * dir.x) % 360))
+--				Console:SetTrackerValue("trackerc",tostring(aim % 360))
+--				Console:SetTrackerValue("trackerd",(aim % 360) + ((100 * dir.x) % 360))		
+			end
+				--]]
+			
+		--[[
+		local vc = managers.viewport:get_current_camera()
+		local tp = self.tagged_position
+		if tp then 
+--			local screen_pos = NobleHUD._ws:world_to_screen(vc,unit_pos)
+			local mp = vc:position()
+			local ma = vc:rotation():yaw()
+			local angle_from = NobleHUD.angle_from(tp.x,tp.y,mp.x,mp.y)
+			
+			Console:SetTrackerValue("trackera","angle to object:" .. angle_from)
+			Console:SetTrackerValue("trackerb","my aim:" .. ma)
+			Console:SetTrackerValue("trackerc",angle_from - ma)
+			Console:SetTrackerValue("trackerd",(90 + (angle_from - ma)))
+			Console:SetTrackerValue("trackere",tostring(math.abs(180 - (90 + (angle_from - ma))) > 90))
+			
+		end
+	--]]
 		--[[
 	local player = managers.player:local_player()
 	if player then 
@@ -2940,6 +3025,10 @@ function Console:update_hud(t,dt)
 		if unit_pos then 
 			bot_pos = self._ws:world_to_screen(viewport_cam,unit_pos)
 		end
+		
+		
+		
+		
 --[[
 		if top_pos and bot_pos then 
 			local center = math.abs(bot_pos.y - top_pos.y)
@@ -2954,12 +3043,17 @@ function Console:update_hud(t,dt)
 	
 		local hud_pos = (top_pos or bot_pos) or {x=-500,y=-500}
 --			local hud_pos = self._ws:world_to_screen(viewport_cam,head_pos or unit_pos) or {x = -1000,y = 300}
+--		if (math.abs(180 - (90 + (angle_from - aim))) <= 90) then 
+
 		unit_marker:set_center(hud_pos.x,hud_pos.y)
 	
 --		unit_marker:set_y(hud_pos.y)
 		
 		--*************STUFF GOES HERE THAT IS VERY IMPORTANT
---[[
+
+			
+			--[[
+		
 		Console:SetTrackerValue("trackera",tostring(mvector3.distance_sq(player:position(), unit:position())))
 --		Console:SetTrackerValue("trackerc",tostring(head_pos - viewport_cam:position()))
 --		Console:SetTrackerValue("trackere",tostring(angle_to_person))
@@ -2969,6 +3063,9 @@ local angle_between_asdkfjalsd = self:angle_between_pos(head_pos,viewport_cam:po
 		self:SetTrackerValue("trackerc",(angle_between_asdkfjalsd + -viewport_cam:rotation():yaw() + -90) % 360)
 		self:SetTrackerValue("trackerb",mvector3.distance(head_pos,viewport_cam:position()))
 		--]]
+
+			
+		
 		--*************VERY IMPORTANT STUFF 
 		
 		name:set_text(tostring(unit:base()._tweak_table or "ERROR"))
