@@ -46,14 +46,6 @@
 			"size" : 8
 		},
 		{
-			"type" : "DISABLED_toggle",
-			"id" : "id_dcc_toggle_1",
-			"title" : "dcc_toggle_title_1",
-			"description" : "dcc_toggle_desc_1",
-			"callback" : "commandprompt_toggle_1",
-			"value" : "none"
-		},
-		{
 			"type" : "multiple_choice",
 			"id" : "id_dcc_printbehavior",
 			"title" : "dcc_printbehavior_title",

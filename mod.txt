@@ -3,7 +3,7 @@
 	"description" : "Adds a toggle-able command prompt UI in-game with real-time Lua interaction,\nfor Lua mod development.\n\nCompatible with all HUD mods.",
 	"author" : "Offyerrocker",
 	"contact" : "Discord: Offyerrocker#3878",
-	"version" : "0.91",
+	"version" : "1.0",
 	"blt_version" : 2,
 	"image" : "dcc.png",
 	"priority" : 1,
@@ -16,10 +16,6 @@
 		{
 			"hook_id" : "lib/managers/achievementmanager",
 			"script_path" : "lua/achievementmanager.lua"
-		},
-		{
-			"hook_id" : "lib/managers/hudmanagerpd2",
-			"script_path" : "lua/playermanager.lua"
 		}
 	],
 	"persist_scripts" : [
@@ -27,13 +23,5 @@
 			"global" : "Console_DisablePersistScripts",
 			"script_path" : "lua/exec_persist.lua"
 		}
-	],
-	"updates" : [
-		{
-			"identifier" : "console"
-		}
-	],
-	"dependencies" : [
-		"holdthekey"
 	]
 }
