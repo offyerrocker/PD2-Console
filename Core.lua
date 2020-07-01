@@ -524,6 +524,10 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "In offline mode, pauses the game. In multiplayer, sets game speed to very, very, very slow.",
 		postargs = 0
 	},
+	forcestart = {
+		str = "Console:cmd_forcestart($ARGS)",
+		desc = "Force-starts the game. You must be host for this to work!"
+	},
 	quit = {
 		str = "Console:cmd_quit($ARGS)", 
 		desc = "Closes PAYDAY 2 executable (after a confirm prompt).",
@@ -1582,7 +1586,7 @@ function Console:cmd_whisper(target,message)
 		if multiple_recipients then 
 			local success
 			for peer_id, peer in pairs( managers.network:session():peers() ) do
-				if peer and (peer_id == target) and peer:ip_verified() and target[peer_id] then
+				if peer and peer:ip_verified() and target[peer_id] then
 					peer:send("send_chat_message", channel, message)
 					msg_str = "[To" .. tostring(peer:name()) .. "]: " .. message --todo timestamp
 					managers.chat:receive_message_by_peer(channel,managers.network:session():local_peer(),msg_str,Color(0.7,0.1,0.6))
@@ -1630,6 +1634,7 @@ function Console:cmd_dofile(path)
 		self:Log("Error: /exec " .. tostring(path) .. " failed (Invalid argument to path)",{color = Color.red})
 		return
 	end
+	return dofile(path)
 end
 
 function Console:cmd_quit(skip_confirm)
@@ -1743,6 +1748,27 @@ function Console:cmd_pause(active)
 	end
 end
 
+function Console:cmd_forcestart(superforce)
+	if not Network:is_server() then 
+		self:Log("Error: Cannot force-start game in which you are not the host",{color=Color.red})
+		return
+	elseif not Utils:IsInHeist() and Utils:IsInGameState() then
+		local desynced
+		for i, peer in pairs(managers.network:session():peers()) do
+			if not peer:synched() then
+				desynced = true
+				self:Log("Desynced from peer " .. tostring(peer:name()) .. " ( " .. tostring(i) .. " ) ",{color=Color.red})
+			end
+		end
+		if (not desynced) or (tostring(superforce) == "true") then
+			game_state_machine:current_state():start_game_intro()
+			self:Log("Force started the game!",{color=Color.green})
+		end
+	else	
+		self:Log("Error: You do not have a valid game session to force-start",{color=Color.red})
+	end
+end
+	
 function Console:cmd_restart(timer)
 	if not managers.game_play_central then 
 		self:Log("You must be in a game in order to restart it!",{color = Color.red})
@@ -1892,6 +1918,7 @@ function Console:cmd_state(subcommand,value) --set player state
 	end
 	self:Log("ERROR: PlayerState(" .. tostring(subcommand) .. "," .. tostring(value) .. "): Unknown subcommand",{color=Color.red})
 end
+
 
 
 
@@ -2148,6 +2175,9 @@ end
 
 function Console:update_custom_keybinds(t,dt)
 	if not self._custom_keybinds then
+		return
+	end
+	if Console._focus then 
 		return
 	end
 	for _id,keybind_data in pairs(self._custom_keybinds) do 
@@ -2963,7 +2993,7 @@ function Console:GetFwdRay(item)
 end
 
 function Console:SetFwdRayUnit(unit) 
-	if unit and alive(unit) and unit:character_damage() then --and not filtered_type(unit)
+	if unit and alive(unit) and unit:character_damage() and unit:base() then --and not filtered_type(unit)
 		self.tagged_unit = unit
 		Console:Remove_Popup("selected")
 		Console:Add_Popup({name = "selected",parent = unit,position = "head",lifetime = nil,color = Color.yellow,label = unit:base()._tweak_table})
@@ -3458,7 +3488,8 @@ function Console:_create_commandprompt(console_w,console_h)
 		text = "unit_name",
 		font = tweak_data.hud.medium_font,
 		font_size = font_size,
-		color = Color.white
+		color = Color.white,
+		visible = false
 	})
 	
 	local unit_hp = debug_hud_base:text({

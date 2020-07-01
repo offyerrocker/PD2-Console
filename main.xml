@@ -1,3 +1,3 @@
 <mod name="Console" author="Offyerrocker" global_key="Console" color="Color(0.6,0.9,1)" core_class="Core.lua">
-	<AssetUpdates id="24833" version="0.91" provider="modworkshop" install_directory = "mods/" version_is_number="false"/>
+	<AssetUpdates id="24833" version="1" provider="modworkshop" install_directory = "mods/" version_is_number="false"/>
 </mod>
