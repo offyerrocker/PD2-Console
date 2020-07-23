@@ -33,7 +33,7 @@ end
 
 Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", function( loc )
 	local path = Console.loc_path
-	
+--[[
 	for _, filename in pairs(file.GetFiles(path)) do
 		local str = filename:match('^(.*).txt$')
 		if str and Idstring(str) and Idstring(str):key() == SystemInfo:language():key() then
@@ -41,6 +41,7 @@ Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", functi
 			return
 		end
 	end
+	--]]
 	loc:load_localization_file(path .. "localization/english.txt")
 end)	
 
