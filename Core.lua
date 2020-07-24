@@ -113,6 +113,8 @@ Command Help
 	without arguments, /time will output "hh:mm:ss"
 --]]
 
+_G.Console = Console or {}
+
 Console.default_settings = {
 	font_size = 12,
 	margin = 2,
@@ -124,8 +126,7 @@ Console.default_settings = {
 }
 Console.settings = deep_clone(Console.default_settings)
 
-
-Console.path = Console:GetPath()
+Console.path = Console.path or (Console.GetPath and Console:GetPath() or ModPath)
 Console.loc_path = Console.path .. "localization/"
 Console.save_name = "command_prompt_settings.txt"
 Console.save_path = SavePath .. Console.save_name
@@ -1503,7 +1504,7 @@ function Console:cmd_help(cmd_name)
 			end
 		end
 	end
-	self:Log("Please visit https://github.com/offyerrocker/PD2-Console/wiki for more thorough documentation.",{color = Color.yellow})
+	self:Log("Please visit https://github.com/offyerrocker/Console/wiki for more thorough documentation.",{color = Color.yellow})
 	return
 end
 
@@ -3651,3 +3652,6 @@ function Console:_create_commandprompt(console_w,console_h)
 	Console._charlist = Console:BuildCharList()
 	
 end
+
+
+

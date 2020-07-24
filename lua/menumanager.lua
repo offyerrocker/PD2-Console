@@ -1,3 +1,9 @@
+if not Console then 
+	--you will likely encounter other problems if this even runs
+	log("!!!!!!!!!!!!!!!!! [Console] ERROR: Console global_key/core_class was not properly loaded from main.xml! Manually loading Core.lua via dofile()")
+	Console = { path = ModPath }
+	dofile(ModPath .. "Core.lua")
+end
 
 local orig_togglechat = MenuManager.toggle_chatinput
 function MenuManager:toggle_chatinput(...) --prevent the chat window from showing up when using console
@@ -32,7 +38,6 @@ end
 
 
 Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", function( loc )
-	local path = Console.loc_path
 --[[
 	for _, filename in pairs(file.GetFiles(path)) do
 		local str = filename:match('^(.*).txt$')
@@ -42,7 +47,7 @@ Hooks:Add("LocalizationManagerPostInit", "commandprompt_addlocalization", functi
 		end
 	end
 	--]]
-	loc:load_localization_file(path .. "localization/english.txt")
+	loc:load_localization_file(Console.loc_path .. "english.txt")
 end)	
 
 Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manager)
@@ -86,7 +91,6 @@ Hooks:Add("MenuManagerInitialize", "commandprompt_initmenu", function(menu_manag
 	end
 	
 	MenuCallbackHandler.commandprompt_toggle = function(self) --keybind
---		log("*********************Pressed Console togglebutton")
 		if (Input and Input:keyboard() and not Console:_shift()) then 
 			Console:ToggleConsoleFocus()
 		end
