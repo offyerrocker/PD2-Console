@@ -1694,15 +1694,24 @@ function Console:cmd_teleport(x,y,z,camx,camy)
 	end
 	local camera = player:camera()
 	local pos
-	if x == "aim" then 
+	if x == "aim" or x == "look" then 
 		pos = Console:GetTaggedPosition()
-	elseif x == "back" then
+	elseif x == "back" or x == "previous" or x == "prev" then
 		pos = Console.last_coords
 		if not pos then
 			Log("ERROR: /tp back: No coordinates to go back to",{color=Color.red})
 			return
 		end
 		Console.last_coords = player:position()
+	elseif x == "teammate" or x == "peer" or x == "player" then 
+		y = tonumber(y)
+		if y and managers.network:session()._peers_all[y] then 
+			local teammate = managers.network:session()._peers_all[y]
+			if teammate and alive(teammate.unit) then 
+				pos = teammate.unit:position()
+				--todo use movement extension m_pos()
+			end
+		end
 	else
 		if not (x and y and z) then --teleport to aim if no arguments supplied
 			if x and not (y or z) then --assume x is 
@@ -1924,6 +1933,8 @@ end
 
 
 function Console:update(t,dt)
+
+	
 	self:update_custom_keybinds(t,dt)
 
 	self:update_scroll(t)
@@ -1935,8 +1946,6 @@ function Console:update(t,dt)
 	self:update_persist_scripts(t,dt)
 	
 	self:update_restart_timer(t,dt)
-	
-	
 	--[[
 			local dir = self.tagged_position
 			if dir and managers.player:local_player() then 
