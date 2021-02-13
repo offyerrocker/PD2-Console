@@ -404,6 +404,10 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "Outputs basic mod info about Console.",
 		postargs = 0
 	},
+	bltmods = {
+		str = "Console:cmd_bltmods($ARGS)",
+		desc = "Lists or searches for BLT mods by name."
+	},
 	contact = {
 		str = "Console:cmd_contact()",
 		desc = "Outputs the mod author's contact info.",
@@ -529,6 +533,10 @@ Console.command_list = { --in string form so that they can be called with loadst
 		str = "Console:cmd_forcestart($ARGS)",
 		desc = "Force-starts the game. You must be host for this to work!"
 	},
+	partname = {
+		str = "Console:cmd_partname($ARGS)",
+		desc = "Searches for weapon attachments by matching a localized or internal name. Returns the internal id of the attachment(s)."
+	},
 	quit = {
 		str = "Console:cmd_quit($ARGS)", 
 		desc = "Closes PAYDAY 2 executable (after a confirm prompt).",
@@ -544,10 +552,24 @@ Console.command_list = { --in string form so that they can be called with loadst
 		desc = "Writes a table to the disk.",
 		postargs = 0
 	},
+	skillinfo = {
+		str = "Console:cmd_skillinfo($ARGS)",
+		desc = "Retrieves information on a skill by exact id match, such as associated upgrades, internal and localized names, localization id, and icon xy.",
+		postargs = 0
+	},
+	skillname = {
+		str = "Console:cmd_skillname($ARGS)",
+		desc = "Searches for skills by matching a localized or internal name, and retrieves information such as description, internal and localized names, and icon xy.",
+		postargs = 0
+	},
 	stop = {
 		str = "Console:cmd_stop($ARGS)",
 		desc = "Stops existing persist scripts, or any current logall() process.",
 		postargs = 0
+	},
+	weaponname = {
+		str = "Console:cmd_weaponname($ARGS)",
+		desc = "Searches for weapons by matching a localized or internal name."
 	},
 	adventure = {
 		str = "Console:cmd_adventure($ARGS)",
@@ -1929,8 +1951,188 @@ function Console:cmd_state(subcommand,value) --set player state
 	self:Log("ERROR: PlayerState(" .. tostring(subcommand) .. "," .. tostring(value) .. "): Unknown subcommand",{color=Color.red})
 end
 
+function Console:cmd_skillname(...)
+	
+	local results = {}
+	local name = string.lower(table.concat({...}," "))
+	if not name or name == "" then
+		Log("Error: /skillname: No name provided!",{color=Color.red})
+		return 
+	end
+	local skill_names
+	Log("--- Searching for skill: " .. name .. "...")
+	
+	for skill_id,data in pairs(tweak_data.skilltree.skills) do 
+		if type(data) == "table" and (data.name_id or data.desc_id) then 
+			local found
+			local localized_name = data.name_id and managers.localization:text(data.name_id) or "[NAME ERROR]"
+			local localized_desc = data.desc_id and managers.localization:text(data.desc_id) or "[DESC ERROR]"
+			if string.find(string.lower(skill_id),name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name}
+			elseif string.find(string.lower(localized_name),name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name}
+			elseif data.name_id and string.find(data.name_id,name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name}
+			elseif string.find(string.lower(localized_desc),name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name,desc = localized_desc}
+			elseif data.desc_id and string.find(data.desc_id,name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name,desc_id = data.desc_id}
+			end
+		end
+	end
+	
+	local formatted = {
+		title = "Name: $title",
+		name_id = "name_id: $name_id",
+		desc_id = "desc_id: $desc_id",
+		desc = "Description: $desc",
+		upgrade_id = "upgrade_id = $upgrade_id"
+	}
+	
+	for skill_id,skill_name_data in pairs(results) do 
+		Log("Skill: " .. tostring(skill_id),{color=Color.yellow})
+		for key,value in pairs(skill_name_data) do 
+			if formatted[key] then 
+				local _value = string.gsub(value,"\n"," | ")
+				Log(string.gsub(formatted[key],"$" .. key,_value),{color=Color(1,0.5,0.25)})
+			end
+		end
+	end
+	
+	Log("---Search ended.")
+	return results
+end
+
+function Console:cmd_skillinfo(subcmd,skill_id)
+	if not skill_id then 
+		if not subcmd then 
+			Log("No skill id provided!",{color=Color.red})
+			return
+		else
+			skill_id = subcmd
+		end
+		local skill_data = tweak_data.skilltree.skills[skill_id]
+		if not skill_data then 
+			Log("Invalid skill id: " .. tostring(skill_id),{color=Color.red})
+			return
+		end
+		Log("Skill " .. tostring(skill_id) .. ":",{color=Color(1,0.5,0)})
+		Log(managers.localization:text(skill_data.name_id),{color=Color.yellow})
+		local desc = string.split(managers.localization:text(skill_data.desc_id),"\n")
+		if #desc > 1 then 
+			for _,desc_part in pairs(desc) do 
+				Log(desc_part,{color=Color(0,0.5,1)})
+			end
+		else
+			Log(managers.localization:text(skill_data.desc_id),{color=Color(0,0.5,1)})
+		end
+		if type(skill_data.upgrades) == "table" then 
+			local done_any
+			for i,upgrade_name in pairs(skill_data.upgrades) do 
+				if not done_any then 
+					Log("    Upgrades:")
+				end
+				done_any = true
+				Log(upgrade_name)
+			end
+			if not done_any then 
+				Log("No upgrades for this skill found!")
+			end
+		end
+		if type(skill_data.icon_xy) == "table" then
+			Log("icon_xy: { " .. table.concat(skill_data.icon_xy,",") .. " }")
+		end
+		return
+	end
+end
 
 
+function Console:cmd_bltmods(searchname)
+	local searchname_lower
+	if searchname then 
+		searchname_lower = string.lower(searchname)
+		Log("----- Searching for " .. tostring(searchname) .. " in mods list...",{color=Color.yellow})
+	else
+		Log("----- Listing mods by name...",{color=Color.yellow})
+	end
+	local my_mods_list = MenuCallbackHandler:build_mods_list()
+	local result = {}
+	local sorted_list = {}
+	for index,data in pairs(my_mods_list) do
+		table.insert(sorted_list,index)
+	end
+	
+	table.sort(sorted_list)
+	
+	for _,index in pairs(sorted_list) do 
+		local data = my_mods_list[index]
+		if data then 
+			local name = data[1]
+			local foldername = data[2]
+			local name_lower = name and string.lower(name)
+			if searchname_lower then 
+				if (string.find(name_lower,searchname_lower) or string.find(name_lower,searchname_lower)) then 
+					table.insert(result,data)
+					Log("Found mod match: " .. tostring(name) .. " / " .. tostring(foldername),{color=Color(1,0.5,0)})
+				end
+			elseif name then 
+				Log(name)
+			end
+		end
+	end
+	
+	if searchname then 
+		Log("----- Search concluded",{color=Color.yellow})
+		return result
+	else
+		Log("----- Mods list ends",{color=Color.yellow})
+		return my_mods_list
+	end
+end
+
+function Console:cmd_weaponname(...)
+	local results = {}
+	local name = table.concat({...}," ")
+	if not name or name == "" then
+		Log("Error: /weaponname: No name provided!",{color=Color.red})
+		return 
+	end
+	Log("--- Searching for weapon: " .. name .. "...")
+	for weapon_id,data in pairs(tweak_data.weapon) do 
+		local localized_name = data.name_id and managers.localization:text(data.name_id)
+		if localized_name and string.find(string.lower(localized_name),string.lower(name)) then 
+				table.insert(results,weapon_id)
+				Log(tostring(weapon_id) .. " / " .. localized_name,{color=Color(1,1,0)})
+		elseif string.find(string.lower(weapon_id),string.lower(name)) then 
+			table.insert(results,weapon_id)
+			Log(tostring(weapon_id) .. " / " .. tostring(localized_name or "UNKNOWN"),{color=Color(1,0.5,0)})
+		end
+	end
+	Log("---Search ended.")
+	return results
+end
+
+function Console:cmd_partname(...)
+	local results = {}
+	local name = table.concat({...}," ")
+	if not name or name == "" then
+		Log("Error: /partname: No name provided!",{color=Color.red})
+		return 
+	end
+	Log("--- Searching for part: " .. name .. "...")
+	for part_id,data in pairs(tweak_data.weapon.factory.parts) do 
+		local localized_name = data.name_id and managers.localization:text(data.name_id)
+		if localized_name and string.find(string.lower(localized_name),string.lower(name)) then 
+				table.insert(results,part_id)
+				Log(tostring(part_id) .. " / " .. localized_name,{color=Color(1,1,0)})
+		elseif string.find(string.lower(part_id),string.lower(name)) then 
+			table.insert(results,part_id)
+			Log(tostring(part_id) .. " / " .. tostring(localized_name or "UNKNOWN"),{color=Color(1,0.5,0)})
+		end
+	end
+	Log("---Search ended.")
+	return results
+end
 
 function Console:update(t,dt)
 
