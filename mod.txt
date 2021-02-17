@@ -5,7 +5,7 @@
 	"contact" : "Discord: Offyerrocker#3878",
 	"version" : "2",
 	"blt_version" : 2,
-	"image" : "dcc.png",
+	"image" : "icon.png",
 	"priority" : 1,
 	"color" : "255 255 255",
 	"hooks" : [
