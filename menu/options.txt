@@ -21,6 +21,7 @@
 			"description" : "dcc_keybind_debughud_desc",
 			"keybind_id" : "dcc_keybind_debughud",
 			"run_in_game" : true,
+			"run_in_menu" : true,
 			"func" : "commandprompt_keybind_debughud"
 		},
 		{
