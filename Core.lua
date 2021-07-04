@@ -126,6 +126,8 @@ Console.default_settings = {
 }
 Console.settings = deep_clone(Console.default_settings)
 
+Console.SECONDARY_ACTIVATION_KEYBIND = "right shift"
+
 Console.path = Console.path or (Console.GetPath and Console:GetPath() or ModPath)
 Console.loc_path = Console.path .. "localization/"
 Console.save_name = "command_prompt_settings.txt"
@@ -688,6 +690,7 @@ function Console:LoadKeybinds()
 --read bind info and manually bind: do not use cmd_bind() since it would call SaveKeybinds()
 	local file = io.open(self.keybinds_path, "r")
 	if (file) then
+		self:Log("Restoring saved keybinds:")
 		for keybind_id, data in pairs(json.decode(file:read("*all"))) do
 			if data then 
 				local func_str = data.func_str
@@ -704,7 +707,7 @@ function Console:LoadKeybinds()
 						func_str = func_str,
 						category = k_category,
 					}
-					self:Log("Restoring saved keybinds: Bound " .. keybind_id .. " to " .. func_str,{color = self.quality_colors.unique})
+					self:Log("Bound " .. keybind_id .. " to " .. func_str,{color = self.quality_colors.unique})
 				else
 					local cat = data.k_category or "[nil bind type]"
 					self:Log("Could not read saved " .. cat .. " : " .. tostring(keybind_id),{color = Color.red})			
@@ -713,6 +716,7 @@ function Console:LoadKeybinds()
 				self:Log("Bad data for saved keybind: " .. keybind_id,{color = Color.red})
 			end
 		end
+		self:Log("Done restoring keybinds.")
 	else
 		self:SaveKeybinds()
 	end
@@ -2135,7 +2139,11 @@ function Console:cmd_partname(...)
 end
 
 function Console:update(t,dt)
-
+	if managers.hud and managers.hud._chat_focus then 
+		if Input:keyboard():pressed(Idstring(Console.SECONDARY_ACTIVATION_KEYBIND)) then 
+			self:ToggleConsoleFocus()
+		end
+	end
 	
 	self:update_custom_keybinds(t,dt)
 
@@ -3072,6 +3080,8 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 	local panel = self._panel
 	local input_text = panel:child("input_text")
 	
+	self.selected_history = false
+	
 	local cmd_raw = input_text:text()
 	if cmd_raw == "" then 
 		--empty command; do nothing
@@ -3099,8 +3109,6 @@ function Console:enter_key_callback(from_history) --interpret cmd input from the
 			for k,v in pairs(result) do 
 				if k > 1 then 
 					self:Log(v,{color = self.color_data.result_color})
-				elseif k ~= 1 then
-					self:Log("IDK what this iis!!!! " .. tostring(k))
 				end
 			end
 --			self:logall(result,{color = self.color_data.result_color})
