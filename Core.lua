@@ -183,14 +183,17 @@ function Console:Add_Popup(params)
 	local panel = self._ws:panel()
 	local name = tostring(params.name or self.popups_count)
 	if self.popups[name] then 
-		self:Log("ERROR: Add_Popup() [" .. name .. "] already exists!",{color = Color(0.5,1,0)}) --orange
-		return
+		self:Remove_Popup(name)
+--		self:Log("ERROR: Add_Popup() [" .. name .. "] already exists!",{color = Color(0.5,1,0)}) --orange
+--		return
 	end
+	
 	local parent = params.parent
 	local position = params.position
 	local lifetime = params.lifetime
 	
-	local result = {
+	local result = params
+	--[[{
 		label = params.label,
 		update = params.update,
 		destroy = params.destroy,
@@ -198,7 +201,7 @@ function Console:Add_Popup(params)
 		color = params.color,
 		text = params.text,
 		bitmap = params.bitmap
-	}
+	}--]]
 	
 	if parent and alive(parent) then 
 		result.unit = parent
@@ -210,15 +213,20 @@ function Console:Add_Popup(params)
 		self:Log("ERROR: Add_Popup() No source or parent",{color = Color.red})
 		return
 	end
+	
+	local popup_name = "popup_" .. name
+--	if alive(panel:child(popup_name)) then 
+--		panel:remove(panel:child(popup_name))
+--	end
 
 	if result.text then 
 		if result.label then 
-			result.text.text = result.label
+			result.text.text = result.label --set_text()?
 		end
 		result.text_element = panel:text(text)
 	elseif result.label then 
 		result.text_element = panel:text({
-			name = "popup_" .. name,
+			name = popup_name,
 			text = result.label,
 			layer = 1,
 --			align = "center",
@@ -237,6 +245,7 @@ function Console:Add_Popup(params)
 	self.popups_count = self.popups_count + 1
 	self.popups[name] = result
 end
+
 function Console:Remove_Popup(name)
 	local panel = self._ws:panel()
 	local popup = self.popups[name] 
@@ -257,14 +266,21 @@ function Console:Remove_Popup(name)
 		return
 	end
 end
+
 function Console:update_hud_popups(t,dt)
-	if not self._ws then return end
+	if not alive(self._ws) then return end
+	local current_camera = managers.viewport:get_current_camera()
+	if not current_camera then 
+		return
+	end
+	local camaim = current_camera:rotation():yaw()
+	local cam_pos = current_camera:position()
 	
 	local panel = self._ws:panel()
 	for k,v in pairs(self.popups) do 
 		
 		local pos = nil
-		if v.position and type(v.position) == "Vector3" then 
+		if v.position and getmetatable(v.position) == getmetatable(Vector3()) then 
 			pos = v.position
 		elseif (v.unit ~= nil) and alive(v.unit) then 
 			pos = v.unit:m_pos()
@@ -272,19 +288,25 @@ function Console:update_hud_popups(t,dt)
 				pos = v.unit:movement():m_head_pos()
 			end
 		end
+		
 		if pos then 
-			local hud_pos = (self._ws:world_to_screen(managers.viewport:get_current_camera(),pos)) or {}
-			local _,_,text_w,_ = v.text_element:text_rect()
-			v.text_element:set_x((hud_pos.x or 0) - (text_w / 2))
-			v.text_element:set_y(hud_pos.y or 0)
-			if v.bitmap_element then 
+			local angle_from = (((-90 + self:angle_between_pos(cam_pos.x,cam_pos.y,pos.x,pos.y)) - camaim) % 360) - 180
+			visible = math.abs(angle_from) < 90
+			local hud_pos = self._ws:world_to_screen(current_camera,pos) or {}
+			if alive(v.text_element) then 
+				local _,_,text_w,_ = v.text_element:text_rect()
+				v.text_element:set_x((hud_pos.x or 0) - (text_w / 2))
+				v.text_element:set_y(hud_pos.y or 0)
+				v.text_element:set_visible(visible)
+			end
+			if alive(v.bitmap_element) then 
 				v.bitmap_element:set_x(hud_pos.x or 0)
 				v.bitmap_element:set_y(hud_pos.y or 0)
+				v.bitmap_element:set_visible(visible)
 			end
-			
 		end
 		if v.update then
-			v.update(t,dt,v)
+			v.update(v,t,dt)
 		end
 	end
 end
@@ -572,6 +594,14 @@ Console.command_list = { --in string form so that they can be called with loadst
 	weaponname = {
 		str = "Console:cmd_weaponname($ARGS)",
 		desc = "Searches for weapons by matching a localized or internal name."
+	},
+	["goto"] = {
+		str = "Console:cmd_gotonav($ARGS)",
+		desc = "Teleports to the nav segment with the given id."
+	},
+	nav = {
+		str = "Console:cmd_editnav($ARGS)",
+		desc = "Add or remove navs for the current level."
 	},
 	adventure = {
 		str = "Console:cmd_adventure($ARGS)",
@@ -2047,6 +2077,132 @@ function Console:cmd_skillinfo(subcmd,skill_id)
 			Log("icon_xy: { " .. table.concat(skill_data.icon_xy,",") .. " }")
 		end
 		return
+	end
+end
+
+function Console:cmd_gotonav(id)
+	id = tonumber(id)
+	if id then 
+		local nav = managers.navigation._nav_segments[id]
+		local pos = nav and nav.pos
+		if pos then 
+			self:cmd_teleport(pos.x,pos.y,pos.z)
+		end
+	end
+end
+
+function Console:cmd_editnav(subcmd,id)
+	local function upd_func(label, t,dt)
+		if alive(label.text_element) then 
+			if KineticHUD and KineticHUD._cache.cartographer_data then 
+				if HoldTheKey and HoldTheKey:Key_Held("left shift") then 
+					label.text_element:set_text(managers.localization:text(KineticHUD._cache.cartographer_data.nav_segments[tostring(label.nav_segment)]))
+				else
+					label.text_element:set_text(tostring(label.label))
+				end
+			end
+		end
+	end
+	if (subcmd == "clear") or (subcmd == "removeall") or (subcmd == "remove" and id == "all") then 
+		for _id,v in pairs(managers.navigation._nav_segments) do 
+			self:Remove_Popup("navsegment_" .. tostring(_id))
+		end
+	elseif subcmd == "generate" then 
+		id = id or managers.job:current_stage_data() and managers.job:current_stage_data().level_id
+		if id then 
+			local segments = managers.navigation._nav_segments
+			if segments then 
+				KineticHUD:GenerateCartographerData(id,segments)
+				self:Log("Generating stage data for " .. tostring(id) .. "... " .. tostring(#segments) .. " found")
+			else
+				self:Log("Error: no nav segments found for " .. tostring(id))
+			end
+		else
+			self:Log("ERROR: No stage data found")
+		end
+	elseif (subcmd == "addall") or (subcmd == "add" and id == "all") then
+		local msg = ""
+		local num = #managers.navigation._nav_segments
+		if num > 99 then 
+			msg = " Good luck!"
+		end
+		self:Log(tostring(num) .. " segments found." .. msg)
+		for _id,v in pairs(managers.navigation._nav_segments) do 
+			self:Add_Popup({
+				name = "navsegment_" .. tostring(_id),
+				position = v.pos,
+				nav_segment = _id,
+				label = tostring(_id),
+				update = upd_func
+			})
+		end
+	elseif subcmd == "next" then 
+		id = tonumber(id)
+		if id then 
+			local nearest
+			for _id,v in pairs(managers.navigation._nav_segments) do 
+				if (not nearest or _id < nearest) and _id > id then 
+					nearest = _id
+				end
+			end
+			local remaining = 0
+			if nearest then 
+				remaining = 1
+				for _id,v in pairs(managers.navigation._nav_segments) do 
+					if _id > nearest then 
+						remaining = remaining + 1
+					end
+				end
+			end
+			self:Log("Next nav is " .. tostring(nearest) .. " (" .. tostring(remaining) .. " to go)")
+		end
+	elseif subcmd == "list" then 
+		logall(managers.navigation._nav_segments)
+	elseif subcmd == "check" then 
+		local total_count = 0
+		local unmarked_count = 0
+		local marked_count = 0
+		for _,v in pairs(managers.navigation._nav_segments) do 
+			total_count = total_count + 1
+			if v.location_id ~= "location_unknown" then 
+				self:Log(tostring(v.location_id) .. " : " .. managers.localization:text(v.location_id))
+				marked_count = marked_count + 1
+			else
+				unmarked_count = unmarked_count + 1
+			end
+		end
+		self:Log("Result: " .. tostring(marked_count) .. " registered segments, " .. tostring(unmarked_count) .. " unmarked, " ..  tostring(total_count) .. " total")
+	elseif subcmd == "load" then 
+		if KineticHUD then
+			local level_id = id or managers.job:current_stage_data() and managers.job:current_stage_data().level_id
+			if level_id then 
+				managers.localization:load_localization_file(KineticHUD._mod_path .. "localization/english.json")
+				KineticHUD:LoadCartographerData(level_id)
+			end
+		end
+	elseif subcmd == "unload" then 
+		if KineticHUD then 
+			KineticHUD._cache.cartographer_data = nil
+		end
+	else
+		local nav = managers.navigation._nav_segments[id]
+		if nav then 
+			if subcmd == "remove" then 
+				self:Remove_Popup("navsegment_" .. tostring(id))
+			elseif subcmd == "all" then 
+				self:Add_Popup({
+					name = "navsegment_" .. tostring(id),
+					position = nav.pos,
+					nav_segment = id,
+					label = tostring(id),
+					update = update_func
+				})
+			else
+				self:Log("ERROR: Unknown subcmd to /nav: " .. tostring(subcmd) .. " " .. tostring(id))
+			end
+		else
+			self:Log("ERROR: Unknown nav: " .. tostring(id))
+		end
 	end
 end
 
