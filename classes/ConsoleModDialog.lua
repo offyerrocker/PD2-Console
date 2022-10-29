@@ -852,7 +852,7 @@ function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
 	local d_y = (max_y - min_y) * (ratio - 0.5)
 	
 --	self._prompt:set_text(string.format("%i %i %i %0.2f",min_y,max_y,d_y,ratio))
-	self._prompt:set_text(string.format("%i %i %i",history_text:y(),d_y,ratio))
+--	self._prompt:set_text(string.format("%i %i %i",history_text:y(),d_y,ratio))
 	
 	local tx,ty,tw,th = history_text:text_rect()
 --	local to_y = math.clamp(history_text:y() + d_y,min_y,max_y)
@@ -867,11 +867,11 @@ function ConsoleModDialog:set_scroll_bar_position(ratio)
 	local scrollbar_handle = self._scrollbar_handle
 	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
 	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
-	local scrollbar_moves_top_to_bottom = false
-	if scrollbar_moves_top_to_bottom then
-		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
-	else
+	local scrollbar_direction_reversed = self.inherited_settings.window_scroll_direction_reversed
+	if scrollbar_direction_reversed then
 		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
+	else
+		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
 	end
 end
 

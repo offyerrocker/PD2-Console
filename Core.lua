@@ -44,8 +44,8 @@ do --init mod vars
 --	Console._menu_path = mod_path .. "menu/options.json"
 	Console._default_localization_path = mod_path .. "localization/english.json"
 	Console._save_path = save_path .. "console_settings.ini"
-	Console._output_log_file_path = save_path .. "console_input_log.txt" --store recent console output; colors and data types are not preserved
-	Console._input_log_file_path = save_path .. "console_output_log.txt" -- store recent console input
+	Console._output_log_file_path = save_path .. "console_output_log.txt" --store recent console output; colors and data types are not preserved
+	Console._input_log_file_path = save_path .. "console_input_log.txt" -- store recent console input
 	Console.console_window_menu_id = "console_window_menu" --not used
 	Console.default_palettes = {
 		"ff0000",
@@ -94,6 +94,7 @@ do --init mod vars
 		log_buffer_enabled = true,
 		log_buffer_interval = 10, --seconds between flushes
 		window_scrollbar_lock_enabled = true,
+		window_scroll_direction_reversed = false,
 		window_text_normal_color = 0xffffff,
 		window_text_highlight_color = 0xffd700, --the color of the highlight box around the text
 		window_text_stale_color = 0x777777, --the color of any logs pulled from history log (read from disk, ie from previous state/session)
@@ -107,7 +108,7 @@ do --init mod vars
 		window_w = 1000,
 		window_h = 600,
 		window_font_name = "fonts/font_bitstream_vera_mono",
-		window_font_size = 12,
+		window_font_size = 10,
 		window_blur_alpha = 0.75,
 		window_bg_color = 0x000000,
 		window_bg_alpha = 0.5,
@@ -125,6 +126,7 @@ do --init mod vars
 		"output_log_enabled",
 		"log_buffer_enabled",
 		"window_scrollbar_lock_enabled",
+		"window_scroll_direction_reversed",
 		"window_text_normal_color",
 		"window_text_highlight_color",
 		"window_text_selected_color",
