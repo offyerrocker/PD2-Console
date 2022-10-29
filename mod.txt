@@ -10,26 +10,8 @@
 	"color" : "255 255 255",
 	"hooks" : [
 		{
-			"hook_id" : "lib/managers/menumanager",
-			"script_path" : "lua/menumanager.lua"
-		},
-		{
-			"hook_id" : "lib/managers/achievementmanager",
-			"script_path" : "lua/achievementmanager.lua"
-		},
-		{
-			"hook_id" : "lib/units/beings/player/states/playerstandard",
-			"script_path" : "lua/playerstandard.lua"
-		},
-		{
-			"hook_id" : "lib/units/beings/player/states/playermaskoff",
-			"script_path" : "lua/playermaskoff.lua"
-		}
-	],
-	"persist_scripts" : [
-		{
-			"global" : "Console_DisablePersistScripts",
-			"script_path" : "lua/exec_persist.lua"
+			"hook_id" : "lib/managers/dialogs/dialog",
+			"script_path" : "classes/ConsoleModDialog.lua"
 		}
 	]
 }
