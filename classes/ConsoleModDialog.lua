@@ -2,10 +2,9 @@
 todo main features:
 
 
-scroll function
-	--lock scrollbar (disable autoscroll on new lines)
 
-key repetition
+scroll function
+	--lock scrollbar (disable autoscroll on new lines) not working
 
 tab key autocomplete
 
@@ -13,6 +12,10 @@ up/down history
 mouse-selectable output text
 mouse-selectable input text
 
+color range is broken on adding new history text
+Input Log is not saving
+Output Log is not displaying
+wrong callback on mouse_left_click_callback (should be mouse_left_click_release)
 --]]
 
 
@@ -32,59 +35,40 @@ function ConsoleModDialog:init(manager,data)
 --	Dialog.init(self,manager,data)
 	self._manager = manager
 	self._data = data or {}
---	self._font_asset_load_done = self._data.font_asset_load_done
-	self._data.font_name = self._data.font_name or self.DEFAULT_FONT_NAME
-	
-	self._history_log = self._data.history or {
-	--[[
-		[1] = {
-			input = "/echo hello -p",
-			saved_input = nil,
-			func = function 0xd3adb33f --from loadstring
-		},
-		[2] = {
-			raw_input = "//", --shortcut for repeat previous execution
-			saved_input = "/echo hello -p",
-			func = function 0xd3adb33f --same direct reference to previous function
-		},
-		[3] = {
-			raw_input = "/print $hello",
-			saved_input = nil,
-			func = function 0x1234567 --different direct referencce
-		},
-		[4] = {
-			raw_input = "///", --shortcut for re-interpret previous input and execute (eg. if the value of a var has changed since previous execution)
-			saved_input = "/print $hello",
-			re-evaluate = true, --cue loadstring of input
-			func = new function --result of loadstring
-		},
-		[5] = {
-			raw_input = "/set $hello 69", --set var $hello to 69
-			func = new function --result of loadstring
-		}
-	--]]
-	}
+	self._font_asset_load_done = self._data.font_asset_load_done
 	
 	self._button_text_list = {}
 	self:init_button_text_list()
 	
-	self._prompt_string = data.prompt_string or "> "
 	self._input_enabled = false
+
+	--this functions as the main "enabled" flag
+	self._visible = false
 	
-	self._visible = false --enabled flag
+--	self._undo_steps = {} --undo? more like TODO
+
+	self._current_input_text_string = "" --this is only to be used for navigating the input history index
+	self._input_history_index = 0
+	--todo show history input eg. 1/13475 
+	--todo preview history input
 	
+	self.inherited_settings = data.console_settings or {} --readonly! this is the Console settings table!
+	
+	
+	
+	
+	
+	self._output_log = self._data.output_log or {}
+	self._input_log = self._data.input_log or {}
+	
+	--callbacks and input
 	self._controller = self._data.controller or manager:_get_controller()
 	self._confirm_func = callback(self, self, "button_pressed_callback") --automatic menu input for this is unreliable; use manual enter key detection (double input won't matter since the input text is wiped on send)
 	self._cancel_func = callback(self, self, "dialog_cancel_callback")
 	self._send_text_callback = self._data.send_text_callback 
-
-	self._caret_index = 1
+	self._save_settings_callback = self._data.save_settings_callback
 	
-	self._caret_blink_speed = 360
-	self._caret_blink_t = 0
-	self._caret_blink_alpha_high = 0.95
-	self._caret_blink_alpha_low = 0
-	
+	--interface callback vars
 	self._mouse_x = 0
 	self._mouse_y = 0
 	self._old_x = 0
@@ -99,11 +83,15 @@ function ConsoleModDialog:init(manager,data)
 	self._mouse_drag_y_start = nil
 	self._target_drag_x_start = nil
 	self._target_drag_y_start = nil
-	self._scrollbar_lock_enabled = data.scrollbar_lock_enabled or false
-	self._selection_dir = 1 
+	self._scrollbar_lock_enabled = self.inherited_settings.scrollbar_lock_enabled or false
 	
-	self._gui_done = false
-
+	--text ui 
+	self._selection_dir = 1 
+	self._caret_blink_speed = 360
+	self._caret_blink_t = 0
+	self._caret_blink_alpha_high = 0.95
+	self._caret_blink_alpha_low = 0
+	
 	self:create_gui()
 end
 
@@ -119,7 +107,15 @@ function ConsoleModDialog:callback_on_delayed_asset_load(font_ids)
 end
 
 function ConsoleModDialog:create_gui()
-	local font_name = self._data.font_name
+	local function hex_to_color(hex)
+		if hex and type(hex) == "number" then
+			return Color(string.format("%06x",hex))
+		end
+	end
+	
+	local settings = self.inherited_settings
+	
+	local font_name = settings.window_font_name
 	
 	if not self._font_asset_load_done then
 		font_name = self.DEFAULT_FONT_NAME
@@ -128,29 +124,45 @@ function ConsoleModDialog:create_gui()
 	self._fullscreen_ws = managers.gui_data:create_fullscreen_workspace()
 	local parent_panel = self._fullscreen_ws:panel()
 	self._parent_panel = parent_panel
+	local font_size = settings.window_font_size or 16
+	local prompt_string = tostring(settings.window_prompt_string) or "> "
+	local prompt_text_color = hex_to_color(settings.window_prompt_color)
+	local prompt_text_alpha = settings.window_prompt_alpha
+	local caret_string = tostring(settings.window_caret_string) or "|"
+	local caret_text_color = hex_to_color(settings.window_caret_color)
+	local caret_text_alpha = settings.window_caret_alpha
 	
+	local blur_alpha = settings.window_blur_alpha
+	local bg_color = hex_to_color(settings.window_blur_alpha)
+	local bg_alpha = settings.window_bg_alpha
 
-	local font_size = self._data.font_size or 32
+	local text_normal_color = hex_to_color(settings.window_text_normal_color)
+	local text_highlight_color = hex_to_color(settings.window_text_selected_color)
+	local text_stale_color = hex_to_color(settings.window_text_stale_color)
 	
-	local panel_w = 1200
-	local panel_h = 600
+	local panel_x = settings.window_x
+	local panel_y = settings.window_y
+	local panel_w = settings.window_w
+	local panel_h = settings.window_h
+	local panel_alpha = settings.window_alpha
 	local panel = self._parent_panel:panel({
 		name = "panel",
 		visible = false,
+		x = panel_x,
+		y = panel_y,
 		w = panel_w,
 		h = panel_h,
+		alpha = panel_alpha,
 		layer = 999
 	})
 	self._panel = panel
-	panel:set_world_center(self._parent_panel:world_center())
-	
 	
 	self._background_blur = panel:bitmap({
 		name = "background_blur",
 		texture = "guis/textures/test_blur_df",
-		alpha = 1,
 		valign = "grow",
 		render_template = "VertexColorTexturedBlur3D",
+		alpha = 1,
 		layer = 0,
 		color = Color.white,
 		w = panel_w,
@@ -160,22 +172,23 @@ function ConsoleModDialog:create_gui()
 		name = "background_rect",
 		blend_mode = "normal",
 		halign = "grow",
-		alpha = 0.5,
 		valign = "grow",
+		alpha = bg_alpha,
 		layer = 0,
-		color = Color.black,
+		color = bg_color,
 		w = panel_w,
 		h = panel_h
 	})
 	
+	local body_margin_hor = 12
+	local body_margin_ver = 12
+	local selection_color = hex_to_color(settings.window_text_highlight_color)
 	
-	local body_margin_hor = 24
-	local body_margin_ver = 24
+	local input_box_color = hex_to_color(settings.window_input_box_color)
 	
-	local selection_color = Color("333333")
---	local button_normal_color = Color("ffffff")
-	local button_highlight_color = Color("ffd700")
-	
+	local button_normal_color = hex_to_color(settings.window_button_normal_color)
+	local button_highlight_color = hex_to_color(settings.window_button_highlight_color)
+	local close_button_color = Color.red
 	local close_button_w = 24
 	local close_button_h = 24
 	local close_button_margin = 0
@@ -183,42 +196,54 @@ function ConsoleModDialog:create_gui()
 	local scrollbar_w = 16
 	local scrollbar_button_w = scrollbar_w
 	local scrollbar_button_h = 16
-	local vertical_margin = 100
+	local vertical_margin = 24
 	
+	local default_scrollbar_handle_height = 100
+	local scrollbar_lock_enabled = settings.window_scrollbar_lock_enabled
+	local scrollbar_lock_alpha_high = 1
+	local scrollbar_lock_alpha_low = 0.5
+	local scrollbar_lock_alpha = scrollbar_lock_enabled and scrollbar_lock_alpha_high or scrollbar_lock_alpha_low
+	
+	local resize_grip_color = Color.white
 	local resize_grip_w = scrollbar_button_w
 	local resize_grip_h = scrollbar_button_h
 	
 	local top_bar_w = panel_w
 	local top_bar_h = 16
+	local top_bar_color = Color.white
+	local top_grip_color = Color("333333")
 	
 	local top_bar = panel:rect({
 		name = "top_bar",
-		color = Color.white,
-		alpha = 0.75,
+		color = top_bar_color,
+		alpha = 1,
 		layer = 2,
 		w = top_bar_w,
 		h = top_bar_h,
 		x = 0,
 		y = 0
 	})
+	self._top_bar = top_bar
+	
 	local top_grip = panel:bitmap({ --draggable top bar
 		name = "top_grip",
 		texture = "guis/textures/pd2/mission_briefing/assets/assets_risklevel_4",
-		color = Color.blue,
+		color = top_grip_color,
 		x = top_bar:x(),
 		y = top_bar:y(),
 		w = top_bar_w - close_button_w,
 		h = top_bar:h(),
-		alpha = 0.66,
+		alpha = 1,
 		layer = 3
 	})
+	self._top_grip = top_grip
 	
 	self._close_button = panel:bitmap({
 		name = "close_button",
 		texture = "guis/textures/pd2/mission_briefing/assets/assets_risklevel_4",
 		layer = 102,
 		alpha = 1,
-		color = Color.red,
+		color = close_button_color,
 		x = panel:w() - (close_button_w + close_button_margin),
 		y = close_button_margin,
 		w = close_button_w,
@@ -231,12 +256,13 @@ function ConsoleModDialog:create_gui()
 		texture = "guis/textures/pd2/mission_briefing/assets/assets_risklevel_4",
 		x = panel:w() - resize_grip_w,
 		y = panel:h() - resize_grip_h,
-		color = Color.green,
+		color = resize_grip_color,
 		w = resize_grip_w,
 		h = resize_grip_h,
 		layer = 102,
 		alpha = 1
 	})
+	self._resize_grip = resize_grip
 	
 	--the main stuff like the input text and history text are children of this panel
 	local body = panel:panel({
@@ -255,32 +281,33 @@ function ConsoleModDialog:create_gui()
 		layer = 103,
 		x = 0,
 		y = 0,
-		text = "|",
+		text = caret_string,
 		font = font_name,
 		font_size = font_size,
 --		monospace = true,
-		color = Color.white:with_alpha(0.7)
+		alpha = caret_text_alpha,
+		color = caret_text_color
 	})
 	
 	self._history_text = body:text({
 		name = "text",
-		text = "Eorzea's unity is forged of falsehoods. Its city-states are built on deceit. And its faith is an instrument of deception. It is naught but a cobweb of lies. To believe in Eorzea is to believe in nothing. In Eorzea, the beast tribes often summon gods to fight in their stead--though your comrades only rarely respond in kind. Which is strange, is it not? Are the Twelve otherwise engaged? I was given to understand they were your protectors. If you truly believe them your guardians, why do you not repeat the trick that served you so well at Carteneau, and call them down? They will answer--so long as you lavish them with crystals and gorge them on aether. Your gods are no different than those of the beasts--eikons every one!",
+		text = "", --todo fill using history log
 --		monospace = true,
 --		kern = -16,
 		font = font_name,
 		font_size = font_size,
 		align = "left",
-		vertical = "top",
+		vertical = "bottom",
 		x = 0,
 		y = 0,
-		color = Color.white,
+		color = text_normal_color,
 		wrap = true,
 		alpha = 1,
 		layer = 1
 	})
 	self._prompt = body:text({
 		name = "prompt",
-		text = self._prompt_string,
+		text = prompt_string,
 		x = 0,
 		y = 0,
 --		monospace = true,
@@ -288,9 +315,9 @@ function ConsoleModDialog:create_gui()
 		font_size = font_size,
 		align = "left",
 		vertical = "bottom",
-		blend_mode = "add",
-		color = Color.white,
-		alpha = 0.5,
+--		blend_mode = "add",
+		color = prompt_text_color,
+		alpha = prompt_text_alpha,
 		layer = 102
 	})
 	
@@ -302,12 +329,24 @@ function ConsoleModDialog:create_gui()
 		font_size = font_size,
 		align = "left",
 		vertical = "bottom",
+		w = body:w(),
+		h = font_size,
 		x = 16,
 		y = self._prompt:y(),
-		color = Color.white,
-		wrap = true,
+		color = text_normal_color,
+		wrap = false,
 		alpha = 1,
 		layer = 100
+	})
+	self._input_box = body:rect({
+		name = "input_box",
+		color = input_box_color,
+		layer = 97,
+		w = body:w(),
+		h = font_size,
+		x = 0,
+		y = body:h() - font_size,
+		alpha = 1
 	})
 	
 	self._selection_box = body:rect({
@@ -315,7 +354,7 @@ function ConsoleModDialog:create_gui()
 		x = 0,
 		y = 0,
 		w = 0,
-		h = font_size,
+		h = 0,
 		color = selection_color,
 		alpha = 1,
 		layer = 99,
@@ -324,7 +363,9 @@ function ConsoleModDialog:create_gui()
 --	self._selection_box:set_bottom(panel:bottom())
 	
 	local scrollbar_panel = panel:panel({
-		name = "scrollbar_panel"
+		name = "scrollbar_panel",
+--		x = body:w(),
+		y = top_bar_h
 	})
 	self._scrollbar_panel = scrollbar_panel
 	
@@ -335,7 +376,7 @@ function ConsoleModDialog:create_gui()
 		name = "scrollbar_lock_button",
 		color = Color.white,
 		layer = 101,
-		alpha = self._scrollbar_lock_enabled and 1 or 0.5,
+		alpha = scrollbar_lock_alpha,
 		texture = "guis/textures/scroll_items",
 		texture_rect = {
 			0,16,
@@ -346,6 +387,7 @@ function ConsoleModDialog:create_gui()
 		w = scrollbar_button_w,
 		h = scrollbar_button_h
 	})
+	self._scrollbar_lock_button = scrollbar_lock_button
 	local scrollbar_button_top = scrollbar_panel:bitmap({
 		name = "scrollbar_button_top",
 		layer = 101,
@@ -357,8 +399,10 @@ function ConsoleModDialog:create_gui()
 		w = scrollbar_button_w,
 		h = scrollbar_button_h,
 		x = right_align,
-		y = scrollbar_lock_button:bottom()
+		y = scrollbar_lock_button:y() + scrollbar_lock_button:h()
 	})
+	self._scrollbar_button_top = scrollbar_button_top
+	
 	local scrollbar_button_up = scrollbar_panel:bitmap({
 		name = "scrollbar_button_up",
 		layer = 101,
@@ -371,8 +415,9 @@ function ConsoleModDialog:create_gui()
 		w = scrollbar_button_w,
 		h = scrollbar_button_h,
 		x = right_align,
-		y = scrollbar_button_top:bottom()
+		y = scrollbar_button_top:y() + scrollbar_button_top:h()
 	})
+	self._scrollbar_button_up = scrollbar_button_up
 	local scrollbar_button_bottom = scrollbar_panel:bitmap({
 		name = "scrollbar_button_bottom",
 		layer = 101,
@@ -386,6 +431,7 @@ function ConsoleModDialog:create_gui()
 		x = right_align,
 		y = bottom_align - scrollbar_button_h
 	})
+	self._scrollbar_button_bottom = scrollbar_button_bottom
 	local scrollbar_button_down = scrollbar_panel:bitmap({
 		name = "scrollbar_button_down",
 		layer = 101,
@@ -400,6 +446,8 @@ function ConsoleModDialog:create_gui()
 		x = right_align,
 		y = scrollbar_button_bottom:top() - scrollbar_button_h
 	})
+	self._scrollbar_button_down = scrollbar_button_down
+	
 	local scrollbar_handle = scrollbar_panel:bitmap({
 		name = "scrollbar_handle",
 		color = Color.white,
@@ -413,22 +461,26 @@ function ConsoleModDialog:create_gui()
 		x = right_align,
 		y = scrollbar_button_up:bottom(),
 		w = scrollbar_button_w,
-		h = 100
+		h = default_scrollbar_size
 --		h = scrollbar_panel:h() - (scrollbar_cap_top:h() + scrollbar_cap_bottom:h())
 	})
 	self._scrollbar_handle = scrollbar_handle
-	
+	local min_window_width = 50
+	local min_window_height = 50 + top_bar_h
 	local max_window_hidden_hor_margin = 64 --no more than this many pixels of the window can be horizontally hidden (above or below the edge of the screen)
 	local max_window_hidden_ver_margin = 0 --no more than this many pixels of the window can be vertically hidden (above or below the edge of the screen)
 	self._ui_objects = {
-		--
 		top_grip = {
 			object = top_grip,
 			mouseover_pointer = "hand", --arrow link hand grab
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = function(o,x,y) --left click (on release)
 				log("clicked selection box")
+				if self._save_settings_callback then 
+					self._save_settings_callback()
+				end
 			end,
 			mouse_right_click_callback = function(o,x,y) --right click (on release)
 				--show context menu (click)
@@ -452,16 +504,14 @@ function ConsoleModDialog:create_gui()
 				local start_y = self._target_drag_y_start
 				
 				
-				local to_x = start_x + d_x
-				local to_y = start_y + d_y
---				local px,py = panel:world_position()
 				local bw,bh = top_grip:size()
-				panel:set_position(
-					math.clamp( to_x, max_window_hidden_hor_margin - bw, parent_panel:w() - max_window_hidden_hor_margin ),
-					math.clamp( to_y, max_window_hidden_ver_margin - bh, parent_panel:h() - (bh + max_window_hidden_ver_margin) )
-				)
+--				local px,py = panel:world_position()
+				local to_x = math.clamp( start_x + d_x, max_window_hidden_hor_margin - bw, parent_panel:w() - max_window_hidden_hor_margin )
+				local to_y = math.clamp( start_y + d_y, max_window_hidden_ver_margin - bh, parent_panel:h() - (bh + max_window_hidden_ver_margin) )
 				
-				--math.clamp(-max_window_hidden_hor_ratio,panel:w() + max_window_hidden_hor_ratio),math.clamp(to_y,-max_window_hidden_ver_ration,max_window_hidden_ver_ration))
+				panel:set_position(to_x,to_y)
+				self.inherited_settings.window_x = to_x
+				self.inherited_settings.window_y = to_y
 			end
 		},
 		resize_grip = {
@@ -469,20 +519,56 @@ function ConsoleModDialog:create_gui()
 			mouseover_pointer = "hand",
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
-			mouse_left_click_callback = function(o,x,y)
+			mouse_left_release_callback = function(o,x,y)
+				if self._save_settings_callback then 
+					self._save_settings_callback()
+				end
 			end,
+			mouse_left_click_callback = nil,
 			mouse_right_click_callback = function(o,x,y)
 			end,
 			mouse_left_press_callback = function(o,x,y)
+				self._mouse_drag_x_start = x
+				self._mouse_drag_y_start = y
+				self._held_object = resize_grip
+				self._target_drag_x_start = o:x()
+				self._target_drag_y_start = o:y()
 			end,
 			mouse_right_press_callback = function(o,x,y)
 			end,
 			mouse_drag_event_callback = function(o,x,y)
+				local px,py = panel:position()
+				local msx = self._mouse_drag_x_start - px
+				local msy = self._mouse_drag_y_start - py
+				local tsx = self._target_drag_x_start
+				local tsy = self._target_drag_y_start
+				local d_x = msx - tsx
+				local d_y = msy - tsy
+--				local rx = start_x + dx
+--				local ry = start_y + dy
+--				resize_grip:set_position(rx,ry)
+--				local rm = resize_grip:right() - panel:right()
+--				local pw,ph = panel:size()
+				
+--				local to_w = math.max(x - px,min_window_width)
+--				local to_h = math.max(y - py,min_window_height)
+
+				local to_w = math.max((x + d_x) - (px),min_window_width)
+				local to_h = math.max((y + d_y) - (py),min_window_height)
+				self:resize_panel(to_w,to_h)
+				self.inherited_settings.window_w = to_w
+				self.inherited_settings.window_h = to_h
+				
+				--[[
+				panel:grow(d_x,d_y)
+				local to_w,to_h = panel:size()
+				--]]
 			end
 		},
 		--[[
 		selection_box = {
 			object = self._selection_box,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = function(o,x,y)
 				log("clicked selection box")
 			end,
@@ -501,13 +587,14 @@ function ConsoleModDialog:create_gui()
 			mouseover_pointer = "arrow",
 			draggable_x = false,
 			draggable_y = false,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = function(o,x,y)
 				--focus input box 
 				log("clicked input text")
 			end
 		},
 		--]]
-		close_button = { --todo fadeout close
+		close_button = {
 			object = self._close_button,
 			mouseover_pointer = "link",
 			mouseover_event_start_callback = function(o,x,y)
@@ -516,7 +603,8 @@ function ConsoleModDialog:create_gui()
 			mouseover_event_stop_callback = function(o,x,y)
 				o:set_color(Color.red)
 			end,
-			mouse_left_click_callback = callback(self,self,"close")
+			mouse_left_release_callback = nil,
+			mouse_left_click_callback = function(o,x,y) self:hide() end
 		},
 		scrollbar_button_down = {
 			object = scrollbar_button_down,
@@ -527,6 +615,7 @@ function ConsoleModDialog:create_gui()
 			mouseover_event_stop_callback = function(o,x,y)
 				o:set_color(Color.white)
 			end,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = callback(self,self,"callback_on_scrollbar_down_button_clicked")
 		},
 		scrollbar_button_bottom = {
@@ -538,6 +627,7 @@ function ConsoleModDialog:create_gui()
 			mouseover_event_stop_callback = function(o,x,y)
 				o:set_color(Color.white)
 			end,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = callback(self,self,"callback_on_scrollbar_bottom_button_clicked")
 		},
 		scrollbar_button_up = {
@@ -549,6 +639,7 @@ function ConsoleModDialog:create_gui()
 			mouseover_event_stop_callback = function(o,x,y)
 				o:set_color(Color.white)
 			end,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = callback(self,self,"callback_on_scrollbar_up_button_clicked")
 		},
 		scrollbar_button_top = {
@@ -560,6 +651,7 @@ function ConsoleModDialog:create_gui()
 			mouseover_event_stop_callback = function(o,x,y)
 				o:set_color(Color.white)
 			end,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = callback(self,self,"callback_scrollbar_top_button_clicked")
 		},
 		scrollbar_lock_button = {
@@ -571,6 +663,7 @@ function ConsoleModDialog:create_gui()
 			mouseover_event_stop_callback = function(o,x,y)
 				o:set_color(Color.white)
 			end,
+			mouse_left_release_callback = nil,
 			mouse_left_click_callback = callback(self,self,"callback_on_scrollbar_down_button_clicked")
 		},
 		scrollbar_handle = {
@@ -586,6 +679,7 @@ function ConsoleModDialog:create_gui()
 				self._target_drag_y_start = o:y()
 			end,
 			mouse_drag_event_callback = function(o,x,y)
+				--todo save scrollbar position to session "settings"
 				local y_min = scrollbar_button_up:bottom()
 				local y_max = scrollbar_button_down:top() - scrollbar_handle:h()
 				local d_x = x - self._mouse_drag_x_start
@@ -595,11 +689,97 @@ function ConsoleModDialog:create_gui()
 				--scroll event (d_y)
 				--disable autoscroll while holding bar
 				o:set_y(to_y)
+
+				self:set_scroll_amount_by_bar_position(to_y)
 			end
 		}
 	}
-	self._gui_done = true
 	self._input_text:enter_text(callback(self,self,"enter_text"))
+	self:generate_history(text_stale_color)
+	self:resize_panel(panel_w,panel_h)
+end
+
+function ConsoleModDialog:resize_panel(to_w,to_h)
+	local panel = self._panel
+	panel:set_size(to_w,to_h)
+	local panel_right = panel:right()
+	local close_button_margin = 16
+	local close_button_w = 16
+	local body_margin_hor = 24
+	local body_margin_ver = 24
+	local font_size = self.inherited_settings.window_font_size
+	
+	local resize_grip = self._resize_grip
+	resize_grip:set_right(to_w)
+	resize_grip:set_bottom(to_h)
+
+--force reposition
+	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(body_margin_ver * 2))
+	self:scroll_page(0) --force refresh scroll position
+	local b_w,b_h = self._body:size()
+	--force update text objects
+	self._input_text:set_size(b_w,b_h)
+	self._input_text:set_text(self._input_text:text())
+	self._input_box:set_w(b_w)
+	self._input_box:set_position(body_margin_hor,b_h - font_size)
+	self._prompt:set_size(b_w,b_h)
+	self._prompt:set_text(self._prompt:text())
+	self._history_text:set_size(b_w,b_h - font_size)
+	self._history_text:set_text(self._history_text:text())
+	self._caret:set_size(b_w,b_h)
+	self._caret:set_text(self._caret:text())
+	self._top_bar:set_w(to_w)
+	self._top_grip:set_w(to_w - close_button_w)
+	self._close_button:set_position(to_w - (close_button_w + close_button_margin))
+	
+	local vertical_margin = 24
+	local scrollbar_button_h = 16
+	local resize_grip_h = scrollbar_button_h
+	--reposition individual scrollbar elements
+	--recalculate scrollbar_handle position
+	self._scrollbar_panel:set_h(to_h)
+--	self._scrollbar_panel:set_x(b_w)
+	self._scrollbar_panel:set_right(panel:w())
+	self._scrollbar_lock_button:set_y(vertical_margin)
+	self._scrollbar_button_top:set_y(self._scrollbar_lock_button:bottom())
+	self._scrollbar_button_up:set_y(self._scrollbar_button_top:bottom())
+	self._scrollbar_button_bottom:set_bottom(self._scrollbar_panel:h() - (vertical_margin + resize_grip_h))
+	self._scrollbar_button_down:set_y(self._scrollbar_button_bottom:top() - scrollbar_button_h)
+	--]]
+end
+
+function ConsoleModDialog:generate_history(color)
+--	for k,v in pairs(self._history_log) do 
+--	end
+	local new_str = Console.table_concat(self._output_log,"\n")
+	self._history_text:set_text(new_str)
+	self._history_text:set_range_color(0,utf8.len(new_str),color)
+	
+end
+
+function ConsoleModDialog:_send_text_to_shell(s)
+	local new_s,result
+	if self._send_text_callback then
+		new_s,result = self:_send_text_callback(s)
+	end
+	self:add_to_history(new_s,result)
+end
+
+function ConsoleModDialog:add_to_history(s,colors)
+	local history_text = self._history_text
+	local current_text = history_text:text()
+	local prev_lines = history_text:number_of_lines()
+	history_text:set_text(current_text .. "\n" .. tostring(s))
+	if self._scrollbar_lock_enabled then
+		local current_lines = history_text:number_of_lines()
+		local delta = current_lines - prev_lines
+		self:scroll_page(delta * self.inherited_settings.window_font_size)
+	end
+	if type(colors) == "table" then
+		for i,range_data in pairs(colors) do 
+			history_text:set_range_color(range_data.start,range_data.finish,range_data.color)
+		end
+	end
 end
 
 function ConsoleModDialog:get_mouseover_target(x,y)
@@ -618,19 +798,26 @@ function ConsoleModDialog:get_mouseover_target(x,y)
 end
 
 function ConsoleModDialog:callback_scrollbar_top_button_clicked(o,x,y)
-	log("clicked top")
+	self:set_scroll_amount_by_bar_ratio(1)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_bottom_button_clicked(o,x,y)
-	log("clicked bottom")
+	self:set_scroll_amount_by_bar_ratio(0)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_up_button_clicked(o,x,y)
-	log("clicked up")
+	self:scroll_page(self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
-	log("clicked down")
+	local scrollbar_lock_alpha_high = 1
+	local scrollbar_lock_alpha_low = 0.5
+	local state = not self.inherited_settings.window_scrollbar_lock_enabled
+	if state then 
+		o:set_alpha(scrollbar_lock_alpha_high)
+	else
+		o:set_alpha(scrollbar_lock_alpha_low)
+	end
 end
 
 function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
@@ -642,16 +829,90 @@ end
 --function ConsoleModDialog:perform_scroll(num_lines)
 --end
 
-function ConsoleModDialog:perform_page_scroll(pages)
+--function ConsoleModDialog:perform_page_scroll(pages)
+--end
 
+function ConsoleModDialog:set_scroll_amount_by_bar_position(y_pos)
+	local scrollbar_handle = self._scrollbar_handle
+	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
+	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
+	
+	local total = bottom - top
+	local current = y_pos - top
+	local ratio = current / total
+--	self._prompt:set_text(string.format("%i %i %0.2f",total,current,ratio))
+	return self:set_scroll_amount_by_bar_ratio(ratio)
+end
+
+function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
+	local history_text = self._history_text
+	
+	local min_y = -history_text:h()
+	local max_y = 0 + (self._body:h() - self.inherited_settings.window_font_size)
+	local d_y = (max_y - min_y) * (ratio - 0.5)
+	
+--	self._prompt:set_text(string.format("%i %i %i %0.2f",min_y,max_y,d_y,ratio))
+	self._prompt:set_text(string.format("%i %i %i",history_text:y(),d_y,ratio))
+	
+	local tx,ty,tw,th = history_text:text_rect()
+--	local to_y = math.clamp(history_text:y() + d_y,min_y,max_y)
+	history_text:set_y(d_y)
 end
 
 function ConsoleModDialog:release_scroll_bar()
 	
 end
 
-function ConsoleModDialog:scroll_page(d_x,d_y)
+function ConsoleModDialog:set_scroll_bar_position(ratio)
+	local scrollbar_handle = self._scrollbar_handle
+	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
+	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
+	local scrollbar_moves_top_to_bottom = false
+	if scrollbar_moves_top_to_bottom then
+		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
+	else
+		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
+	end
+end
+
+function ConsoleModDialog:set_scroll_bar_height(ratio)
+	local default_scrollbar_handle_height = 100
+	local scrollbar_handle = self._scrollbar_handle
+	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
+end
+
+function ConsoleModDialog:scroll_page(d_y) --horizontal scroll not supported (no need since we have line wrap)
+	local history_text = self._history_text
+	local tx,ty,tw,th = history_text:text_rect()
 	
+	local min_y = -history_text:h()
+	local max_y = 0 + (self._body:h() - self.inherited_settings.window_font_size)
+	self._prompt:set_text(history_text:y() .. " " .. history_text:h())
+	
+	local to_y = math.clamp(history_text:y() + d_y,min_y,max_y)
+	history_text:set_y(to_y)
+	
+	local r = to_y / (max_y - min_y)
+	self:set_scroll_bar_position(0.5 + r)
+	
+	
+--[[
+
+	if alive(_G.asdlfkjasldf) then 
+		asdlfkjasldf:parent():remove(asdlfkjasldf)
+	end
+	asdlfkjasldf = self._body:rect({
+		name = "asdlfkjasldf",
+		color = Color.red,
+		layer = -100,
+		alpha = 0.7,
+		rotation = 0.01,
+		w = history_text:w(),
+		h = history_text:h(),
+		x = history_text:x(),
+		y = history_text:y()
+	})
+	--]]
 end
 
 function ConsoleModDialog:callback_mouse_moved(o,x,y)
@@ -730,7 +991,7 @@ function ConsoleModDialog:callback_mouse_moved(o,x,y)
 end
 
 function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
-	log("pressed  " .. tostring(x) .. " " .. tostring(y))
+--	log("pressed  " .. tostring(x) .. " " .. tostring(y))
 	
 	if button == Idstring("0") then
 		self._is_holding_mouse_button = true
@@ -752,7 +1013,9 @@ function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
 		--context menu for clicked item
 	elseif button == Idstring("mouse wheel up") then 
 		--scroll up
+		self:scroll_page(self.inherited_settings.window_font_size)
 	elseif button == Idstring("mouse wheel down") then 
+		self:scroll_page(-self.inherited_settings.window_font_size)
 		--scroll down
 	end
 end
@@ -767,8 +1030,8 @@ function ConsoleModDialog:callback_mouse_released(o,button,x,y)
 			if id then
 				local ui_object_data = self._ui_objects[id]
 				if mouseover_target == held_object then 
-					if ui_object_data.mouse_left_click_callback then
-						ui_object_data.mouse_left_click_callback(mouseover_target,x,y)
+					if ui_object_data.mouse_left_release_callback then
+						ui_object_data.mouse_left_release_callback(mouseover_target,x,y)
 					end
 				end
 				if ui_object_data.mouseover_pointer then 
@@ -792,7 +1055,15 @@ function ConsoleModDialog:callback_mouse_released(o,button,x,y)
 end
 
 function ConsoleModDialog:callback_mouse_clicked(o,button,x,y)
-	log("clicked  " .. tostring(x) .. " " .. tostring(y))
+	if button == Idstring("0") then 
+		local id,mouseover_target = self:get_mouseover_target(x,y)
+		if id then
+			local ui_object_data = self._ui_objects[id]
+			if ui_object_data.mouse_left_click_callback then
+				ui_object_data.mouse_left_click_callback(mouseover_target,x,y)
+			end
+		end	
+	end
 end
 
 function ConsoleModDialog:reset_caret_blink_t()
@@ -811,7 +1082,8 @@ function ConsoleModDialog:on_key_press(k,held)
 	local shift_held = self:key_shift_down()
 	local ctrl_held = self:key_ctrl_down()
 	local alt_held = self:key_alt_down()
-	if k == Idstring("enter") or k == Idstring("return") then 
+	if k == Idstring("enter") or k == Idstring("return") then
+		self:set_current_history_input_text(current_text)
 		self:button_pressed_callback()
 	elseif k == Idstring("`") and not shift_held then 
 	elseif k == Idstring("v") and ctrl_held then
@@ -820,6 +1092,7 @@ function ConsoleModDialog:on_key_press(k,held)
 			input_text:replace_text(tostring(clipboard))
 		end
 		self:reset_caret_blink_t()
+		self:set_current_history_input_text(current_text)
 	elseif k == Idstring("c") and ctrl_held then
 		if s ~= e then
 			--copy selection to clipboard, 
@@ -930,9 +1203,46 @@ function ConsoleModDialog:on_key_press(k,held)
 		self:reset_caret_blink_t()
 	elseif k == Idstring("down") then
 		--newer history
+		local num_input_log = #self._input_log
+		if num_input_log > 0 then
+			local new_text
+			if self._input_history_index == 0 then 
+				self:set_current_history_input_text(current_text)
+			end
+			
+			local history_index = (1 + self._input_history_index) % num_input_log
+			if history_index == 0 then 
+				new_text = self._current_input_text_string
+			else
+				input_text:set_alpha(0.5)
+				new_text = self._input_log[history_index]
+			end
+			input_text:set_text(new_text)
+			self._input_history_index = history_index
+		end
+		
 		self:reset_caret_blink_t()
 	elseif k == Idstring("up") then
 		--older history
+		
+		local num_input_log = #self._input_log
+		if num_input_log > 0 then
+			local new_text
+			if self._input_history_index == 0 then 
+				self:set_current_history_input_text(current_text)
+			end
+			
+			local history_index = (-1 + self._input_history_index) % num_input_log
+			if history_index == 0 then 
+				new_text = self._current_input_text_string
+			else
+				input_text:set_alpha(0.5)
+				new_text = self._input_log[history_index]
+			end
+			input_text:set_text(new_text)
+			self._input_history_index = history_index
+		end
+		
 		self:reset_caret_blink_t()
 	elseif k == Idstring("a") and ctrl_held then 
 		local current_len = string.len(current_text)
@@ -940,20 +1250,24 @@ function ConsoleModDialog:on_key_press(k,held)
 --		input_text:replace_text("")
 		self:reset_caret_blink_t()
 	elseif k == Idstring("backspace") then --delete selection or text character behind caret
+		self:set_current_history_input_text(current_text)
 		local current_len = string.len(current_text)
 		if s == e and s > 0 then
 			input_text:set_selection(s - 1, e)
 		end
-		
 		input_text:replace_text("")
 		
 		self:reset_caret_blink_t()
 	elseif k == Idstring("delete") then --delete selection or text character after caret
-		local current_len = string.len(current_text)
-		if s == e and s < current_len then
-			input_text:set_selection(s, e + 1)
+		self:set_current_history_input_text(current_text)
+		
+		if not shift_held then
+			local current_len = string.len(current_text)
+			if s == e and s < current_len then
+				input_text:set_selection(s, e + 1)
+			end
 		end
-
+		--input_text:set_selection(s,s)
 		input_text:replace_text("")
 		self:reset_caret_blink_t()
 	elseif k == Idstring("page up") then 
@@ -963,8 +1277,10 @@ function ConsoleModDialog:on_key_press(k,held)
 	end
 end
 
-function ConsoleModDialog:GetHistory()
-	
+function ConsoleModDialog:set_current_history_input_text(text)
+	self._input_text:set_alpha(1)
+	self._input_history_index = 0
+	self._current_input_text_string = text
 end
 
 --todo allow selection of non input fields
@@ -1006,6 +1322,7 @@ function ConsoleModDialog:enter_text(o,s)
 	self:reset_caret_blink_t()
 --	Console:Print("enter text ", s)
 	o:replace_text(s)
+	self:set_current_history_input_text(o:text())
 end
 
 function ConsoleModDialog:update(t,dt)
@@ -1020,20 +1337,36 @@ function ConsoleModDialog:update(t,dt)
 	end
 	
 	if char_index then
-		local caret_x,caret_y = input_text:character_rect(char_index)
 		local caret = self._caret
---		local _,_,caret_w,caret_h = caret:text_rect()
-		local font_size = self._data.font_size
+		local font_size = self.inherited_settings.window_font_size
 		local caret_w = font_size / 4
+		local caret_x,caret_y = input_text:character_rect(char_index)
+		if input_text:text() == "" then
+			local prompt = self._prompt
+			local prompt_text = prompt:text()
+			local prompt_len = utf8.len(prompt_text)
+			caret_x,caret_y = prompt:character_rect(prompt_len)
+		else
+	--		local _,_,caret_w,caret_h = caret:text_rect()
+		end
 		caret:set_world_position(caret_x - caret_w,caret_y)
 		caret:set_alpha(math.sin(self._caret_blink_speed * (t - self._caret_blink_t)) > 0 and self._caret_blink_alpha_high or self._caret_blink_alpha_low)
-	
-		local p1x,p1y = input_text:character_rect(s)
-		local p2x,p2y = input_text:character_rect(e)
+		
+		local p1x,p1y,_,_ = input_text:character_rect(s)
+		local p2x,p2y,_,_ = input_text:character_rect(e)
 		local selection_box = self._selection_box
 		selection_box:set_world_position(p1x,p1y)
 		selection_box:set_w(p2x - p1x)
-		selection_box:set_h(font_size + (p2y - p1y))
+		--[[
+		local line_breaks = input_text:line_breaks()
+		local num_line_breaks = #line_breaks
+		if num_line_breaks > 1 then
+			p1y = math.min(p1y,p2y)
+			p2y = math.max(p2y,p3y)
+			local _,p3y,_,_ = input_text:character_rect(line_breaks[num_line_breaks])
+		end
+		--]]
+		selection_box:set_h((p2y - p1y) + (input_text:number_of_lines() * font_size) )
 
 --		self._history_text:set_text(string.format("%i / %i",self._input_text:selection()) .. "\n" .. string.format("%i / %i",selection_box:size()) .. "\n" .. string.format("%i / %i",selection_box:position()) .. "\n" .. string.format("%i / %i",self._mouse_x,self._mouse_y))
 	end
@@ -1054,6 +1387,10 @@ function ConsoleModDialog:update(t,dt)
 	
 --	local id,target = self:get_mouseover_target(self._mouse_x,self._mouse_y)
 --	local s = tostring(id) .. string.format(" %i %i",self._mouse_x,self._mouse_y)
+--	s = s .. "\n" .. string.format(" %i %i",self._panel:right(),self._panel:bottom())
+--	s = s .. "\n" .. string.format("%i %i",self._mouse_drag_x_start or -1,self._mouse_drag_y_start or -1)
+--	s = s .. "\n" .. string.format("%i %i",self._target_drag_x_start or -1,self._target_drag_y_start or -1)
+--	self._history_text:set_text(s)
 --self._history_text:set_text(string.format("%0.2f",self._key_held_t))
 end
 
@@ -1177,7 +1514,7 @@ end
 
 function ConsoleModDialog:close()
 	self._manager:event_dialog_closed(self)
-	self._panel:hide()
+	self:hide()
 	self:_close_dialog_gui()
 	self._visible = false
 --	Dialog.close(self)
@@ -1214,6 +1551,7 @@ function ConsoleModDialog:remove_mouse()
 end
 function ConsoleModDialog:resolution_changed_callback()
 	log("resolution changed")
+--	self:resize_panel(self.inherited_settings.window_w,self.inherited_settings.window_h)
 end
 function ConsoleModDialog:button_pressed_callback()
 	log("confirm button presed")
@@ -1222,9 +1560,8 @@ function ConsoleModDialog:button_pressed_callback()
 	local current_len = utf8.len(current_text)
 	input_text:set_selection(0,current_len)
 	input_text:replace_text("")
-	if self._send_text_callback then
-		self:_send_text_callback(current_text)
-	end
+	self:set_current_history_input_text("")
+	self:_send_text_to_shell(current_text)
 --	self:remove_mouse()
 --	self:button_pressed(self._panel_script:get_focus_button())
 end

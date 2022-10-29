@@ -7,7 +7,6 @@ _G.logall = callback(Console,Console,"LogTable")
 _G.Print = callback(Console,Console,"Print")
 _G.Log = callback(Console,Console,"Log")
 
-
 --instance._confirm_func = callback(instance, instance, "button_pressed_callback")
 
 Console:ToggleConsoleWindow()

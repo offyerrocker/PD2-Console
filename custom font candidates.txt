@@ -1,0 +1,9 @@
+https://www.dafont.com/selectric.font
+https://www.dafont.com/code-saver.font
+https://www.dafont.com/nk57-monospace.font
+https://www.dafont.com/liberation-mono.font
+https://www.dafont.com/white-rabbit.font
+
+https://www.dafont.com/bitstream-vera-mono.font
+	"Bitstream Vera Mono" by The Gnome Project
+	- Public domain / GPL / OFL

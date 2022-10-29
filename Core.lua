@@ -28,7 +28,12 @@ echo/print - print result or results to console
 	- echo should be mainly for vars
 
 - registry system to store results of previous command
+
+
+command to clear logs
 --]]
+
+
 
 Console = Console or {}
 do --init mod vars
@@ -39,8 +44,8 @@ do --init mod vars
 --	Console._menu_path = mod_path .. "menu/options.json"
 	Console._default_localization_path = mod_path .. "localization/english.json"
 	Console._save_path = save_path .. "console_settings.ini"
-	Console._log_file_path = save_path .. "console_log.txt" --store recent console input
-
+	Console._output_log_file_path = save_path .. "console_input_log.txt" --store recent console output; colors and data types are not preserved
+	Console._input_log_file_path = save_path .. "console_output_log.txt" -- store recent console input
 	Console.console_window_menu_id = "console_window_menu" --not used
 	Console.default_palettes = {
 		"ff0000",
@@ -70,23 +75,79 @@ do --init mod vars
 		"000000"
 	}
 	Console.color_setting_keys = { --unfortunately, all settings that are hex color strings must be identified here so that they can be properly read/written by the ini parser
-		"window_bg_color"
+		"window_text_normal_color",
+		"window_text_highlight_color",
+		"window_text_stale_color",
+		"window_text_selected_color",
+		"window_input_box_color",
+		"window_button_normal_color",
+		"window_button_highlight_color",
+		"window_bg_color",
+		"window_caret_color",
+		"window_prompt_color"
 	}
 	Console.palettes = table.deep_map_copy(Console.default_palettes)
 	Console.default_settings = {
 		safe_mode = false,
+		input_log_enabled = true,
+		output_log_enabled = true,
+		log_buffer_enabled = true,
+		log_buffer_interval = 10, --seconds between flushes
+		window_scrollbar_lock_enabled = true,
+		window_text_normal_color = 0xffffff,
+		window_text_highlight_color = 0xffd700, --the color of the highlight box around the text
+		window_text_stale_color = 0x777777, --the color of any logs pulled from history log (read from disk, ie from previous state/session)
+		window_text_selected_color = 0x000000, --the color of highlighted text
+		window_input_box_color = 0x444444, --the color of the bg box behind the input text box
+		window_button_normal_color = 0xffffff, --the color of most ordinary buttons
+		window_button_highlight_color = 0xffd700, --the color of a button being moused over
+		window_alpha = 1,
+		window_x = 50,
+		window_y = 50,
+		window_w = 1000,
+		window_h = 600,
 		window_font_name = "fonts/font_bitstream_vera_mono",
-		window_font_size = 16,
-		window_bg_color = 0xffd700,
-		window_prompt_string = "> "
+		window_font_size = 12,
+		window_blur_alpha = 0.75,
+		window_bg_color = 0x000000,
+		window_bg_alpha = 0.5,
+		window_caret_string = "|",
+		window_caret_color = 0xffffff,
+		window_caret_alpha = 0.75,
+		window_prompt_string = "> ",
+		window_prompt_color = 0xffffff,
+		window_prompt_alpha = 0.66
 	}
 	Console.settings = table.deep_map_copy(Console.default_settings)
 	Console.settings_sort = {
 		"safe_mode",
+		"input_log_enabled",
+		"output_log_enabled",
+		"log_buffer_enabled",
+		"window_scrollbar_lock_enabled",
+		"window_text_normal_color",
+		"window_text_highlight_color",
+		"window_text_selected_color",
+		"window_text_stale_color",
+		"window_input_box_color",
+		"window_button_normal_color",
+		"window_button_highlight_color",
+		"window_alpha",
+		"window_x",
+		"window_y",
+		"window_w",
+		"window_h",
 		"window_font_name",
 		"window_font_size",
+		"window_blur_alpha",
 		"window_bg_color",
-		"window_prompt_string"
+		"window_bg_alpha",
+		"window_caret_string",
+		"window_caret_color",
+		"window_caret_alpha",
+		"window_prompt_string",
+		"window_prompt_color",
+		"window_prompt_alpha"
 	}
 	
 	Console.type_data = {
@@ -117,7 +178,39 @@ do --init mod vars
 			color = Color(0.3,0.3,0.3)
 		}
 	}
+	Console._log_buffer_timer = 0
+	Console._output_log = {}
+	Console._input_log = {
+	--[[ ex.
+		[1] = {
+			input = "/echo hello -p",
+			saved_input = nil,
+			func = function 0xd3adb33f --from loadstring
+		},
+		[2] = {
+			raw_input = "//", --shortcut for repeat previous execution
+			saved_input = "/echo hello -p",
+			func = function 0xd3adb33f --same direct reference to previous function
+		},
+		[3] = {
+			raw_input = "/print $hello",
+			saved_input = nil,
+			func = function 0x1234567 --different direct referencce
+		},
+		[4] = {
+			raw_input = "///", --shortcut for re-interpret previous input and execute (eg. if the value of a var has changed since previous execution)
+			saved_input = "/print $hello",
+			re-evaluate = true, --cue loadstring of input
+			func = new function --result of loadstring
+		},
+		[5] = {
+			raw_input = "/set $hello 69", --set var $hello to 69
+			func = new function --result of loadstring
+		}
+		--]]
+	}
 	Console.command_list = {}
+	
 	Console._user_vars = {
 	--[[
 		--number-based vars are reserved for system use, for when history log outputs 
@@ -126,7 +219,10 @@ do --init mod vars
 		
 	--]]
 	}
-	
+	Console._buffers = {
+		input_log = {},
+		output_log = {}
+	}
 	Console.VAR_PREFIX = "$"
 	
 	--placeholder values for thinngs that will be loaded later
@@ -181,7 +277,9 @@ end
 --loggers
 
 function Console:Log(info,params)
-	log("CONSOLE: " .. tostring(info))
+	info = tostring(info)
+	log("CONSOLE: " .. info)
+	self:AddToOutputLog(info)
 end
 --_G.Log = callback(Console,Console,"Log")
 Console.log = Console.Log
@@ -248,7 +346,15 @@ end
 --core functionality
 
 function Console:Update(updater_source,t,dt)
-	
+	if self.settings.log_buffer_enabled then 
+		local buffer_timer = self._log_buffer_timer
+		buffer_timer = buffer_timer - dt
+		if buffer_timer < 0 then 
+			buffer_timer = self.settings.log_buffer_interval
+			self:FlushInputLogBuffer()
+			self:FlushOutputLogBuffer()
+		end
+	end
 end
 
 function Console:InterpretCommand(raw_cmd_string)
@@ -372,7 +478,7 @@ function Console:callback_confirm_text(dialog,text)
 		--!
 	elseif text ~= "" then
 		self:Log("> " .. text)
-		self:InterpretInput(text)
+		return self:InterpretInput(text)
 	end
 end
 
@@ -386,6 +492,10 @@ function Console:InterpretInput(raw_string)
 	elseif func then 
 		local result = pcall(func)
 	end
+	self:AddToInputLog(s)
+--	self:AddToOutputLog(result)
+	local color_data -- = {}
+	return s,color_data --colors here
 end
 
 --management
@@ -483,14 +593,16 @@ function Console:CreateConsoleWindow()
 		id = "ConsoleWindow",
 		title = "console title",
 		text = "text goes here",
-		prompt_string = tostring(self.settings.window_prompt_string), --tostring before use just in case someone confuses the ini parser with a string that starts with a number
+		history_log = self._history_log,
+		console_settings = self.settings,
+		input_log = self._input_log,
+		output_log = self._output_log,
 		send_text_callback = callback(self,self,"callback_confirm_text"),
-		font_name = self.settings.window_font_name,
-		font_size = self.settings.window_font_size,
+		save_settings_callback = callback(self,self,"SaveSettings"),
 		font_asset_load_done = self._is_font_asset_load_done,
 		button_list = {
 			{
-				text = "biutton text",
+				text = "button text",
 				callback_func = function()
 					log("back button")
 				end,
@@ -526,18 +638,129 @@ end
 
 
 --i/o
-
-function Console:SaveLog()
-	
+function Console:SaveInputLog()
+	local file = io.open(self._input_log_file_path,"w+")
+	if file then
+		file:write(self._input_log)
+		file:close()
+	end
 end
 
-function Console:WriteToLog(s)
-
+function Console:LoadInputLog()
+	local file = io.open(self._input_log_file_path,"r")
+	if file then
+		local load_chunks_on_read = false
+		local i = 0
+		for line in file:lines() do 
+			i = i + 1
+			self._input_log[i] = {
+				input = line,
+				raw_input = nil,
+				saved_input = nil,
+				func = nil
+			}
+			
+			if load_chunks_on_read then --probably not necessary since loadstring is kinda heavy
+				local func,err = loadstring(line)
+				if func then 
+					self._input_log[i].func = func
+				elseif err then
+					--silent fail- if these are logged, the output log would probably balloon in size
+					--add errors to table internally?
+				end
+			end
+		end
+	end
 end
 
-function Console:LoadLog()
-
+function Console:AddToInputLog(s)
+	table.insert(self._input_log,#self._input_log+1,s)
+	if self.settings.input_log_enabled then 
+		self:WriteToInputLog(s,false)
+	end
 end
+
+function Console:WriteToInputLog(s,force) --append to log
+	local buffer_enabled = self.settings.log_buffer_enabled
+	if force or not buffer_enabled then
+		--do it write now (haha)
+		local file = io.open(self._input_log_file_path,"a")
+		if file then
+			file:write("\n" .. s)
+			file:close()
+		end
+	else
+		--queue writing it to a "buffer" and flush the buffer at regular intervals
+		table.insert(self._buffers.input_log,1,s)
+	end
+end
+
+function Console:FlushInputLogBuffer()
+	local buffer_count = #self._buffers.input_log
+	if buffer_count > 0 then
+		local file = io.open(self._input_log_file_path,"a")
+		for i=buffer_count,1,-1 do 
+			local s = table.remove(self._buffers.input_log,i)
+			file:write("\n" .. s)
+		end
+		file:flush()
+		file:close()
+	end
+end
+
+
+function Console:SaveOutputLog() --save full log directly
+	local file = io.open(self._output_log_file_path,"w+")
+	if file then
+		file:write(self._output_log)
+		file:close()
+	end
+end
+
+function Console:LoadOutputLog() --load from output
+	local file = io.open(self._output_log_file_path,"r")
+	if file then
+		local i = 0
+		for line in file:lines() do 
+			i = i + 1
+			self._output_log[i] = line
+		end
+	end
+end
+
+function Console:AddToOutputLog(s)
+	table.insert(self._output_log,#self._output_log+1,s)
+	if self.settings.output_log_enabled then 
+		self:WriteToOutputLog(s,false)
+	end
+end
+
+function Console:WriteToOutputLog(s,force)
+	local buffer_enabled = self.settings.log_buffer_enabled
+	if force or not buffer_enabled then
+		local file = io.open(self._output_log_file_path,"a")
+		if file then
+			file:write("\n" .. s)
+			file:close()
+		end
+	else
+		table.insert(self._buffers.output_log,1,s)
+	end
+end
+
+function Console:FlushOutputLogBuffer()
+	local buffer_count = #self._buffers.output_log
+	if buffer_count > 0 then
+		local file = io.open(self._output_log_file_path,"a")
+		for i=buffer_count,1,-1 do 
+			local s = table.remove(self._buffers.output_log,i)
+			file:write("\n" .. s)
+		end
+		file:flush()
+		file:close()
+	end
+end
+
 
 function Console:LoadSettings()
 	if SystemFS:exists( Application:nice_path(self._save_path,true) ) then 
@@ -676,11 +899,16 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	Console:LoadFonts()
 	
 	if not Console.settings.safe_mode then 
-		Console:LoadLog()
+		if Console.settings.output_log_enabled then 
+			Console:LoadOutputLog()
+		end
+		if Console.settings.input_log_enabled then 
+			Console:LoadInputLog()
+		end
 	end
 	
-	MenuCallbackHandler.callback_on_console_window_closed = function(self) end
-	MenuCallbackHandler.callback_dcc_console_window_focus = function(self) end
+	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
+	MenuCallbackHandler.callback_dcc_console_window_focus = function(self) end --also not used
 	
 	
 	
