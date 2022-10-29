@@ -12,6 +12,9 @@
 			"keybind_id" : "dcc_commandprompt_toggle",
 			"run_in_game" : true,
 			"run_in_menu" : true,
+			"default_keybind" : "`",
+			"default_key" : "`",
+			"button" : "`",
 			"func" : "commandprompt_toggle"
 		},
 		{
