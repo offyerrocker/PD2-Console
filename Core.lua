@@ -1,37 +1,67 @@
 --[[
-goals:
-- functional ui!!!!
-- better arg tagging (eg. "echo $examplevar -p whatever -s asdf" )
-- better func documentation
-
-- session pref
-
-slightly more bash-like
-
-"/" key shortcut to open console window
-
-hook based autoexec system in saves?
-warning/text-based confirm prompt eg. when a query is expected to have lots of results
-set escaping: change character set to include punctuation and alphanumeric chars
-
-- queue messages before console is initiated
-- welcome message on startup
-
-commands:
-	/setvar var value
-
-beardlib optional (but still recommended)
-
--- // executes previous stored loadstring function
--- /// re-evaluates and executes previous stored input
-
-echo/print - print result or results to console
-	- echo should be mainly for vars
-
-- registry system to store results of previous command
 
 
-command to clear logs
+******************* Feature list todo: ******************* 
+
+- session pref with existing vars
+tab key autocomplete
+- display behavior to console for Log()
+- color coded data types for Log
+
+******************* Secondary feature todo ******************* 
+
+- batch file folder system in saves
+	autoexec batch-style files
+- option to de-focus the console and keep it open while playing without hiding it
+- "/" key shortcut to open console window
+
+- mouse-selectable output text
+- mouse-selectable input text
+- preview history in dialog ui
+	show number of history steps?
+- "undo" steps history
+- limit number/size of input/output logs (enforced on save and load)
+- save scrollbar position to session "settings"
+- separate session "settings" from normal configuration settings?
+- allow changing type colors through settings
+
+
+******************* Commands todo *******************
+
+- echo/print - print result or results to console
+	echo should be mainly for vars
+	
+- setvar/session var business
+	$ var values (saved between sessions)
+	@ temp var values (overrides normal vars, not saved)
+
+- // executes previous stored loadstring function
+- /// re-evaluates and executes previous stored input
+
+- /clear command to clear logs
+
+
+- warning/text-based confirm prompt eg. when a query is expected to have lots of results
+
+
+*******************  Bug list [high priority] ******************* 
+
+- [ConsoleModDialog] scroll function
+	--basically all direct scroll functions are not working as intended
+	--lock scrollbar (disable autoscroll on new lines) not working
+	--reverse scroll direction option needs to be redone and applied more broadly
+	restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
+	shrink the scroll bar during resizing to a percentage of the current window height
+
+- [Console] history navigation is unreliable
+
+
+*******************  Bug list [low priority] ******************* 
+
+- [ConsoleModDialog] separate callbacks in create_gui into their own functions
+- [ConsoleModDialog] color range is broken on adding new history text
+	-solution: save number of stored input and output log lines to color range data, re-apply when appending to the console output 
+
 --]]
 
 
@@ -155,7 +185,6 @@ do --init mod vars
 	
 	Console.type_data = {
 		--base data types
-		--todo allow changing through settings
 		["function"] = {
 			color = Color(0.5,1,1)
 		},

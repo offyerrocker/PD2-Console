@@ -1,26 +1,3 @@
---[[ 
-todo main features:
-
-add a keybind button for it doofus!
-scroll function
-	--basically all direct scroll functions are not working as intended
-	--lock scrollbar (disable autoscroll on new lines) not working
-	--reverse scroll direction option needs to be redone and applied more broadly
-	restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
-	shrink the scroll bar during resizing to a percentage of the current window height
-	
-	
-tab key autocomplete
-option to de-focus the console and keep it open while playing without hiding it
-
-mouse-selectable output text
-mouse-selectable input text
-
-separate callbacks in create_gui into their own functions
-color range is broken on adding new history text
-	-solution: save number of stored input and output log lines to color range data, re-apply when appending to the console output 
---]]
-
 
 --partly based on Dialog and child classes like DocumentDialog
 ConsoleModDialog = ConsoleModDialog or class() --class(Dialog) --can't seem to get inheritance from this class to work
@@ -47,13 +24,10 @@ function ConsoleModDialog:init(manager,data)
 
 	--this functions as the main "enabled" flag
 	self.is_active = false
-	
---	self._undo_steps = {} --undo? more like TODO
 
 	self._current_input_text_string = "" --this is only to be used for navigating the input history index
 	self._input_history_index = 0
-	--todo show history input eg. 1/13475 
-	--todo preview history input
+
 	
 	self.inherited_settings = data.console_settings or {} --readonly! this is the Console settings table!
 	
@@ -294,7 +268,7 @@ function ConsoleModDialog:create_gui()
 	
 	self._history_text = body:text({
 		name = "text",
-		text = "", --todo fill using history log
+		text = "",
 --		monospace = true,
 --		kern = -16,
 		font = font_name,
@@ -685,7 +659,6 @@ function ConsoleModDialog:create_gui()
 				self._target_drag_y_start = o:y()
 			end,
 			mouse_drag_event_callback = function(o,x,y)
-				--todo save scrollbar position to session "settings"
 				local y_min = scrollbar_button_up:bottom()
 				local y_max = scrollbar_button_down:top() - scrollbar_handle:h()
 				local d_x = x - self._mouse_drag_x_start
@@ -1327,7 +1300,6 @@ function ConsoleModDialog:set_current_history_input_text(text)
 	self._current_input_text_string = text
 end
 
---todo allow selection of non input fields
 function ConsoleModDialog:callback_key_press(o,k)
 	self._key_held_ids = k
 	self._key_held_t = self.INPUT_REPEAT_INTERVAL_INITIAL
