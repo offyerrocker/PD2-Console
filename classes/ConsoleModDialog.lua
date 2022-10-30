@@ -1253,10 +1253,12 @@ function ConsoleModDialog:on_key_press(k,held)
 				input_text:set_alpha(0.5)
 				new_text = self._input_log[history_index].input
 			end
-			input_text:set_text(new_text)
 			self._input_history_index = history_index
-			local new_len = string.len(new_text)
-			input_text:set_selection(new_len,new_len)
+			if new_text then
+				input_text:set_text(new_text)
+				local new_len = string.len(new_text)
+				input_text:set_selection(new_len,new_len)
+			end
 		end
 		
 		self:reset_caret_blink_t()
@@ -1277,10 +1279,12 @@ function ConsoleModDialog:on_key_press(k,held)
 				input_text:set_alpha(0.5)
 				new_text = self._input_log[history_index].input
 			end
-			input_text:set_text(new_text)
 			self._input_history_index = history_index
-			local new_len = string.len(new_text)
-			input_text:set_selection(new_len,new_len)
+			if new_text then
+				input_text:set_text(new_text)
+				local new_len = string.len(new_text)
+				input_text:set_selection(new_len,new_len)
+			end
 		end
 		
 		self:reset_caret_blink_t()

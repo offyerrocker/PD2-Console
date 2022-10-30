@@ -222,12 +222,14 @@ do --init mod vars
 		
 	--]]
 	}
+	Console._operation_timeout = 5
+	Console._io_buffer_size = 2^13
 	Console._buffers = {
 		input_log = {},
 		output_log = {}
 	}
 	Console.VAR_PREFIX = "$"
-	
+	Console._is_reading_log = false
 	--placeholder values for thinngs that will be loaded later
 	Console._colorpicker = nil
 	Console._is_font_asset_load_done = nil --if font is loaded
@@ -286,7 +288,7 @@ function Console:LogTable(obj,max_amount)
 	
 	--i don't really know how else to do this
 --todo save this as a global to Console so that i can create and delete examples but save their references
-	local t = Application:time()
+	local t = os.clock()
 	local timeout = 5
 	if not obj then 
 		Console:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
@@ -295,12 +297,12 @@ function Console:LogTable(obj,max_amount)
 	local i = type(max_amount) == "number" and max_amount or 0
 	Console._breaker = false
 	while not Console._breaker do 
-		if Application:time() > t + timeout then
+		if t > t + timeout then
 			Console._breaker = true
 		end
 		if i then 
 			i = i + 1
-			if i > max_amount then
+			if max_amount and i > max_amount then
 				Console:Log("Reached manual log limit " .. tostring(max_amount),{color = Color.yellow})
 				return
 			end
@@ -517,7 +519,13 @@ function Console:InterpretInput(raw_string)
 	elseif func then 
 		local result = pcall(func)
 	end
-	self:AddToInputLog(s)
+	self:AddToInputLog(
+		{
+			raw_input = raw_string,
+			input = s,
+			func = func
+		}
+	)
 --	self:AddToOutputLog(result)
 	local color_data -- = {}
 	return s,color_data --colors here
@@ -541,17 +549,15 @@ end
 --commands
 
 function Console:cmd_help(subcmd,arg) --not yet implemented
-	if subcmd then 
-		local cmd_data = self._registered_commands[subcmd] 
-		if cmd_data then 
-			self:Log("/" .. cmd_data.subcmd)
-			self:Log(cmd_data.desc)
-			self:Log(cmd_data.manual)
-			if cmd_data.parameters then 
-				for k,v in pairs( cmd_data.parameters ) do 
-					self:Log("-" .. k .. " " .. tostring(v.arg_desc))
-					self:Log(tostring(v.short_desc))
-				end
+	local cmd_data = subcmd and self._registered_commands[subcmd] 
+	if cmd_data then 
+		self:Log("/" .. cmd_data.subcmd)
+		self:Log(cmd_data.desc)
+		self:Log(cmd_data.manual)
+		if cmd_data.parameters then 
+			for k,v in pairs( cmd_data.parameters ) do 
+				self:Log("-" .. k .. " " .. tostring(v.arg_desc))
+				self:Log(tostring(v.short_desc))
 			end
 		end
 	else
@@ -819,26 +825,44 @@ function Console:SaveInputLog()
 end
 
 function Console:LoadInputLog()
-	local file = io.open(self._input_log_file_path,"r")
-	if file then
-		local load_chunks_on_read = false
-		local i = 0
-		for line in file:lines() do 
-			i = i + 1
-			self._input_log[i] = {
-				input = line,
-				raw_input = nil,
-				saved_input = nil,
-				func = nil
-			}
-			
-			if load_chunks_on_read then --probably not necessary since loadstring is kinda heavy
-				local func,err = loadstring(line)
-				if func then 
-					self._input_log[i].func = func
-				elseif err then
-					--silent fail- if these are logged, the output log would probably balloon in size
-					--add errors to table internally?
+	if not self._is_reading_log then
+		local file = io.open(self._input_log_file_path,"r")
+		if file then
+			local load_chunks_on_read = false
+
+			local buffer_size = self._io_buffer_size
+			local str = ""
+			local timeout = self._operation_timeout
+			local t = os.clock()
+			while true do 
+				local _t = os.clock()
+				if _t - t > timeout then 
+					self:Log(string.format("Took too long reading file %s (%is)",self._input_log_file_path,_t - t))
+					break
+				end
+				local block = file:read(buffer_size)
+				if not block then 
+					break
+				end
+				str = str .. block
+			end
+			if str ~= "" then
+				for i,line in ipairs(string.split(str,"\n")) do 
+					local func,err
+					if load_chunks_on_read then --probably not necessary since loadstring is kinda heavy
+						func,err = loadstring(line)
+						if err then
+							--silent fail- if these are logged, the output log would probably balloon in size
+							--add errors to table internally?
+							func = nil
+						end
+					end
+					self._input_log[i] = {
+						input = line,
+						raw_input = nil,
+						saved_input = nil,
+						func = func
+					}		
 				end
 			end
 		end
@@ -847,15 +871,18 @@ end
 
 function Console:AddToInputLog(data)
 	table.insert(self._input_log,#self._input_log+1,data)
-	if self.settings.input_log_enabled then 
-		self:WriteToInputLog(data.raw_input or data.input,false)
+	if self.settings.input_log_enabled then
+		local s = data.raw_input or data.input
+		if s then
+			self:WriteToInputLog(string.gsub(s,"\n"," "),false)
+		end
 	end
 end
 
 function Console:WriteToInputLog(s,force) --append to log
 	if s then
 		local buffer_enabled = self.settings.log_buffer_enabled
-		if force or not buffer_enabled then
+		if not self._is_reading_log and (force or not buffer_enabled) then
 			--do it write now (haha)
 			local file = io.open(self._input_log_file_path,"a")
 			if file then
@@ -863,6 +890,9 @@ function Console:WriteToInputLog(s,force) --append to log
 				file:close()
 			end
 		else
+			--if is reading log, line is forced into the buffer anyway even if buffer is disabled,
+			--effectively skipping it but still preserving the data (until the state reloads/session ends)
+			
 			--queue writing it to a "buffer" and flush the buffer at regular intervals
 			table.insert(self._buffers.input_log,1,s)
 		end
@@ -870,36 +900,56 @@ function Console:WriteToInputLog(s,force) --append to log
 end
 
 function Console:FlushInputLogBuffer()
-	local buffer_count = #self._buffers.input_log
-	if buffer_count > 0 then
-		local file = io.open(self._input_log_file_path,"a")
-		for i=buffer_count,1,-1 do 
-			local s = table.remove(self._buffers.input_log,i)
-			file:write("\n" .. s)
+	if not self._is_reading_log then
+		local buffer_count = #self._buffers.input_log
+		if buffer_count > 0 then
+			local file = io.open(self._input_log_file_path,"a")
+			for i=buffer_count,1,-1 do 
+				local s = table.remove(self._buffers.input_log,i)
+				file:write("\n" .. s)
+			end
+			file:flush()
+			file:close()
 		end
-		file:flush()
-		file:close()
 	end
 end
 
 
 function Console:SaveOutputLog() --save full log directly
-	local file = io.open(self._output_log_file_path,"w+")
-	if file then
-		file:write(self._output_log)
-		file:close()
+	if not self._is_reading_log then
+		local file = io.open(self._output_log_file_path,"w+")
+		if file then
+			file:write(self._output_log)
+			file:close()
+		end
 	end
 end
 
 function Console:LoadOutputLog() --load from output
 	local file = io.open(self._output_log_file_path,"r")
+	self._is_reading_log = true
 	if file then
-		local i = 0
-		for line in file:lines() do 
-			i = i + 1
-			self._output_log[i] = line
+		local buffer_size = self._operation_timeout
+		local timeout = self._io_buffer_size
+		local str = ""
+		local t = os.clock()
+		while true do 
+			local _t = os.clock()
+			if _t - t > timeout then 
+				self:Log(string.format("Took too long reading file %s (%is)",self._output_log_file_path,_t - t))
+				break
+			end
+			local block = file:read(buffer_size)
+			if not block then 
+				break
+			end
+			str = str .. block
+		end
+		if str ~= "" then
+			self._output_log = string.split(str,"\n")
 		end
 	end
+	self._is_reading_log = false
 end
 
 function Console:AddToOutputLog(s)
@@ -911,7 +961,7 @@ end
 
 function Console:WriteToOutputLog(s,force)
 	local buffer_enabled = self.settings.log_buffer_enabled
-	if force or not buffer_enabled then
+	if not self._is_reading_log and (force or not buffer_enabled) then
 		local file = io.open(self._output_log_file_path,"a")
 		if file then
 			file:write("\n" .. s)
@@ -923,15 +973,17 @@ function Console:WriteToOutputLog(s,force)
 end
 
 function Console:FlushOutputLogBuffer()
-	local buffer_count = #self._buffers.output_log
-	if buffer_count > 0 then
-		local file = io.open(self._output_log_file_path,"a")
-		for i=buffer_count,1,-1 do 
-			local s = table.remove(self._buffers.output_log,i)
-			file:write("\n" .. s)
+	if not self._is_reading_log then
+		local buffer_count = #self._buffers.output_log
+		if buffer_count > 0 then
+			local file = io.open(self._output_log_file_path,"a")
+			for i=buffer_count,1,-1 do 
+				local s = table.remove(self._buffers.output_log,i)
+				file:write("\n" .. s)
+			end
+			file:flush()
+			file:close()
 		end
-		file:flush()
-		file:close()
 	end
 end
 
@@ -1009,10 +1061,10 @@ function Console:AddFonts()
 	local file_path_ids = Idstring(file_path)
 	
 	if DB:has(font_ids, font_path) then 
-		self:Log("Font " .. font_path .. " is verified.")
+--		self:Log("Font " .. font_path .. " is verified.")
 	else
 		--assume that if the .font is not loaded, then the .texture is not either (both are needed anyway)
-		self:Log("Font " .. font_path .. " is not created!")
+--		self:Log("Font " .. font_path .. " is not created!")
 		BLT.AssetManager:CreateEntry(Idstring(font_path),font_ids,file_path .. ".font")
 		BLT.AssetManager:CreateEntry(Idstring(font_path),texture_ids,file_path .. ".texture")
 	end
@@ -1031,13 +1083,13 @@ function Console:LoadFonts()
 	-- [[
 	
 	if managers.dyn_resource:is_resource_ready(font_ids,font_path_ids,dyn_pkg) then 
-		self:Log("Resource ready " .. tostring(font_path))
+--		self:Log("Resource ready " .. tostring(font_path))
 		self._is_font_asset_load_done = true
 	else
 		self._is_font_asset_load_done = false
 		
-		self:Log("Resource not ready " .. tostring(font_path))
-		self:Log("Starting load: " .. tostring(file_path))
+--		self:Log("Resource not ready " .. tostring(font_path))
+--		self:Log("Starting load: " .. tostring(file_path))
 --		Console:Log("CreateConsoleWindow() Font [" .. tostring(font_name) .. "] is not yet loaded! Delaying console window creation.")
 --		return
 		
@@ -1050,7 +1102,7 @@ function Console:LoadFonts()
 		local done_texture = false
 		local function done_loading_cb(done,resource_type_ids,resource_ids)
 			if done then 
-				self:Log("Completed manual asset loading for " .. tostring(resource_type_ids) .. " " .. tostring(resource_ids))
+--				self:Log("Completed manual asset loading for " .. tostring(resource_type_ids) .. " " .. tostring(resource_ids))
 --				self._is_font_asset_load_done = true
 				if resource_ids == font_path_ids then
 					local i = table.index_of(asset_loading_checklist,resource_type_ids)
@@ -1067,7 +1119,7 @@ function Console:LoadFonts()
 				end
 				
 			else
-				self:Log("Error: not done???")
+--				self:Log("Error: not done???")
 			end
 		end
 		
@@ -1094,6 +1146,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 		if Console.settings.input_log_enabled then 
 			Console:LoadInputLog()
 		end
+		--[[
 		if not Console._safe_mode then
 			Console.orig_BLTKeybindsManager_update = BLTKeybindsManager.update
 			function BLTKeybindsManager:update(...)
@@ -1103,7 +1156,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 				return Console.orig_BLTKeybindsManager_update(self,...)
 			end
 		end
-		
+		--]]
 	end
 	MenuCallbackHandler.callback_dcc_console_window_focus = function(self)
 		Console:ToggleConsoleWindow()
@@ -1144,6 +1197,13 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 			}
 		},
 		func = callback(Console,Console,"cmd_weaponname")
+	})
+	Console:RegisterCommand("help",{
+		str = nil,
+		desc = "Brief list of commands.",
+		manual = "/help [command name]",
+		parameters = {},
+		func = callback(Console,Console,"cmd_help")
 	})
 	--Console:RegisterCommand("weaponinfo")
 	Hooks:Call("ConsoleMod_RegisterCommands",Console)
