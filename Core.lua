@@ -6,8 +6,6 @@ goals:
 
 - session pref
 
--selection text color
-
 slightly more bash-like
 
 "/" key shortcut to open console window
@@ -264,20 +262,6 @@ function Console.table_concat(tbl,div) --the main difference from table.concat i
 	return str or ""
 end
 
-function Console.string_trim_leading_spaces(s)
-	local trim_start,trim_end = string.find(s,"^%s")
-	if trim_end then 
-		if trim_end <= string.len(s) then
-			return string.sub(s,trim_end + 1),true
-		else
-			return "",true
-		end
-	else
-		return s,false
-	end
-end
-
-
 
 --loggers
 
@@ -308,12 +292,11 @@ function Console:LogTable(obj,max_amount)
 		Console:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
 		return
 	end
-	local i = type(max_amount) == "number" and max_amount and 0
-	max_amount = max_amount and type(max_amount) == "number" or 0
-	Console._failsafe = false
-	while not Console._failsafe do 
+	local i = type(max_amount) == "number" and max_amount or 0
+	Console._breaker = false
+	while not Console._breaker do 
 		if Application:time() > t + timeout then
-			Console._failsafe = true
+			Console._breaker = true
 		end
 		if i then 
 			i = i + 1
@@ -341,9 +324,9 @@ function Console:LogTable(obj,max_amount)
 			
 			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = Console.type_data[data_type] and Console.type_data[data_type].color or Color(1,0.3,0.3)})
 		end
-		Console._failsafe = true --process can be stopped with "/stop" if log turns out to be recursive or too long in general
+		Console._breaker = true
 	end
-	Console._failsafe = false
+	Console._breaker = false
 end
 _G.logall = callback(Console,Console,"LogTable")
 
@@ -366,7 +349,6 @@ function Console:InterpretCommand(raw_cmd_string)
 	self:Log("> " .. raw_cmd_string)
 	local cmd_params = {}
 	local cmd_string = raw_cmd_string
---	local cmd_string = self.string_trim_leading_spaces(raw_cmd_string)
 	local cmd_name = string.match(cmd_string,"[^%s]*")--[%a%s]+")
 	
 	if not cmd_name or cmd_name == "" then
@@ -430,8 +412,10 @@ function Console:InterpretCommand(raw_cmd_string)
 			pair_data.original_string = orig_string
 			cmd_string = string.sub(cmd_string,1,start-1) .. sub_string .. string.sub(cmd_string,finish+1)
 		end
-		
 	end
+	
+	--reduce redundant spaces
+	cmd_string = string.gsub(cmd_string,"%s+","%s")
 	
 	local first_occurrence
 	for word in string.gmatch(cmd_string,"%-[%a%p]+[^%-]*") do 
@@ -455,13 +439,11 @@ function Console:InterpretCommand(raw_cmd_string)
 		cmd_params[param_name] = param
 	end
 	
-
-	
 	local args_string
 	if first_occurrence then
 		args_string = string.sub(cmd_string,string.len(cmd_name),first_occurrence)
-		Log(args_string)
 	end
+	
 	if has_quotes then
 		for i=#_pairs,1,-1 do
 			local pair_data = _pairs[i]
@@ -476,25 +458,6 @@ function Console:InterpretCommand(raw_cmd_string)
 					cmd_params[param] = nil
 				end
 			end
-		--[[
-		for param_name,params in pairs(cmd_params) do 
-			for param_key,arg in pairs(params) do 
-				for i=#_pairs,1,-1 do
-					local pair_data = _pairs[i]
-					local new_arg,num_done = string.gsub(arg,pair_data.substitution_string,pair_data.original_string)
-					if num_done > 0 then 
-						params[param_key] = new_arg
---						table.remove(_pairs,i)
-					end
-					local new_param_name,num_done = string.gsub(param_name,pair_data.substitution_string,pair_data.original_string)
-					if num_done > 0 then 
-						cmd_params[new_param_name] = params
-						cmd_params[param_name] = nil
---						table.remove(_pairs,i)
-					end
-				end
-			end
-			--]]
 		end
 		
 		for i=#_pairs,1,-1 do
@@ -502,21 +465,10 @@ function Console:InterpretCommand(raw_cmd_string)
 			local new_string,num_done = string.gsub(cmd_string,pair_data.substitution_string,pair_data.original_string)
 			if num_done > 0 then
 				cmd_string = new_string
---				table.remove(_pairs,i)
 			end
 		end
 	
 	end
-	
---[[	
-	Print("cmd name",cmd_name)
-	Print("cmd string",cmd_string)
-	Print("raw_cmd_string",raw_cmd_string)
-	logall(cmd_params)
-	Log("--")
-	do return end
---]]	
-	
 	
 	local command_data = self._registered_commands[cmd_name]
 	if command_data.func then 
@@ -571,8 +523,8 @@ function Console:InterpretInput(raw_string)
 	return s,color_data --colors here
 end
 
---management
 
+--management
 
 function Console:RegisterCommand(id,data)
 	if not id then
@@ -585,14 +537,6 @@ function Console:RegisterCommand(id,data)
 	self._registered_commands[id] = data
 end
 
-
---front
-
-function Console:ExampleFunction(params,args)
-	for title,param in pairs(args) do 
-		
-	end
-end
 
 --commands
 
@@ -747,10 +691,12 @@ function Console:cmd_partname(params,name)
 end
 
 
-	--not yet implemented
-	
 function Console:cmd_echo(s)
-	
+	s = tostring(s)
+	for id,value in pairs(self._user_vars) do 
+		s = string.gsub(s,"$" .. id,tostring(value))
+	end
+	self:Log(s)
 end
 
 function Console:SetUserVar(id,val)
@@ -765,10 +711,11 @@ function Console:_SetUserVar(id,value)
 	self._user_vars[id] = value
 end
 
-function Console:GetUserVar(...)
-	for _,id in pairs({...}) do 
-		self:Log(self.VAR_PREFIX .. tostring(id) .. " " .. tostring(self._user_vars[id]))
-	end
+function Console:GetUserVar(id)
+	return self._user_vars[id]
+--	for _,id in pairs({...}) do 
+--		self:Log(self.VAR_PREFIX .. tostring(id) .. " " .. tostring(self._user_vars[id]))
+--	end
 end
 
 
@@ -811,7 +758,9 @@ end
 --ui
 
 function Console:CreateConsoleWindow()
-	self:Log("Creating console window")
+	self:Log("Initiating a new console session.")
+	self:Log("Welcome to the unofficial console!")
+	self:Log("Type /help for a list of commands.")
 	self.dialog_data = {
 		id = "ConsoleWindow",
 		title = "console title",
@@ -834,28 +783,28 @@ function Console:CreateConsoleWindow()
 		}
 	}
 	self._window_instance = ConsoleModDialog:new(managers.system_menu,self.dialog_data)
-	
---	managers.system_menu:_show_class(self.dialog_data,managers.system_menu.GENERIC_DIALOG_CLASS,ConsoleModDialog,true)
 end
 
 function Console:ShowConsoleWindow()
-	managers.system_menu:_show_instance(self._window_instance,true)
---	if Console._window_instance then 
---	else
---		Console:CreateConsoleWindow()
---	end
+	if self._window_instance then
+		managers.system_menu:_show_instance(self._window_instance,true)
+	end
 end
 
 function Console:HideConsoleWindow()
-	self._window_instance:hide()
+	if self._window_instance then
+		self._window_instance:hide()
+	end
 end
 
 function Console:ToggleConsoleWindow()
-	local state = not self._window_instance.is_active
-	if state then 
-		self:ShowConsoleWindow()
-	else
-		self:HideConsoleWindow()
+	if self._window_instance then
+		local state = not self._window_instance.is_active
+		if state then 
+			self:ShowConsoleWindow()
+		else
+			self:HideConsoleWindow()
+		end
 	end
 end
 
@@ -1032,9 +981,21 @@ function Console:SaveSettings()
 	self._lip.save(self._save_path,{Config = self.settings,Palettes=palettes},self.settings_sort)
 end
 
+function Console:ResetSettings(soft_reset)
+	--empty settings menu instead of creating a new settings menu, since some classes may depend on that specific table reference
+	
+	if not soft then
+		--optionally can choose to preserve any vars that aren't overwritten/defined in default settings, ie. user-created vars or potential future advanced settings
+		for k,v in pairs(self.settings) do 
+			self.settings[k] = nil
+		end
+	end
+	for k,v in pairs(self.default_settings) do 
+		self.settings[k] = v
+	end
+end
 
 --asset loading
-
 
 function Console:AddFonts()
 	local window_font_name = self.settings.window_font_name
@@ -1116,6 +1077,7 @@ function Console:LoadFonts()
 	--]]
 end
 
+
 --menu hooks
 
 Hooks:Register("ConsoleMod_RegisterCommands")
@@ -1132,11 +1094,21 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 		if Console.settings.input_log_enabled then 
 			Console:LoadInputLog()
 		end
+		if not Console._safe_mode then
+			Console.orig_BLTKeybindsManager_update = BLTKeybindsManager.update
+			function BLTKeybindsManager:update(...)
+				if Console._window_instance and Console._window_instance.is_active then 
+					return
+				end
+				return Console.orig_BLTKeybindsManager_update(self,...)
+			end
+		end
+		
 	end
 	MenuCallbackHandler.callback_dcc_console_window_focus = function(self)
 		Console:ToggleConsoleWindow()
 	end
-	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
+	MenuCallbackHandler.callback_dcc_close = function(self) end --not used
 	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
 	
 	
@@ -1182,29 +1154,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	MenuHelper:LoadFromJsonFile(Console._menu_path, Console, Console.settings)
 end)
 
-
---[[ console menu node
-ConsoleMenuNode = ConsoleMenuNode or class()
-function ConsoleMenuNode:init(parent_menu)
-	local new_node = {
-		_meta = "node",
-		name = "console_window_node",
-		back_callback = "callback_on_console_window_closed",
-		menu_components = "console_menu_node",
-		scene_state = "",
-		[1] = {
-			["_meta"] = "default_item",
-			["name"] = "back"
-		}
-	}
-	table.insert(parent_menu,new_node)
-end
-
-function Console:callback_menucomponent_create(menu_component_manager)
-	menu_component_manager._active_components.
-end
---]]
-
+--custom menu creation
 Hooks:Add("MenuManagerSetupCustomMenus", "dcc_MenuManagerSetupCustomMenus", function(menu_manager, nodes)
 --	Console._menu_node = MenuHelper:NewMenu(Console.console_window_menu_id)
 end)
@@ -1220,18 +1170,6 @@ end)
 
 Hooks:Add("MenuManagerBuildCustomMenus", "dcc_MenuManagerBuildCustomMenus", function( menu_manager, nodes )
 end)
-
---[[
---overwrite to prevent blt keybinds from executing during typing?
-Hooks:Add("MenuUpdate", "Base_Keybinds_MenuUpdate", function(t, dt)
-	BLT.Keybinds:update(t, dt, BLTKeybind.StateMenu)
-end)
-
-Hooks:Add("GameSetupUpdate", "Base_Keybinds_GameStateUpdate", function(t, dt)
-	BLT.Keybinds:update(t, dt, BLTKeybind.StateGame)
-end)
-
---]]
 
 --updater hooks
 Hooks:Add("MenuUpdate", "dcc_update_menu", callback(Console,Console,"Update","MenuUpdate"))
