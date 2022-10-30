@@ -599,7 +599,7 @@ function Console:CreateConsoleWindow()
 		console_settings = self.settings,
 		input_log = self._input_log,
 		output_log = self._output_log,
-		send_text_callback = callback(self,self,"callback_confirm_text"),
+		confirm_text_callback = callback(self,self,"callback_confirm_text"),
 		save_settings_callback = callback(self,self,"SaveSettings"),
 		font_asset_load_done = self._is_font_asset_load_done,
 		button_list = {
@@ -630,7 +630,7 @@ function Console:HideConsoleWindow()
 end
 
 function Console:ToggleConsoleWindow()
-	local state = not self._window_instance._visible
+	local state = not self._window_instance.is_active
 	if state then 
 		self:ShowConsoleWindow()
 	else

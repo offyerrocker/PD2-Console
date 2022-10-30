@@ -46,7 +46,7 @@ function ConsoleModDialog:init(manager,data)
 	self._input_enabled = false
 
 	--this functions as the main "enabled" flag
-	self._visible = false
+	self.is_active = false
 	
 --	self._undo_steps = {} --undo? more like TODO
 
@@ -68,7 +68,7 @@ function ConsoleModDialog:init(manager,data)
 	self._controller = self._data.controller or manager:_get_controller()
 	self._confirm_func = callback(self, self, "button_pressed_callback") --automatic menu input for this is unreliable; use manual enter key detection (double input won't matter since the input text is wiped on send)
 	self._cancel_func = callback(self, self, "dialog_cancel_callback")
-	self._send_text_callback = self._data.send_text_callback 
+	self._confirm_text_callback = self._data.confirm_text_callback 
 	self._save_settings_callback = self._data.save_settings_callback
 	
 	--interface callback vars
@@ -717,7 +717,7 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	resize_grip:set_bottom(to_h)
 
 --force reposition
-	self:scroll_page(0) --force refresh scroll position
+	self:set_scroll_amount(0) --force refresh scroll position
 	local b_w,b_h = self._body:size()
 	--force update text objects
 	self._input_text:set_size(b_w,b_h)
@@ -768,13 +768,13 @@ function ConsoleModDialog:confirm_text()
 	input_text:set_selection(0,current_len)
 	input_text:replace_text("")
 	self:set_current_history_input_text("")
-	self:_send_text_to_shell(current_text)
+	self:_confirm_text(current_text)
 end
 
-function ConsoleModDialog:_send_text_to_shell(s)
+function ConsoleModDialog:_confirm_text(s)
 	local new_s,result
-	if self._send_text_callback then
-		new_s,result = self:_send_text_callback(s)
+	if self._confirm_text_callback then
+		new_s,result = self:_confirm_text_callback(s)
 	end
 	self:add_to_history(new_s,result)
 end
@@ -787,7 +787,7 @@ function ConsoleModDialog:add_to_history(s,colors)
 	if self._scrollbar_lock_enabled then
 		local current_lines = history_text:number_of_lines()
 		local delta = current_lines - prev_lines
-		self:scroll_page(delta * self.inherited_settings.window_font_size)
+		self:set_scroll_amount(delta * self.inherited_settings.window_font_size)
 	end
 	if type(colors) == "table" then
 		for i,range_data in pairs(colors) do 
@@ -820,11 +820,11 @@ function ConsoleModDialog:callback_on_scrollbar_bottom_button_clicked(o,x,y)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_up_button_clicked(o,x,y)
-	self:scroll_page(-self._body:h())
+	self:set_scroll_amount(-self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
-	self:scroll_page(self._body:h())
+	self:set_scroll_amount(self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
@@ -872,25 +872,7 @@ function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
 	history_text:set_y(d_y)
 end
 
-function ConsoleModDialog:set_scroll_bar_position(ratio)
-	local scrollbar_handle = self._scrollbar_handle
-	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
-	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
-	local scrollbar_direction_reversed = self.inherited_settings.window_scroll_direction_reversed
-	if scrollbar_direction_reversed then
-		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
-	else
-		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
-	end
-end
-
-function ConsoleModDialog:set_scroll_bar_height(ratio)
-	local default_scrollbar_handle_height = 100
-	local scrollbar_handle = self._scrollbar_handle
-	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
-end
-
-function ConsoleModDialog:scroll_page(d_y) --horizontal scroll not supported (no need since we have line wrap)
+function ConsoleModDialog:set_scroll_amount(d_y) --horizontal scroll not supported (no need since we have line wrap)
 	local history_text = self._history_text
 	local tx,ty,tw,th = history_text:text_rect()
 	local min_y = -history_text:h()
@@ -906,7 +888,7 @@ function ConsoleModDialog:scroll_page(d_y) --horizontal scroll not supported (no
 	self:set_scroll_bar_position(0.5 + r)
 	
 	
--- [[
+--[[
 
 	if alive(_G.asdlfkjasldf) then 
 		asdlfkjasldf:parent():remove(asdlfkjasldf)
@@ -923,6 +905,24 @@ function ConsoleModDialog:scroll_page(d_y) --horizontal scroll not supported (no
 		y = history_text:y()
 	})
 	--]]
+end
+
+function ConsoleModDialog:set_scroll_bar_position(ratio)
+	local scrollbar_handle = self._scrollbar_handle
+	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
+	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
+	local scrollbar_direction_reversed = self.inherited_settings.window_scroll_direction_reversed
+	if scrollbar_direction_reversed then
+		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
+	else
+		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
+	end
+end
+
+function ConsoleModDialog:set_scroll_bar_height(ratio)
+	local default_scrollbar_handle_height = 100
+	local scrollbar_handle = self._scrollbar_handle
+	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
 end
 
 function ConsoleModDialog:callback_mouse_moved(o,x,y)
@@ -1031,9 +1031,9 @@ function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
 		--context menu for clicked item
 	elseif button == Idstring("mouse wheel up") then 
 		--scroll up
-		self:scroll_page(self.inherited_settings.window_font_size)
+		self:set_scroll_amount(self.inherited_settings.window_font_size)
 	elseif button == Idstring("mouse wheel down") then 
-		self:scroll_page(-self.inherited_settings.window_font_size)
+		self:set_scroll_amount(-self.inherited_settings.window_font_size)
 		--scroll down
 	end
 end
@@ -1535,7 +1535,7 @@ function ConsoleModDialog:show()
 	self._panel:show()
 	self._manager:event_dialog_shown(self)
 	self:set_input_enabled(true)
-	self._visible = true
+	self.is_active = true
 	return true
 end
 
@@ -1543,7 +1543,7 @@ function ConsoleModDialog:hide()
 	self:set_input_enabled(false)
 	self._key_held_ids = nil
 	self._key_held_t = nil
-	self._visible = false
+	self.is_active = false
 	self._panel:hide()
 
 	self._manager:event_dialog_hidden(self)
@@ -1553,7 +1553,7 @@ function ConsoleModDialog:close()
 	self._manager:event_dialog_closed(self)
 	self:hide()
 	self:_close_dialog_gui()
-	self._visible = false
+	self.is_active = false
 --	Dialog.close(self)
 end
 
@@ -1561,12 +1561,12 @@ function ConsoleModDialog:force_close()
 	self._manager:event_dialog_closed(self)
 --	self:close()
 	self._panel:hide()
-	self._visible = false
+	self.is_active = false
 	self:_close_dialog_gui()
 --	Dialog.force_close(self)
 end
 
-function ConsoleModDialog:_hide_dialog_gui()
+function ConsoleModDialog:_hide_dialog_gui() --not really used
 	self:set_input_enabled(false)
 	self._parent_panel:set_visible(false)
 --	self._panel_script:close()
@@ -1587,7 +1587,7 @@ function ConsoleModDialog:remove_mouse()
 	end
 end
 function ConsoleModDialog:resolution_changed_callback()
-	log("resolution changed")
+--	log("resolution changed")
 --	self:resize_panel(self.inherited_settings.window_w,self.inherited_settings.window_h)
 end
 function ConsoleModDialog:button_pressed_callback()
@@ -1595,8 +1595,8 @@ function ConsoleModDialog:button_pressed_callback()
 --	self:remove_mouse()
 --	self:button_pressed(self._panel_script:get_focus_button())
 end
-function ConsoleModDialog:dialog_cancel_callback()
-	log("Cancel")
+function ConsoleModDialog:dialog_cancel_callback() --not really used?
+--	log("Cancel")
 	self:hide()
 	if #self._data.button_list == 1 then
 		self:remove_mouse()
