@@ -1,21 +1,24 @@
 --[[ 
 todo main features:
 
-
-
+add a keybind button for it doofus!
 scroll function
+	--basically all direct scroll functions are not working as intended
 	--lock scrollbar (disable autoscroll on new lines) not working
-
+	--reverse scroll direction option needs to be redone and applied more broadly
+	restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
+	shrink the scroll bar during resizing to a percentage of the current window height
+	
+	
 tab key autocomplete
+option to de-focus the console and keep it open while playing without hiding it
 
-up/down history
 mouse-selectable output text
 mouse-selectable input text
 
+separate callbacks in create_gui into their own functions
 color range is broken on adding new history text
-Input Log is not saving
-Output Log is not displaying
-wrong callback on mouse_left_click_callback (should be mouse_left_click_release)
+	-solution: save number of stored input and output log lines to color range data, re-apply when appending to the console output 
 --]]
 
 
@@ -519,12 +522,12 @@ function ConsoleModDialog:create_gui()
 			mouseover_pointer = "hand",
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
-			mouse_left_release_callback = function(o,x,y)
+			mouse_left_release_callback = nil,
+			mouse_left_click_callback = function(o,x,y)
 				if self._save_settings_callback then 
 					self._save_settings_callback()
 				end
 			end,
-			mouse_left_click_callback = nil,
 			mouse_right_click_callback = function(o,x,y)
 			end,
 			mouse_left_press_callback = function(o,x,y)
@@ -664,7 +667,7 @@ function ConsoleModDialog:create_gui()
 				o:set_color(Color.white)
 			end,
 			mouse_left_release_callback = nil,
-			mouse_left_click_callback = callback(self,self,"callback_on_scrollbar_down_button_clicked")
+			mouse_left_click_callback = callback(self,self,"callback_on_scrollbar_lock_button_clicked")
 		},
 		scrollbar_handle = {
 			object = scrollbar_handle,
@@ -688,8 +691,8 @@ function ConsoleModDialog:create_gui()
 				local to_y = math.clamp(self._target_drag_y_start + d_y, y_min, y_max)
 				--scroll event (d_y)
 				--disable autoscroll while holding bar
+				
 				o:set_y(to_y)
-
 				self:set_scroll_amount_by_bar_position(to_y)
 			end
 		}
@@ -714,7 +717,6 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	resize_grip:set_bottom(to_h)
 
 --force reposition
-	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(body_margin_ver * 2))
 	self:scroll_page(0) --force refresh scroll position
 	local b_w,b_h = self._body:size()
 	--force update text objects
@@ -726,6 +728,7 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	self._prompt:set_text(self._prompt:text())
 	self._history_text:set_size(b_w,b_h - font_size)
 	self._history_text:set_text(self._history_text:text())
+	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(body_margin_ver * 2))
 	self._caret:set_size(b_w,b_h)
 	self._caret:set_text(self._caret:text())
 	self._top_bar:set_w(to_w)
@@ -755,6 +758,17 @@ function ConsoleModDialog:generate_history(color)
 	self._history_text:set_text(new_str)
 	self._history_text:set_range_color(0,utf8.len(new_str),color)
 	
+end
+
+function ConsoleModDialog:confirm_text()
+--	log("confirm button presed")
+	local input_text = self._input_text
+	local current_text = input_text:text()
+	local current_len = utf8.len(current_text)
+	input_text:set_selection(0,current_len)
+	input_text:replace_text("")
+	self:set_current_history_input_text("")
+	self:_send_text_to_shell(current_text)
 end
 
 function ConsoleModDialog:_send_text_to_shell(s)
@@ -806,10 +820,14 @@ function ConsoleModDialog:callback_on_scrollbar_bottom_button_clicked(o,x,y)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_up_button_clicked(o,x,y)
-	self:scroll_page(self._body:h())
+	self:scroll_page(-self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
+	self:scroll_page(self._body:h())
+end
+
+function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
 	local scrollbar_lock_alpha_high = 1
 	local scrollbar_lock_alpha_low = 0.5
 	local state = not self.inherited_settings.window_scrollbar_lock_enabled
@@ -818,12 +836,6 @@ function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
 	else
 		o:set_alpha(scrollbar_lock_alpha_low)
 	end
-end
-
-function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
-	local state = not self._scrollbar_lock_enabled
-	self._scrollbar_lock_enabled = state
-	o:set_alpha(state and 1 or 0.5)
 end
 
 --function ConsoleModDialog:perform_scroll(num_lines)
@@ -841,7 +853,7 @@ function ConsoleModDialog:set_scroll_amount_by_bar_position(y_pos)
 	local current = y_pos - top
 	local ratio = current / total
 --	self._prompt:set_text(string.format("%i %i %0.2f",total,current,ratio))
-	return self:set_scroll_amount_by_bar_ratio(ratio)
+	return self:set_scroll_amount_by_bar_ratio(1 - ratio)
 end
 
 function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
@@ -854,13 +866,10 @@ function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
 --	self._prompt:set_text(string.format("%i %i %i %0.2f",min_y,max_y,d_y,ratio))
 --	self._prompt:set_text(string.format("%i %i %i",history_text:y(),d_y,ratio))
 	
-	local tx,ty,tw,th = history_text:text_rect()
+--	local tx,ty,tw,th = history_text:text_rect()
 --	local to_y = math.clamp(history_text:y() + d_y,min_y,max_y)
+	history_text:grow(0,d_y - history_text:y())
 	history_text:set_y(d_y)
-end
-
-function ConsoleModDialog:release_scroll_bar()
-	
 end
 
 function ConsoleModDialog:set_scroll_bar_position(ratio)
@@ -884,19 +893,20 @@ end
 function ConsoleModDialog:scroll_page(d_y) --horizontal scroll not supported (no need since we have line wrap)
 	local history_text = self._history_text
 	local tx,ty,tw,th = history_text:text_rect()
-	
 	local min_y = -history_text:h()
 	local max_y = 0 + (self._body:h() - self.inherited_settings.window_font_size)
-	self._prompt:set_text(history_text:y() .. " " .. history_text:h())
+--	self._prompt:set_text(history_text:y() .. " " .. history_text:h())
 	
 	local to_y = math.clamp(history_text:y() + d_y,min_y,max_y)
+--	local sign = math.sign(d_y)
+--	history_text:grow(0,math.max(0,math.abs(to_y - history_text:y())) * sign)
 	history_text:set_y(to_y)
 	
 	local r = to_y / (max_y - min_y)
 	self:set_scroll_bar_position(0.5 + r)
 	
 	
---[[
+-- [[
 
 	if alive(_G.asdlfkjasldf) then 
 		asdlfkjasldf:parent():remove(asdlfkjasldf)
@@ -991,11 +1001,19 @@ function ConsoleModDialog:callback_mouse_moved(o,x,y)
 end
 
 function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
---	log("pressed  " .. tostring(x) .. " " .. tostring(y))
+	log("pressed  " .. tostring(x) .. " " .. tostring(y))
 	
 	if button == Idstring("0") then
 		self._is_holding_mouse_button = true
 		local id,mouseover_target = self:get_mouseover_target(x,y)
+		
+		--drag start (can be overridden by object-specific callbacks)
+		self._mouse_drag_x_start = x
+		self._mouse_drag_y_start = y
+		self._target_drag_x_start = x
+		self._target_drag_y_start = y
+		self._held_object = mouseover_target
+		
 		if mouseover_target then
 			local ui_object_data = self._ui_objects[id]
 			if ui_object_data.mouse_left_press_callback then
@@ -1021,7 +1039,7 @@ function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
 end
 
 function ConsoleModDialog:callback_mouse_released(o,button,x,y)
---	log("released  " .. tostring(x) .. " " .. tostring(y))
+	log("released  " .. tostring(x) .. " " .. tostring(y))
 	if button == Idstring("0") then
 		
 		local held_object = self._held_object
@@ -1030,10 +1048,16 @@ function ConsoleModDialog:callback_mouse_released(o,button,x,y)
 			if id then
 				local ui_object_data = self._ui_objects[id]
 				if mouseover_target == held_object then 
-					if ui_object_data.mouse_left_release_callback then
-						ui_object_data.mouse_left_release_callback(mouseover_target,x,y)
+					if ui_object_data.mouse_left_click_callback then
+						log("leftclick  " .. tostring(x) .. " " .. tostring(y))
+						ui_object_data.mouse_left_click_callback(mouseover_target,x,y)
 					end
 				end
+				
+				if ui_object_data.mouse_left_release_callback then
+					ui_object_data.mouse_left_release_callback(mouseover_target,x,y)
+				end
+				
 				if ui_object_data.mouseover_pointer then 
 					managers.mouse_pointer:set_pointer_image(ui_object_data.mouseover_pointer)
 				else
@@ -1054,7 +1078,15 @@ function ConsoleModDialog:callback_mouse_released(o,button,x,y)
 	end
 end
 
-function ConsoleModDialog:callback_mouse_clicked(o,button,x,y)
+function ConsoleModDialog:callback_mouse_clicked(o,button,x,y) --don't use this
+--	log("Mouse clicked")
+	--[[
+		--this callback is called whenever the mouse is released after clicking.
+		--but it isn't capable of checking whether the mouseover object is the same one from when the mouse was pressed.
+		--and by definition a mouse must always first press before releasing. that is how clicks work.
+		--also it's executed after release instead of before.
+		--so it's completely worthless to me. 
+		
 	if button == Idstring("0") then 
 		local id,mouseover_target = self:get_mouseover_target(x,y)
 		if id then
@@ -1064,6 +1096,7 @@ function ConsoleModDialog:callback_mouse_clicked(o,button,x,y)
 			end
 		end	
 	end
+	--]]
 end
 
 function ConsoleModDialog:reset_caret_blink_t()
@@ -1084,7 +1117,7 @@ function ConsoleModDialog:on_key_press(k,held)
 	local alt_held = self:key_alt_down()
 	if k == Idstring("enter") or k == Idstring("return") then
 		self:set_current_history_input_text(current_text)
-		self:button_pressed_callback()
+		self:confirm_text()
 	elseif k == Idstring("`") and not shift_held then 
 	elseif k == Idstring("v") and ctrl_held then
 		local clipboard = Application:get_clipboard()
@@ -1215,10 +1248,12 @@ function ConsoleModDialog:on_key_press(k,held)
 				new_text = self._current_input_text_string
 			else
 				input_text:set_alpha(0.5)
-				new_text = self._input_log[history_index]
+				new_text = self._input_log[history_index].input
 			end
 			input_text:set_text(new_text)
 			self._input_history_index = history_index
+			local new_len = string.len(new_text)
+			input_text:set_selection(new_len,new_len)
 		end
 		
 		self:reset_caret_blink_t()
@@ -1237,10 +1272,12 @@ function ConsoleModDialog:on_key_press(k,held)
 				new_text = self._current_input_text_string
 			else
 				input_text:set_alpha(0.5)
-				new_text = self._input_log[history_index]
+				new_text = self._input_log[history_index].input
 			end
 			input_text:set_text(new_text)
 			self._input_history_index = history_index
+			local new_len = string.len(new_text)
+			input_text:set_selection(new_len,new_len)
 		end
 		
 		self:reset_caret_blink_t()
@@ -1447,7 +1484,7 @@ function ConsoleModDialog:set_input_enabled(enabled)
 					mouse_move = callback(self, self, "callback_mouse_moved"),
 					mouse_press = callback(self, self, "callback_mouse_pressed"),
 					mouse_release = callback(self, self, "callback_mouse_released"),
-					mouse_click = callback(self, self, "callback_mouse_clicked"),
+					mouse_click = callback(self, self, "callback_mouse_clicked"), --don't use this
 					id = self._mouse_id
 				}
 				self._fullscreen_ws:connect_keyboard(Input:keyboard())
@@ -1554,14 +1591,7 @@ function ConsoleModDialog:resolution_changed_callback()
 --	self:resize_panel(self.inherited_settings.window_w,self.inherited_settings.window_h)
 end
 function ConsoleModDialog:button_pressed_callback()
-	log("confirm button presed")
-	local input_text = self._input_text
-	local current_text = input_text:text()
-	local current_len = utf8.len(current_text)
-	input_text:set_selection(0,current_len)
-	input_text:replace_text("")
-	self:set_current_history_input_text("")
-	self:_send_text_to_shell(current_text)
+	--self:confirm_text()
 --	self:remove_mouse()
 --	self:button_pressed(self._panel_script:get_focus_button())
 end
@@ -1583,9 +1613,7 @@ function ConsoleModDialog:dialog_cancel_callback()
 	end
 end
 
-
-
---generic Dialog methods
+--inherited Dialog methods
 function ConsoleModDialog:init_button_text_list()
 	local button_list = self._data.button_list
 
@@ -1659,6 +1687,12 @@ end
 
 
 --inherited GenericDialog methods 
+
+
+function ConsoleModDialog:release_scroll_bar()
+	
+end
+
 function ConsoleModDialog:id()
 	return self._data.id
 end
