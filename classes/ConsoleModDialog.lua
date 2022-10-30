@@ -28,7 +28,7 @@ ConsoleModDialog = ConsoleModDialog or class() --class(Dialog) --can't seem to g
 ConsoleModDialog.MOVE_AXIS_LIMIT = 0.4
 ConsoleModDialog.MOVE_AXIS_DELAY = 0.4
 
---ConsoleModDialog.INPUT_IGNORE_DELAY_INTERVAL = 0.1
+ConsoleModDialog.INPUT_IGNORE_DELAY_INTERVAL = 0.05
 ConsoleModDialog.INPUT_REPEAT_INTERVAL_INITIAL = 0.4
 ConsoleModDialog.INPUT_REPEAT_INTERVAL_CONTINUE = 0.066
 ConsoleModDialog.DEFAULT_FONT_NAME = tweak_data.hud.medium_font
@@ -183,8 +183,8 @@ function ConsoleModDialog:create_gui()
 		h = panel_h
 	})
 	
-	local body_margin_hor = 12
-	local body_margin_ver = 12
+	local body_margin_hor = 6
+	local body_margin_ver = 6
 	local selection_color = hex_to_color(settings.window_text_highlight_color)
 	
 	local input_box_color = hex_to_color(settings.window_input_box_color)
@@ -308,6 +308,7 @@ function ConsoleModDialog:create_gui()
 		alpha = 1,
 		layer = 1
 	})
+	self._history_text:set_selection_color(text_highlight_color)
 	self._prompt = body:text({
 		name = "prompt",
 		text = prompt_string,
@@ -323,6 +324,7 @@ function ConsoleModDialog:create_gui()
 		alpha = prompt_text_alpha,
 		layer = 102
 	})
+	self._prompt:set_selection_color(text_highlight_color)
 	
 	self._input_text = body:text({
 		name = "input_text",
@@ -332,22 +334,23 @@ function ConsoleModDialog:create_gui()
 		font_size = font_size,
 		align = "left",
 		vertical = "bottom",
-		w = body:w(),
-		h = font_size,
-		x = 16,
-		y = self._prompt:y(),
+--		w = body:w(),
+--		h = body:h(),
+		x = 32,
+--		y = self._prompt:y(),
 		color = text_normal_color,
 		wrap = false,
 		alpha = 1,
 		layer = 100
 	})
+	self._input_text:set_selection_color(text_highlight_color)
 	self._input_box = body:rect({
 		name = "input_box",
 		color = input_box_color,
 		layer = 97,
 		w = body:w(),
 		h = font_size,
-		x = 0,
+		x = body_margin_hor,
 		y = body:h() - font_size,
 		alpha = 1
 	})
@@ -718,6 +721,7 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 
 --force reposition
 	self:set_scroll_amount(0) --force refresh scroll position
+	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(body_margin_ver * 2))
 	local b_w,b_h = self._body:size()
 	--force update text objects
 	self._input_text:set_size(b_w,b_h)
@@ -728,7 +732,6 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	self._prompt:set_text(self._prompt:text())
 	self._history_text:set_size(b_w,b_h - font_size)
 	self._history_text:set_text(self._history_text:text())
-	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(body_margin_ver * 2))
 	self._caret:set_size(b_w,b_h)
 	self._caret:set_text(self._caret:text())
 	self._top_bar:set_w(to_w)
@@ -1379,10 +1382,13 @@ function ConsoleModDialog:update(t,dt)
 		local caret_w = font_size / 4
 		local caret_x,caret_y = input_text:character_rect(char_index)
 		if input_text:text() == "" then
-			local prompt = self._prompt
-			local prompt_text = prompt:text()
-			local prompt_len = utf8.len(prompt_text)
-			caret_x,caret_y = prompt:character_rect(prompt_len)
+--			local prompt = self._prompt
+--			local prompt_text = prompt:text()
+--			local prompt_len = utf8.len(prompt_text)
+--			caret_x,caret_y = prompt:character_rect(prompt_len)
+			caret_x = self._input_box:x()
+			--self._input_box:y()
+			caret_y = self._prompt:y()
 		else
 	--		local _,_,caret_w,caret_h = caret:text_rect()
 		end
@@ -1420,14 +1426,23 @@ function ConsoleModDialog:update(t,dt)
 	end
 	if self._input_enabled then
 		self:update_input(t, dt)
+	elseif self._input_delay_timer then
+		if self._input_delay_timer <= 0 then
+			self._input_delay_timer = nil
+			self:set_input_enabled(true)
+		else
+			self._input_delay_timer = self._input_delay_timer - dt
+		end
 	end
 	
+	local s = ""
 --	local id,target = self:get_mouseover_target(self._mouse_x,self._mouse_y)
 --	local s = tostring(id) .. string.format(" %i %i",self._mouse_x,self._mouse_y)
---	s = s .. "\n" .. string.format(" %i %i",self._panel:right(),self._panel:bottom())
+	s = s .. "\n" .. string.format(" %i %i",self._input_text:position())
+	s = s .. "\n" .. string.format(" %i %i",self._input_text:size())
 --	s = s .. "\n" .. string.format("%i %i",self._mouse_drag_x_start or -1,self._mouse_drag_y_start or -1)
 --	s = s .. "\n" .. string.format("%i %i",self._target_drag_x_start or -1,self._target_drag_y_start or -1)
---	self._history_text:set_text(s)
+--	self._prompt:set_text(s)
 --self._history_text:set_text(string.format("%0.2f",self._key_held_t))
 end
 
@@ -1453,20 +1468,19 @@ function ConsoleModDialog:update_input(t,dt)
 
 	self._move_button_dir = dir
 	self._move_button_time = move_time
-	
+
+	self:update_key_down(t,dt,self._key_held_ids)
+end
+
+function ConsoleModDialog:update_key_down(t,dt,k)	
 	if self._key_held_t then 
 		self._key_held_t = self._key_held_t - dt
 		if self._key_held_t <= 0 then
 			self._key_held_t = self.INPUT_REPEAT_INTERVAL_CONTINUE
 			
-			self:update_key_down(t,dt,self._key_held_ids)
+			self:on_key_press(k,true)
 		end
 	end
-end
-
-function ConsoleModDialog:update_key_down(t,dt,k)
---	self._key_held_ids
-	self:on_key_press(k,true)
 end
 
 function ConsoleModDialog:set_input_enabled(enabled)
@@ -1531,10 +1545,11 @@ function ConsoleModDialog:show()
 	if _G.setup and _G.setup:has_queued_exec() then
 		return
 	end
+	self._input_delay_timer = self.INPUT_IGNORE_DELAY_INTERVAL
 	managers.menu:post_event("prompt_enter") --snd
 	self._panel:show()
 	self._manager:event_dialog_shown(self)
-	self:set_input_enabled(true)
+--	self:set_input_enabled(true)
 	self.is_active = true
 	return true
 end

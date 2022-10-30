@@ -1,15 +1,17 @@
 {
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
 	"dcc_title" : "Command Console Options",
+	"dcc_toggle_title" : "Toggle Command Console Prompt",
+	"dcc_toggle_desc" : "Shows or hides the Console Window",
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	"dcc_desc" : "Options options options!",
 	"dcc_setkeyboardregion_title" : "Set Keyboard Region",
 	"dcc_setkeyboardregion_desc" : "Choose your keyboard type",
@@ -25,8 +27,6 @@
 	"dcc_keybind_debughud_title" : "Toggle Debug HUD",
 	"dcc_keybind_debughud_desc" : "Shows or hides the Debug HUD.",
 
-	"dcc_toggle_title" : "Toggle Command Console Prompt",
-	"dcc_toggle_desc" : "Shows or hides the Console Window",
 	"dcc_toggle_title_1" : "Toggle 1",
 	"dcc_toggle_desc_1" : "1 is not 1",
 	"dcc_tagunit_title" : "Tag Aimed Unit",

@@ -13,8 +13,11 @@ slightly more bash-like
 "/" key shortcut to open console window
 
 hook based autoexec system in saves?
-
+warning/text-based confirm prompt eg. when a query is expected to have lots of results
 set escaping: change character set to include punctuation and alphanumeric chars
+
+- queue messages before console is initiated
+- welcome message on startup
 
 commands:
 	/setvar var value
@@ -41,7 +44,7 @@ do --init mod vars
 	local mod_path = ConsoleCore and ConsoleCore:GetPath() or ModPath
 	Console._mod_core = ConsoleCore
 	Console._mod_path = mod_path
---	Console._menu_path = mod_path .. "menu/options.json"
+	Console._menu_path = mod_path .. "menu/options.json"
 	Console._default_localization_path = mod_path .. "localization/english.json"
 	Console._save_path = save_path .. "console_settings.ini"
 	Console._output_log_file_path = save_path .. "console_output_log.txt" --store recent console output; colors and data types are not preserved
@@ -211,7 +214,7 @@ do --init mod vars
 		}
 		--]]
 	}
-	Console.command_list = {}
+	Console._registered_commands = {}
 	
 	Console._user_vars = {
 	--[[
@@ -283,13 +286,13 @@ function Console:Log(info,params)
 	log("CONSOLE: " .. info)
 	self:AddToOutputLog(info)
 end
---_G.Log = callback(Console,Console,"Log")
+_G.Log = callback(Console,Console,"Log")
 Console.log = Console.Log
 
 function Console:Print(...)
 	self:Log(self.table_concat({...}," "))
 end
---_G.Print = callback(Console,Console,"Print")
+_G.Print = callback(Console,Console,"Print")
 
 function Console:LogTable(obj,max_amount)
 --generally best used to log all of the properties of a Class:
@@ -342,7 +345,7 @@ function Console:LogTable(obj,max_amount)
 	end
 	Console._failsafe = false
 end
---_G.logall = callback(Console,Console,"LogTable")
+_G.logall = callback(Console,Console,"LogTable")
 
 
 --core functionality
@@ -366,8 +369,10 @@ function Console:InterpretCommand(raw_cmd_string)
 --	local cmd_string = self.string_trim_leading_spaces(raw_cmd_string)
 	local cmd_name = string.match(cmd_string,"[^%s]*")--[%a%s]+")
 	
-	if not self._registered_commands[cmd_name] then 
-		
+	if not cmd_name or cmd_name == "" then
+		return
+	elseif not self._registered_commands[cmd_name] then 
+		self:Log("/" .. cmd_name .. ": No such command found.")
 		return
 	end
 	
@@ -428,22 +433,50 @@ function Console:InterpretCommand(raw_cmd_string)
 		
 	end
 	
-	
-	for word in string.gmatch(cmd_string,"%-%a+[^%-]*") do 
-		local param_start,param_finish = string.find(word,"%-%a+")
+	local first_occurrence
+	for word in string.gmatch(cmd_string,"%-[%a%p]+[^%-]*") do 
+		local param_start,param_finish = string.find(word,"%-[%a%p]+")
 		local param_name = string.sub(word,param_start+1,param_finish)
+		if not first_occurrence then
+			first_occurrence = param_start
+		end
 		local _word = string.sub(word,param_finish+1)
+		--[[
 		local params = {}
 		for arg in string.gmatch(_word,"[^%s]*") do 
 			if arg ~= "" then
+				Print("New arg [" .. tostring(arg) .. "]")
 				table.insert(params,#params+1,arg)
 			end
 		end
 		cmd_params[param_name] = params
+		--]]
+		local param = string.match(_word,"[^%s]+")
+		cmd_params[param_name] = param
 	end
 	
+
 	
+	local args_string
+	if first_occurrence then
+		args_string = string.sub(cmd_string,string.len(cmd_name),first_occurrence)
+		Log(args_string)
+	end
 	if has_quotes then
+		for i=#_pairs,1,-1 do
+			local pair_data = _pairs[i]
+			for param,param in pairs(cmd_params) do 
+				local new_param,num_done = string.gsub(param,pair_data.substitution_string,pair_data.original_string)
+				if num_done > 0 then
+					cmd_params[param] = new_param
+				end
+				local new_param_name,num_done = string.gsub(param,pair_data.substitution_string,pair_data.original_string)
+				if num_done > 0 then 
+					cmd_params[new_param_name] = param
+					cmd_params[param] = nil
+				end
+			end
+		--[[
 		for param_name,params in pairs(cmd_params) do 
 			for param_key,arg in pairs(params) do 
 				for i=#_pairs,1,-1 do
@@ -461,6 +494,7 @@ function Console:InterpretCommand(raw_cmd_string)
 					end
 				end
 			end
+			--]]
 		end
 		
 		for i=#_pairs,1,-1 do
@@ -471,13 +505,50 @@ function Console:InterpretCommand(raw_cmd_string)
 --				table.remove(_pairs,i)
 			end
 		end
+	
 	end
---	log(cmd_string)
+	
+--[[	
+	Print("cmd name",cmd_name)
+	Print("cmd string",cmd_string)
+	Print("raw_cmd_string",raw_cmd_string)
+	logall(cmd_params)
+	Log("--")
+	do return end
+--]]	
+	
+	
+	local command_data = self._registered_commands[cmd_name]
+	if command_data.func then 
+		command_data.func(cmd_params,args_string)
+	elseif command_data.str then 
+		local func,err = loadstring(command_data.str)
+		if func then
+			command_data.func = func
+			return pcall(func,cmd_params,args_string)
+		elseif err then
+			self:Log(err)
+		end
+	end
+	Log(cmd_name)
 end
 
-function Console:callback_confirm_text(dialog,text)
-	if text == "//" then 
-		--!
+function Console:callback_confirm_text(dialog_instance,text)
+	if string.sub(text,1,1) == "/" then 
+		local input_log = self._input_log
+		if text == "//" then 
+			if #input_log > 0 then
+				local data = input_log[#input_log]
+				text = data.input or data.raw_input
+				--if data.func then 
+				
+				--end
+			else
+				self:Log("Error: No command history!")
+			end
+		else
+			self:InterpretCommand(string.sub(text,2))
+		end
 	elseif text ~= "" then
 		self:Log("> " .. text)
 		return self:InterpretInput(text)
@@ -502,19 +573,16 @@ end
 
 --management
 
+
 function Console:RegisterCommand(id,data)
 	if not id then
 		self:Log("ERROR: RegisterCommand(" .. tostring(id)..") failed: Bad command name",{color = Color.red}) 
 		return
-	elseif (type(data) ~= "table") or not data.str then 
+	elseif type(data) ~= "table" then 
 		self:Log("ERROR: RegisterCommand(" .. tostring(id)..") failed: Bad command data",{color = Color.red}) 
 		return
 	end
-	self.command_list[id] = {
-		str = data.str or "",
-		desc = data.desc,
-		hidden = data.hidden
-	}
+	self._registered_commands[id] = data
 end
 
 
@@ -528,6 +596,159 @@ end
 
 --commands
 
+function Console:cmd_help(subcmd,arg) --not yet implemented
+	if subcmd then 
+		local cmd_data = self._registered_commands[subcmd] 
+		if cmd_data then 
+			self:Log("/" .. cmd_data.subcmd)
+			self:Log(cmd_data.desc)
+			self:Log(cmd_data.manual)
+			if cmd_data.parameters then 
+				for k,v in pairs( cmd_data.parameters ) do 
+					self:Log("-" .. k .. " " .. tostring(v.arg_desc))
+					self:Log(tostring(v.short_desc))
+				end
+			end
+		end
+	else
+		for k,v in pairs(self._registered_commands) do 
+			if not v.hidden then
+				self:Log("/" .. tostring(k))
+				self:Log(v.desc)
+				self:Log("")
+			end
+		end
+	end
+end
+
+function Console:cmd_weaponname(params,name)
+	params = type(params) == "table" and params or {}
+	local results = {}
+	
+	local category = params.category
+	local slot = tonumber(params.slot)	Log("category [" .. tostring(category) .. "]")
+	Log("slot [" .. tostring(slot) .. "]")
+	logall(params)
+	
+	local function check_weapon(data)
+		if slot then 
+			if data.use_data and data.use_data.selection_index == slot then 
+				--found
+			else
+				return false
+			end
+		end
+		local localized_name = data.name_id and managers.localization:text(data.name_id)
+		if name then
+			if localized_name and string.find(string.lower(localized_name),string.lower(name)) or string.find(string.lower(weapon_id),string.lower(name)) then
+				--found
+			else
+				return false
+			end
+		end
+		if category then
+			if data.categories and table.contains(data.categories,category) then
+				--found
+			else
+				return false
+			end
+		end
+		self:Log(tostring(weapon_id) .. " / " .. tostring(localized_name or "UNKNOWN"))
+		return true
+	end
+	local search_feedback_str = "--- Searching for"
+	if name and name ~= "" then 
+		search_feedback_str = search_feedback_str .. ": [" .. tostring(name) .. "]"
+	else
+		search_feedback_str = search_feedback_str .. " all weapons"
+	end
+	if category then 
+		search_feedback_str = search_feedback_str .. " with category [" .. tostring(category) .. "]"
+	end
+	if slot then
+		search_feedback_str = search_feedback_str .. " in slot [" .. tostring(slot) .. "]"
+	end
+	search_feedback_str = search_feedback_str .. "..."
+	self:Log(search_feedback_str)
+	for weapon_id,data in pairs(tweak_data.weapon) do 
+		if type(data) == "table" then
+			if check_weapon(data) then
+				table.insert(results,weapon_id)
+			end
+		end
+	end
+	self:Log("---Search ended.")
+	return results
+end
+
+function Console:cmd_partname(params,name)
+	params = type(params) == "table" and params or {}
+	local results = {}
+	local _type = params.type
+	local weapon_id = params.weapon_id or params.weapon
+	
+	local search_feedback_str = "--- Searching for"
+	if name and name ~= "" then 
+		search_feedback_str = search_feedback_str .. " part: [" .. tostring(name) .. "]"
+	else
+		search_feedback_str = search_feedback_str .. " all parts"
+	end
+	if _type then 
+		search_feedback_str = search_feedback_str .. " of attachment type [" .. tostring(_type) .. "]"
+	end
+	if weapon_id then 
+		search_feedback_str = search_feedback_str .. " usable on weapon with weapon_id [" .. tostring(weapon_id) .. "]"
+	end
+	search_feedback_str = search_feedback_str .. "..."
+	self:Log(search_feedback_str)
+	
+	local function check_part(part_id,part_data)
+		local localized_name = part_data.name_id and managers.localization:text(part_data.name_id)
+		
+		if _type and _type ~= part_data.type then
+			return false
+		else
+			if name then 
+				if localized_name and string.find(string.lower(localized_name),string.lower(name)) then 
+					--found
+				elseif string.find(string.lower(part_id),string.lower(name)) then 
+					--found
+				else
+					return false
+				end
+			end
+			self:Log(tostring(part_id) .. " / " .. tostring(localized_name or "UNKNOWN"))
+			return true
+		end
+	end
+	if weapon_id then
+		local bm_id = managers.weapon_factory:get_factory_id_by_weapon_id(weapon_id)
+		local bm_weapon_data = bm_id and tweak_data.weapon.factory[bm_id]
+		if bm_weapon_data.uses_parts then
+			for _,part_id in pairs(bm_weapon_data.uses_parts) do 
+				local data = tweak_data.weapon.factory.parts[part_id]
+				if data then 
+					if check_part(part_id,data) then
+						table.insert(results,part_id)
+					end
+				end
+			end
+		end
+	else
+		for part_id,data in pairs(tweak_data.weapon.factory.parts) do 
+			if check_part(part_id,data) then
+				table.insert(results,part_id)
+			end
+		end
+	end
+	
+	self:Log("---Search ended.")
+	return results
+end
+
+
+	--not yet implemented
+	
 function Console:cmd_echo(s)
 	
 end
@@ -675,25 +896,27 @@ function Console:LoadInputLog()
 	end
 end
 
-function Console:AddToInputLog(s)
-	table.insert(self._input_log,#self._input_log+1,s)
+function Console:AddToInputLog(data)
+	table.insert(self._input_log,#self._input_log+1,data)
 	if self.settings.input_log_enabled then 
-		self:WriteToInputLog(s,false)
+		self:WriteToInputLog(data.raw_input or data.input,false)
 	end
 end
 
 function Console:WriteToInputLog(s,force) --append to log
-	local buffer_enabled = self.settings.log_buffer_enabled
-	if force or not buffer_enabled then
-		--do it write now (haha)
-		local file = io.open(self._input_log_file_path,"a")
-		if file then
-			file:write("\n" .. s)
-			file:close()
+	if s then
+		local buffer_enabled = self.settings.log_buffer_enabled
+		if force or not buffer_enabled then
+			--do it write now (haha)
+			local file = io.open(self._input_log_file_path,"a")
+			if file then
+				file:write("\n" .. s)
+				file:close()
+			end
+		else
+			--queue writing it to a "buffer" and flush the buffer at regular intervals
+			table.insert(self._buffers.input_log,1,s)
 		end
-	else
-		--queue writing it to a "buffer" and flush the buffer at regular intervals
-		table.insert(self._buffers.input_log,1,s)
 	end
 end
 
@@ -895,6 +1118,8 @@ end
 
 --menu hooks
 
+Hooks:Register("ConsoleMod_RegisterCommands")
+
 Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager)
 --	Console:LoadSettings() --temp disabled; work from default settings for now
 	Console:AddFonts()
@@ -908,13 +1133,53 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 			Console:LoadInputLog()
 		end
 	end
-	
+	MenuCallbackHandler.callback_dcc_console_window_focus = function(self)
+		Console:ToggleConsoleWindow()
+	end
 	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
-	MenuCallbackHandler.callback_dcc_console_window_focus = function(self) end --also not used
+	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
 	
+	
+	
+	Console:RegisterCommand("partname",{
+		str = nil,
+		desc = "Search for a part by localized name/description, internal name/description, internal id, or blackmarket id.",
+		manual = "Usage: /partname [search key]\n\nParameters:\n-type [attachment type]\n-weapon [weapon id]",
+		parameters = {
+			type = {
+				arg_desc = "[attachment type]",
+				short_desc = "The attachment type to filter for, eg. silencer, barrel, stock, etc. Must be exact type match."
+			},
+			weapon = {
+				arg_desc = "[weapon]",
+				short_desc = "The weapon id to filter for, eg. m134, flamethrower, saw, m1911, or new_m4. If supplied, partname will only display attachments that can be applied to this weapon. Must be exact weapon_id match."
+			}
+		},
+		func = callback(Console,Console,"cmd_partname")
+	})
+	Console:RegisterCommand("weaponname",{
+		str = nil,
+		desc = "Search for a weapon by localized name/description, internal name/description, internal id, or blackmarket id.",
+		manual = "Usage: /weaponname [search key]",
+		parameters = {
+			category = {
+				arg_desc = "[category]",
+				short_desc = "The weapon category to filter for, eg. shotgun, smg, lmg, etc. Must be exact category match."
+			},
+			slot = {
+				arg_desc = "[weapon slot]",
+				short_desc = "The weapon slot number to filter for, eg. 1, 2, etc. Must be exact slot match."
+			}
+		},
+		func = callback(Console,Console,"cmd_weaponname")
+	})
+	--Console:RegisterCommand("weaponinfo")
+	Hooks:Call("ConsoleMod_RegisterCommands",Console)
 	
 	
 	Console:CreateConsoleWindow()
+
+	MenuHelper:LoadFromJsonFile(Console._menu_path, Console, Console.settings)
 end)
 
 
