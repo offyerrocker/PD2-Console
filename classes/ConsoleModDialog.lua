@@ -31,9 +31,8 @@ function ConsoleModDialog:init(manager,data)
 	
 	self.inherited_settings = data.console_settings or {} --readonly! this is the Console settings table!
 	
-	
-	
-	
+	self._current_window_color_ranges = {}
+	self._current_range_data_index = 0
 	
 	self._output_log = self._data.output_log or {}
 	self._input_log = self._data.input_log or {}
@@ -732,8 +731,14 @@ function ConsoleModDialog:generate_history(color)
 --	end
 	local new_str = Console.table_concat(self._output_log,"\n")
 	self._history_text:set_text(new_str)
-	self._history_text:set_range_color(0,utf8.len(new_str),color)
-	
+	local new_length = self._current_range_data_index + utf8.len(new_str)
+	table.insert(self._current_window_color_ranges,#self._current_window_color_ranges+1,{
+		start = self._current_range_data_index,
+		finish = new_length,
+		color = color
+	})
+	self._history_text:set_range_color(self._current_range_data_index,new_length,color)
+	self._current_range_data_index = new_length
 end
 
 function ConsoleModDialog:confirm_text()
@@ -748,27 +753,48 @@ function ConsoleModDialog:confirm_text()
 end
 
 function ConsoleModDialog:_confirm_text(s)
-	local new_s,result
+	local new_s,colors
 	if self._confirm_text_callback then
-		new_s,result = self:_confirm_text_callback(s)
+		new_s,colors = self:_confirm_text_callback(s)
 	end
-	self:add_to_history(new_s,result)
+	self:add_to_history(new_s,colors)
 end
 
 function ConsoleModDialog:add_to_history(s,colors)
+	if s then
+		local always_show_nil = true --todo
+		if not always_show_nil then 
+			return
+		end
+	end
+	local _s = tostring(s)
 	local history_text = self._history_text
 	local current_text = history_text:text()
 	local prev_lines = history_text:number_of_lines()
-	history_text:set_text(current_text .. "\n" .. tostring(s))
+	history_text:set_text(current_text .. "\n" .. _s)
 	if self._scrollbar_lock_enabled then
 		local current_lines = history_text:number_of_lines()
 		local delta = current_lines - prev_lines
 		self:set_scroll_amount(delta * self.inherited_settings.window_font_size)
 	end
+	local offset = self._current_range_data_index
 	if type(colors) == "table" then
-		for i,range_data in pairs(colors) do 
-			history_text:set_range_color(range_data.start,range_data.finish,range_data.color)
+		for i,range_data in ipairs(colors) do 
+			range_data.start = range_data.start + offset
+			range_data.finish = range_data.finish + offset
+			table.insert(self._current_window_color_ranges,#self._current_window_color_ranges+1,range_data)
 		end
+	end
+	offset = offset + 1 + utf8.len(_s)
+	self._current_range_data_index = offset
+	self:refresh_history_colors()
+end
+
+function ConsoleModDialog:refresh_history_colors() --not used
+	local history_text = self._history_text
+--		self._history_text:clear_range_color()
+	for i,range_data in ipairs(self._current_window_color_ranges) do 
+		history_text:set_range_color(range_data.start,range_data.finish,range_data.color)
 	end
 end
 

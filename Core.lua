@@ -3,6 +3,8 @@
 
 ******************* Feature list todo: ******************* 
 
+- straighten out Log/Print/output call flow
+
 - session pref with existing vars
 tab key autocomplete
 - display behavior to console for Log()
@@ -46,6 +48,9 @@ tab key autocomplete
 
 *******************  Bug list [high priority] ******************* 
 
+- [Console] history navigation is unreliable
+	commands are not shown in input history
+
 - [ConsoleModDialog] scroll function
 	--basically all direct scroll functions are not working as intended
 	--lock scrollbar (disable autoscroll on new lines) not working
@@ -53,7 +58,6 @@ tab key autocomplete
 	restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
 	shrink the scroll bar during resizing to a percentage of the current window height
 
-- [Console] history navigation is unreliable
 
 
 *******************  Bug list [low priority] ******************* 
@@ -115,15 +119,34 @@ do --init mod vars
 		"window_button_highlight_color",
 		"window_bg_color",
 		"window_caret_color",
-		"window_prompt_color"
+		"window_prompt_color",
+		"style_data_color_function",
+		"style_data_color_string",
+		"style_data_color_number",
+		"style_data_color_table",
+		"style_data_color_boolean",
+		"style_data_color_nil",
+		"style_data_color_thread",
+		"style_data_color_userdata",
+		"style_data_color_misc",
 	}
 	Console.palettes = table.deep_map_copy(Console.default_palettes)
 	Console.default_settings = {
 		safe_mode = false,
+		console_params_guessing_enabled = true,
 		input_log_enabled = true,
-		output_log_enabled = true,
+		output_log_enabled = false,
 		log_buffer_enabled = true,
 		log_buffer_interval = 10, --seconds between flushes
+		style_data_color_function = 0x7fffff,
+		style_data_color_string = 0x7f7f7f,
+		style_data_color_number = 0xa8ff00,
+		style_data_color_table = 0xffff00,
+		style_data_color_boolean = 0x4c4cff,
+		style_data_color_nil = 0x4c4c4c,
+		style_data_color_thread = 0xffff7f,
+		style_data_color_userdata = 0xff4c4c,
+		style_data_color_misc = 0x888888,
 		window_scrollbar_lock_enabled = true,
 		window_scroll_direction_reversed = false,
 		window_text_normal_color = 0xffffff,
@@ -180,35 +203,29 @@ do --init mod vars
 		"window_caret_alpha",
 		"window_prompt_string",
 		"window_prompt_color",
-		"window_prompt_alpha"
+		"window_prompt_alpha",
+		"style_data_color_function",
+		"style_data_color_string",
+		"style_data_color_number",
+		"style_data_color_table",
+		"style_data_color_boolean",
+		"style_data_color_nil",
+		"style_data_color_thread",
+		"style_data_color_userdata",
+		"style_data_color_misc"
 	}
 	
-	Console.type_data = {
+	Console.data_type_colors = {
 		--base data types
-		["function"] = {
-			color = Color(0.5,1,1)
-		},
-		["string"] = {
-			color = Color(0.5,0.5,0.5)
-		},
-		["number"] = {
-			color = Color(0.66,1,0)
-		},
-		["table"] = {
-			color = Color(1,1,0)
-		},
-		["boolean"] = {
-			color = Color(0.3,0.3,1)
-		},
-		["userdata"] = {
-			color = Color(1,0.3,0.3)
-		},
-		["thread"] = {
-			color = Color(1,1,0.5)
-		},
-		["nil"] = {
-			color = Color(0.3,0.3,0.3)
-		}
+		["function"] = "style_data_color_function",
+		["string"] = "style_data_color_string",
+		["number"] = "style_data_color_number",
+		["table"] = "style_data_color_table",
+		["boolean"] = "style_data_color_boolean",
+		["userdata"] = "style_data_color_userdata",
+		["thread"] = "style_data_color_thread",
+		["nil"] = "style_data_color_nil",
+		["misc"] = "style_data_color_misc"
 	}
 	Console._log_buffer_timer = 0
 	Console._output_log = {}
@@ -300,12 +317,13 @@ function Console:Log(info,params)
 	info = tostring(info)
 	log("CONSOLE: " .. info)
 	self:AddToOutputLog(info)
+	return info
 end
 _G.Log = callback(Console,Console,"Log")
 Console.log = Console.Log
 
 function Console:Print(...)
-	self:Log(self.table_concat({...}," "))
+	return self:Log(self.table_concat({...}," "))
 end
 _G.Print = callback(Console,Console,"Print")
 
@@ -337,6 +355,7 @@ function Console:LogTable(obj,max_amount)
 			end
 		end
 		for k,v in pairs(obj) do 
+		--[[
 			local data_type = type(v)
 			if data_type == "userdata" then 
 				for type_name,data in pairs(Console.type_data) do 
@@ -352,8 +371,9 @@ function Console:LogTable(obj,max_amount)
 					end
 				end
 			end
-			
-			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = Console.type_data[data_type] and Console.type_data[data_type].color or Color(1,0.3,0.3)})
+--			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = Console.type_data[data_type] and Console.type_data[data_type].color or Color(1,0.3,0.3)})
+		--]]
+			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]")
 		end
 		Console._breaker = true
 	end
@@ -379,16 +399,27 @@ end
 function Console:InterpretCommand(raw_cmd_string)
 	self:Log("> " .. raw_cmd_string)
 	local cmd_params = {}
-	local cmd_string = raw_cmd_string
+	local cmd_string = string.sub(raw_cmd_string,2) --remove forwardslash
 	local cmd_name = string.match(cmd_string,"[^%s]*")--[%a%s]+")
 	
 	if not cmd_name or cmd_name == "" then
 		return
-	elseif not self._registered_commands[cmd_name] then 
+	end
+	local command_data = self._registered_commands[cmd_name]
+	if not command_data then 
 		self:Log("/" .. cmd_name .. ": No such command found.")
 		return
 	end
-	
+	local possible_params
+	if command_data.parameters then
+		if self.settings.console_params_guessing_enabled then 
+			possible_params = {}
+			for parameter_name,_ in pairs(command_data.parameters) do 
+				table.insert(possible_params,parameter_name)
+			end
+			table.sort(possible_params) --sort possible parameters alphabetically
+		end
+	end
 	
 	--find quotes and ESCAPE THEM
 	local escape_set_characters = {
@@ -446,62 +477,98 @@ function Console:InterpretCommand(raw_cmd_string)
 	end
 	
 	--reduce redundant spaces
-	cmd_string = string.gsub(cmd_string,"%s+","%s")
-	
-	local first_occurrence
+	cmd_string = string.gsub(cmd_string,"%s+"," ")
+	local params = {}
+	local params_start,params_finish = string.find(cmd_string,"[%-][%a%p]+[^%-]*")
 	for word in string.gmatch(cmd_string,"%-[%a%p]+[^%-]*") do 
-		local param_start,param_finish = string.find(word,"%-[%a%p]+")
-		local param_name = string.sub(word,param_start+1,param_finish)
-		if not first_occurrence then
-			first_occurrence = param_start
+		local _word = string.sub(word,params_start+1)
+		
+		local param_name = ""
+		local param_value = ""
+		local param_name_start,param_name_end = string.find(word,"[^%-][^%s]*")
+		if param_name_start then
+			param_name = string.match(string.sub(word,param_name_start,param_name_end),"[%w%p]+.*")
+			param_name = string.reverse(string.match(string.reverse(param_name),"[%w%p]+.*"))
+			param_value = string.match(string.sub(word,param_name_end+2),"[%w%p]+.*")
+			param_value = string.reverse(string.match(string.reverse(param_value),"[%w%p]+.*"))
 		end
-		local _word = string.sub(word,param_finish+1)
-		--[[
-		local params = {}
-		for arg in string.gmatch(_word,"[^%s]*") do 
-			if arg ~= "" then
-				Print("New arg [" .. tostring(arg) .. "]")
-				table.insert(params,#params+1,arg)
+		
+		if possible_params then
+			local confirmed_parameter
+			local i_p = table.index_of(possible_params,param_name)
+			if i_p then 
+				table.remove(possible_params,i_p)
+				confirmed_parameter = true
 			end
 		end
-		cmd_params[param_name] = params
-		--]]
-		local param = string.match(_word,"[^%s]+")
-		cmd_params[param_name] = param
+		table.insert(params,#params+1,{name = param_name,value=param_value,confirmed = confirmed_parameter})
+	end
+	
+	--guess the closest match for any parameter eg. -a --> -all
+	if possible_params then
+		for _,param_data in ipairs(params) do 
+			if param_data.confirmed then
+				--exact match already exists
+			else
+				local best_match
+				local p = table.deep_map_copy(possible_params)
+				for j=1,string.len(param_data.name),1 do 		
+					local subs = string.sub(param_data.name,1,j)
+					--check a growing substring of the parameter
+					for i=#p,1,-1 do
+						--against each possible parameter
+						local pn = p[i]
+						if not string.find(pn,subs) then
+							table.remove(p,i)
+							break
+						end
+					end
+				end
+				if #p > 0 then
+					local pn = p[1]
+					param_data.name = pn
+					param_data.confirmed = true
+					table.remove(possible_params, (table.index_of(possible_params,pn)) )
+				end
+			end
+		end
+	end
+	
+	for _,param_data in ipairs(params) do 
+		cmd_params[param_data.name] = param_data.value
 	end
 	
 	local args_string
-	if first_occurrence then
-		args_string = string.sub(cmd_string,string.len(cmd_name),first_occurrence)
+	if params_start then 
+		args_string = string.sub(cmd_string,string.len(cmd_name) + 2,params_start-2) --extra index for the space
+	else
+		args_string = string.sub(cmd_string,string.len(cmd_name) + 2) --extra index for the space
 	end
 	
 	if has_quotes then
+		local function replace_orig_subs (str,pair_data)
+			local new_str,num_done = string.gsub(str,pair_data.substitution_string,pair_data.original_string)
+			if num_done > 0 then
+				return new_str,true
+			end
+			return str,false
+		end
 		for i=#_pairs,1,-1 do
 			local pair_data = _pairs[i]
-			for param,param in pairs(cmd_params) do 
-				local new_param,num_done = string.gsub(param,pair_data.substitution_string,pair_data.original_string)
-				if num_done > 0 then
-					cmd_params[param] = new_param
-				end
-				local new_param_name,num_done = string.gsub(param,pair_data.substitution_string,pair_data.original_string)
-				if num_done > 0 then 
-					cmd_params[new_param_name] = param
-					cmd_params[param] = nil
-				end
+			for param_name,param_value in pairs(cmd_params) do 
+				cmd_params[param_value] = replace_orig_subs(param_value,pair_data)
 			end
+			
+			args_string = replace_orig_subs(args_string,pair_data)
+			
 		end
 		
 		for i=#_pairs,1,-1 do
 			local pair_data = _pairs[i]
-			local new_string,num_done = string.gsub(cmd_string,pair_data.substitution_string,pair_data.original_string)
-			if num_done > 0 then
-				cmd_string = new_string
-			end
 		end
-	
+		
 	end
 	
-	local command_data = self._registered_commands[cmd_name]
 	if command_data.func then 
 		command_data.func(cmd_params,args_string)
 	elseif command_data.str then 
@@ -512,9 +579,15 @@ function Console:InterpretCommand(raw_cmd_string)
 		elseif err then
 			self:Log(err)
 		end
+		
+		table.insert(self._input_log,#self._input_log+1,{
+			raw_input = raw_cmd_string,
+			input = raw_cmd_string,
+			func = func
+		})
 	end
-	Log(cmd_name)
 end
+
 
 function Console:callback_confirm_text(dialog_instance,text)
 	if string.sub(text,1,1) == "/" then 
@@ -530,9 +603,9 @@ function Console:callback_confirm_text(dialog_instance,text)
 				self:Log("Error: No command history!")
 			end
 		else
-			self:InterpretCommand(string.sub(text,2))
+			return self:InterpretCommand(text)
 		end
-	elseif text ~= "" then
+	elseif string.gsub(text,"%s","") ~= "" then
 		self:Log("> " .. text)
 		return self:InterpretInput(text)
 	end
@@ -541,12 +614,22 @@ end
 function Console:InterpretInput(raw_string)
 --	local s = string.match(raw_string,"[^%s]*.*")
 	local s = raw_string
+	local force_ordered_results = false --todo
+	local result
 	local func,err = loadstring(s)
 	if err then 
 		self:Log("Error loading chunk:")
 		self:Log(err)
 	elseif func then 
-		local result = pcall(func)
+		if force_ordered_results then
+			result = pcall(func)
+		else
+			result = {pcall(func)}
+		end
+		if result[1] == true then
+			table.remove(result,1)
+			logall(result)
+		end
 	end
 	self:AddToInputLog(
 		{
@@ -555,9 +638,39 @@ function Console:InterpretInput(raw_string)
 			func = func
 		}
 	)
+	local value_sep = "\n"
+	local sep_length = utf8.len(value_sep)
+	local out_s
+	local color_data = {}
+	local current = 1
+	for result_num,v in ipairs(result) do 
+		local _type = type(v)
+		local _v = tostring(v)
+		local color = self:GetLogColorByDataType(_type)
+		local length = utf8.len(_v)
+		local new_current = current + length
+		color_data[result_num] = {
+			start = current,
+			finish = new_current,
+			color = color
+		}
+		if out_s then 
+			out_s = out_s .. value_sep .. _v
+			current = new_current + sep_length
+		else
+			out_s = _v
+			current = new_current + sep_length
+		end
+	end
 --	self:AddToOutputLog(result)
-	local color_data -- = {}
-	return s,color_data --colors here
+	return out_s,color_data --colors here
+end
+
+function Console:GetLogColorByDataType(_type)
+	local data_type_colors = self.data_type_colors
+	local setting_name = _type and data_type_colors[_type]
+	local color = setting_name and self.settings[setting_name] or self.settings.style_data_color_misc
+	return Color(string.format("%06x",color))
 end
 
 
@@ -577,20 +690,22 @@ end
 
 --commands
 
-function Console:cmd_help(subcmd,arg) --not yet implemented
+function Console:cmd_help(params,subcmd)
 	local cmd_data = subcmd and self._registered_commands[subcmd] 
 	if cmd_data then 
-		self:Log("/" .. cmd_data.subcmd)
+		self:Log("/" .. tostring(subcmd))
 		self:Log(cmd_data.desc)
 		self:Log(cmd_data.manual)
 		if cmd_data.parameters then 
 			for k,v in pairs( cmd_data.parameters ) do 
-				self:Log("-" .. k .. " " .. tostring(v.arg_desc))
-				self:Log(tostring(v.short_desc))
+				if not v.hidden then
+					self:Log("-" .. k .. " " .. tostring(v.arg_desc))
+					self:Log(tostring(v.short_desc))
+				end
 			end
 		end
 	else
-		for k,v in pairs(self._registered_commands) do 
+		for cmd_name,_cmd_data in pairs(self._registered_commands) do 
 			if not v.hidden then
 				self:Log("/" .. tostring(k))
 				self:Log(v.desc)
@@ -603,13 +718,13 @@ end
 function Console:cmd_weaponname(params,name)
 	params = type(params) == "table" and params or {}
 	local results = {}
-	
+	if name == "" then
+		name = params.name
+	end
 	local category = params.category
-	local slot = tonumber(params.slot)	Log("category [" .. tostring(category) .. "]")
-	Log("slot [" .. tostring(slot) .. "]")
-	logall(params)
+	local slot = tonumber(params.slot)
 	
-	local function check_weapon(data)
+	local function check_weapon(weapon_id,data)
 		if slot then 
 			if data.use_data and data.use_data.selection_index == slot then 
 				--found
@@ -617,11 +732,23 @@ function Console:cmd_weaponname(params,name)
 				return false
 			end
 		end
-		local localized_name = data.name_id and managers.localization:text(data.name_id)
+		local name_id = data.name_id 
+		local localized_name
+		local localized_name_lower
+		local weapon_id_lower = string.lower(weapon_id)
+		if name_id then
+			localized_name = managers.localization:text(name_id)
+			localized_name_lower = string.lower(localized_name)
+		end
+		
 		if name then
-			if localized_name and string.find(string.lower(localized_name),string.lower(name)) or string.find(string.lower(weapon_id),string.lower(name)) then
-				--found
+			local name_lower = string.lower(name)
+			if localized_name and string.find(localized_name_lower,name_lower) then
+				--pass
+			elseif string.find(weapon_id_lower,name_lower) then
+				--pass
 			else
+				--fail
 				return false
 			end
 		end
@@ -636,7 +763,7 @@ function Console:cmd_weaponname(params,name)
 		return true
 	end
 	local search_feedback_str = "--- Searching for"
-	if name and name ~= "" then 
+	if name then 
 		search_feedback_str = search_feedback_str .. ": [" .. tostring(name) .. "]"
 	else
 		search_feedback_str = search_feedback_str .. " all weapons"
@@ -646,12 +773,19 @@ function Console:cmd_weaponname(params,name)
 	end
 	if slot then
 		search_feedback_str = search_feedback_str .. " in slot [" .. tostring(slot) .. "]"
+		if slot == 1 then 
+			search_feedback_str = search_feedback_str .. " (primary weapons)"
+		elseif slot == 2 then
+			search_feedback_str = search_feedback_str .. " (secondary weapons)"
+		elseif slot == 3 then
+			search_feedback_str = search_feedback_str .. " (underbarrel weapons)"
+		end
 	end
 	search_feedback_str = search_feedback_str .. "..."
 	self:Log(search_feedback_str)
 	for weapon_id,data in pairs(tweak_data.weapon) do 
 		if type(data) == "table" then
-			if check_weapon(data) then
+			if check_weapon(weapon_id,data) then
 				table.insert(results,weapon_id)
 			end
 		end
@@ -845,12 +979,14 @@ end
 
 
 --i/o
-function Console:SaveInputLog()
+function Console:SaveInputLog() --not used
+--[[
 	local file = io.open(self._input_log_file_path,"w+")
 	if file then
 		file:write(self._input_log)
 		file:close()
 	end
+--]]
 end
 
 function Console:LoadInputLog()
@@ -888,12 +1024,13 @@ function Console:LoadInputLog()
 					end
 					self._input_log[i] = {
 						input = line,
-						raw_input = nil,
+						raw_input = line,
 						saved_input = nil,
 						func = func
 					}		
 				end
 			end
+			file:close()
 		end
 	end
 end
@@ -977,6 +1114,7 @@ function Console:LoadOutputLog() --load from output
 		if str ~= "" then
 			self._output_log = string.split(str,"\n")
 		end
+		file:close()
 	end
 	self._is_reading_log = false
 end
@@ -1216,6 +1354,11 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 		desc = "Search for a weapon by localized name/description, internal name/description, internal id, or blackmarket id.",
 		manual = "Usage: /weaponname [search key]",
 		parameters = {
+			name = {
+				arg_desc = "[name]",
+				short_desc = "The name to search for.",
+				hidden = true
+			},
 			category = {
 				arg_desc = "[category]",
 				short_desc = "The weapon category to filter for, eg. shotgun, smg, lmg, etc. Must be exact category match."
@@ -1270,130 +1413,129 @@ Hooks:Add("GameSetupUpdate", "dcc_update_gamesetup", callback(Console,Console,"U
 local function dummy() end
 
 local deprecated_func_list = {
-"AchievementsDisabled",
-"Add_Popup",
-"Remove_Popup",
-"update_hud_popups",
-"cmd_godmode",
-"RegisterCommand",
-"GetEscBehavior",
-"GetKeyboardRegion",
-"GetFontSize",
-"GetScrollSpeed",
-"GetPrintMode",
-"SaveKeybinds",
-"LoadKeybinds",
-"Load",
-"Save",
-"searchall",
-"logall",
-"Log",
-"new_log_line",
-"should_blt_log",
-"angle_between_pos",
-"c_log",
-"t_log",
-"t_log_2",
-"cmd_tracker",
-"CreateTracker",
-"GetTrackerElementByName",
-"RegisterTrackerUpdater",
-"SetTrackerData",
-"SetTrackerValue",
-"SetTrackerColor",
-"SetTrackerColorRGB",
-"SetTrackerXY",
-"cmd_unit",
-"SetUnitInfo",
-"RemoveTracker",
-"RegisterPersistScript",
-"RemovePersistScript",
-"AdventureInput",
-"cmd_adventure",
-"cmd_unbind",
-"cmd_unbindall",
-"cmd_bind",
-"AddBind",
-"cmd_bindid",
-"cmd_help",
-"cmd_contact",
-"cmd_about",
-"cmd_info",
-"cmd_epoch",
-"cmd_runtime",
-"cmd_time",
-"cmd_date",
-"cmd_whisper",
-"cmd_say",
-"cmd_dofile",
-"cmd_quit",
-"cmd_pos",
-"cmd_sound",
-"cmd_rot",
-"cmd_teleport",
-"cmd_pause",
-"cmd_forcestart",
-"cmd_restart",
-"cmd_fov",
-"cmd_sens",
-"cmd_sens_aim",
-"cmd_ping",
-"cmd_getinfo",
-"cmd_writetodisk",
-"cmd_stop",
-"cmd_state",
-"cmd_skillname",
-"cmd_skillinfo",
-"cmd_gotonav",
-"cmd_editnav",
-"cmd_bltmods",
-"cmd_weaponname",
-"cmd_partname",
-"update",
-"update_persist_scripts",
-"update_hud",
-"update_custom_keybinds",
-"update_restart_timer",
-"update_scroll",
-"upd_caret",
-"held",
-"_shift",
-"_ctrl",
-"_alt",
-"mouse_moved",
-"mouse_pressed",
-"mouse_released",
-"mouse_clicked",
-"mouse_double_clicked",
-"_scrollbar_held",
-"_set_scrollbar_held",
-"_set_scrollbar_released",
-"enter_text",
-"key_press",
-"update_key_down",
-"key_release",
-"refresh_scroll_handle",
-"esc_key_callback",
-"enter_key_callback",
-"ToggleConsoleFocus",
-"ClearConsole",
-"GetFwdRay",
-"SetFwdRayUnit",
-"GetTaggedPosition",
-"GetTaggedUnit",
-"CreateCameraDebugs",
-"GetCharList",
-"BuildCharList",
-"split_two",
-"split_cmd",
-"split_parse",
-"string_excise",
-"InterpretInput",
-"evaluate",
-"TagPosition",
-"GenerateHitboxes",
-"ResetSettings",
-"_create_commandprompt"
+	"AchievementsDisabled",
+	"Add_Popup",
+	"Remove_Popup",
+	"update_hud_popups",
+	"cmd_godmode",
+	"RegisterCommand",
+	"GetEscBehavior",
+	"GetKeyboardRegion",
+	"GetFontSize",
+	"GetScrollSpeed",
+	"GetPrintMode",
+	"SaveKeybinds",
+	"LoadKeybinds",
+	"Load",
+	"Save",
+	"searchall",
+	"logall",
+	"Log",
+	"new_log_line",
+	"should_blt_log",
+	"angle_between_pos",
+	"c_log",
+	"t_log",
+	"t_log_2",
+	"cmd_tracker",
+	"CreateTracker",
+	"GetTrackerElementByName",
+	"RegisterTrackerUpdater",
+	"SetTrackerData",
+	"SetTrackerValue",
+	"SetTrackerColor",
+	"SetTrackerColorRGB",
+	"SetTrackerXY",
+	"cmd_unit",
+	"SetUnitInfo",
+	"RemoveTracker",
+	"RegisterPersistScript",
+	"RemovePersistScript",
+	"AdventureInput",
+	"cmd_adventure",
+	"cmd_unbind",
+	"cmd_unbindall",
+	"cmd_bind",
+	"AddBind",
+	"cmd_bindid",
+	"cmd_help",
+	"cmd_contact",
+	"cmd_about",
+	"cmd_info",
+	"cmd_epoch",
+	"cmd_runtime",
+	"cmd_time",
+	"cmd_date",
+	"cmd_whisper",
+	"cmd_say",
+	"cmd_dofile",
+	"cmd_quit",
+	"cmd_pos",
+	"cmd_sound",
+	"cmd_rot",
+	"cmd_teleport",
+	"cmd_pause",
+	"cmd_forcestart",
+	"cmd_restart",
+	"cmd_fov",
+	"cmd_sens",
+	"cmd_sens_aim",
+	"cmd_ping",
+	"cmd_getinfo",
+	"cmd_writetodisk",
+	"cmd_stop",
+	"cmd_state",
+	"cmd_skillname",
+	"cmd_skillinfo",
+	"cmd_gotonav",
+	"cmd_editnav",
+	"cmd_bltmods",
+	"cmd_weaponname",
+	"cmd_partname",
+	"update",
+	"update_persist_scripts",
+	"update_hud",
+	"update_custom_keybinds",
+	"update_restart_timer",
+	"update_scroll",
+	"upd_caret",
+	"held",
+	"_shift",
+	"_ctrl",
+	"_alt",
+	"mouse_moved",
+	"mouse_pressed",
+	"mouse_released",
+	"mouse_clicked",
+	"mouse_double_clicked",
+	"_scrollbar_held",
+	"_set_scrollbar_held",
+	"_set_scrollbar_released",
+	"enter_text",
+	"key_press",
+	"update_key_down",
+	"key_release",
+	"refresh_scroll_handle",
+	"esc_key_callback",
+	"enter_key_callback",
+	"ToggleConsoleFocus",
+	"ClearConsole",
+	"GetFwdRay",
+	"SetFwdRayUnit",
+	"GetTaggedPosition",
+	"GetTaggedUnit",
+	"CreateCameraDebugs",
+	"GetCharList",
+	"BuildCharList",
+	"split_two",
+	"split_cmd",
+	"split_parse",
+	"string_excise",
+	"InterpretInput",
+	"evaluate",
+	"TagPosition",
+	"GenerateHitboxes",
+	"_create_commandprompt"
 }
 for _,name in pairs(deprecated_func_list) do 
 	Console[name] = Console[name] or dummy
