@@ -162,6 +162,14 @@ function ConsoleModDialog:create_gui()
 	local body_margin_ver = 6
 	local header_margin_hor = body_margin_hor/2
 	local header_margin_ver = body_margin_ver/2
+	
+	local input_box_h = font_size * 1.5
+	local input_text_ver_margin = body_margin_hor + 32
+	local input_box_ver_margin = 6
+	local input_box_hor_margin = 6
+	local input_text_hor_margin = 6
+	
+	
 	local selection_color = hex_to_color(settings.window_text_highlight_color)
 	
 	local input_box_color = hex_to_color(settings.window_input_box_color)
@@ -190,7 +198,9 @@ function ConsoleModDialog:create_gui()
 	
 	local top_bar_w = panel_w
 	local top_bar_h = 16
-	local top_bar_color = Color.white
+	local top_grip_hor_margin = 48
+	local top_bar_color = Color("777777")
+	local top_grip_alpha = 0.5
 	local top_grip_color = Color("333333")
 	
 	local top_bar = panel:rect({
@@ -227,11 +237,11 @@ function ConsoleModDialog:create_gui()
 			16,16
 		},
 		color = top_grip_color,
-		x = top_bar:x(),
+		x = top_grip_hor_margin,
 		y = top_bar:y(),
-		w = top_bar_w - close_button_w,
+		w = top_bar_w - (close_button_w + (top_grip_hor_margin * 2)),
 		h = top_bar:h(),
-		alpha = 1,
+		alpha = top_grip_alpha,
 		layer = 3
 	})
 	self._top_grip = top_grip
@@ -276,7 +286,7 @@ function ConsoleModDialog:create_gui()
 		x = body_margin_hor,
 		y = body_margin_ver + top_bar_h,
 		w = panel_w - (body_margin_hor * 2),
-		h = panel_h - (body_margin_ver * 2),
+		h = panel_h - (top_bar_h + (body_margin_ver * 2)),
 		alpha = 1,
 		layer = 1
 	})
@@ -335,7 +345,7 @@ function ConsoleModDialog:create_gui()
 	})
 	self._prompt:set_selection_color(text_highlight_color)
 	
-	self._input_text = body:text({
+	self._input_text = panel:text({
 		name = "input_text",
 		text = "",
 --		monospace = true,
@@ -345,7 +355,8 @@ function ConsoleModDialog:create_gui()
 		vertical = "bottom",
 --		w = body:w(),
 --		h = body:h(),
-		x = 32,
+		x = input_text_hor_margin,
+		y = input_text_ver_margin,
 --		y = self._prompt:y(),
 		color = text_normal_color,
 		wrap = false,
@@ -353,18 +364,18 @@ function ConsoleModDialog:create_gui()
 		layer = 100
 	})
 	self._input_text:set_selection_color(text_highlight_color)
-	self._input_box = body:rect({
+	self._input_box = panel:rect({
 		name = "input_box",
 		color = input_box_color,
 		layer = 97,
-		w = body:w(),
-		h = font_size,
-		x = body_margin_hor,
-		y = body:h() - font_size,
+		w = panel:w() - (input_box_hor_margin * 2),
+		h = input_box_h,
+		x = input_box_hor_margin,
+		y = panel:h() - input_box_ver_margin,
 		alpha = 1
 	})
 	
-	self._selection_box = body:rect({
+	self._selection_box = panel:rect({
 		name = "selection_box",
 		x = 0,
 		y = 0,
@@ -721,7 +732,9 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	local close_button_w = 16
 	local body_margin_hor = 6
 	local body_margin_ver = 6
+	local top_bar_h = 16
 	local font_size = self.inherited_settings.window_font_size
+	local input_box_h = font_size * 1.5
 	
 	local resize_grip = self._resize_grip
 	resize_grip:set_right(to_w)
@@ -729,12 +742,12 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 
 --force reposition
 	self:set_scroll_amount(0) --force refresh scroll position
-	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(body_margin_ver * 2))
+	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(input_box_h + top_bar_h + (body_margin_ver * 2)))
 	local b_w,b_h = self._body:size()
 	--force update text objects
 	self._input_text:set_size(b_w,b_h)
 	self._input_text:set_text(self._input_text:text())
-	self._input_box:set_w(b_w)
+	self._input_box:set_size(b_w,input_box_h)
 	self._input_box:set_position(body_margin_hor,b_h - font_size)
 	self._prompt:set_size(b_w,b_h)
 	self._prompt:set_text(self._prompt:text())
