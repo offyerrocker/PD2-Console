@@ -2,8 +2,8 @@
 	"dcc_title" : "Command Console Options",
 	"dcc_toggle_title" : "Toggle Command Console Prompt",
 	"dcc_toggle_desc" : "Shows or hides the Console Window",
-	
-	
+	"dcc_window_header_title" : "Console",
+	"dcc_window_startup_message_1" : "Console session initiated.",
 	
 	
 	

@@ -78,6 +78,7 @@ function ConsoleModDialog:callback_on_delayed_asset_load(font_ids)
 	self._history_text:set_font(font_ids)
 	self._caret:set_font(font_ids)
 	self._prompt:set_font(font_ids)
+	self._header_label:set_font(font_ids)
 	
 	self._font_asset_load_done = true
 end
@@ -98,6 +99,7 @@ function ConsoleModDialog:create_gui()
 	end
 	
 	self._fullscreen_ws = managers.gui_data:create_fullscreen_workspace()
+	local buttons_atlas = "guis/textures/consolemod/buttons_atlas"
 	local parent_panel = self._fullscreen_ws:panel()
 	self._parent_panel = parent_panel
 	local font_size = settings.window_font_size or 16
@@ -158,6 +160,8 @@ function ConsoleModDialog:create_gui()
 	
 	local body_margin_hor = 6
 	local body_margin_ver = 6
+	local header_margin_hor = body_margin_hor/2
+	local header_margin_ver = body_margin_ver/2
 	local selection_color = hex_to_color(settings.window_text_highlight_color)
 	
 	local input_box_color = hex_to_color(settings.window_input_box_color)
@@ -200,10 +204,28 @@ function ConsoleModDialog:create_gui()
 		y = 0
 	})
 	self._top_bar = top_bar
+	local header_label = panel:text({
+		name = "header_label",
+		font = font,
+		font_size = font_size,
+		text = managers.localization:text("dcc_window_header_title"),
+		font = font_name,
+		x = header_margin_hor,
+		y = header_margin_ver,
+		font_size = font_size,
+		alpha = 1,
+		color = text_normal_color,
+		layer = 105
+	})
+	self._header_label = header_label
 	
 	local top_grip = panel:bitmap({ --draggable top bar
 		name = "top_grip",
-		texture = "guis/textures/pd2/mission_briefing/assets/assets_risklevel_4",
+		texture = buttons_atlas,
+		texture_rect = {
+			1 * 16, 1 * 16,
+			16,16
+		},
 		color = top_grip_color,
 		x = top_bar:x(),
 		y = top_bar:y(),
@@ -216,7 +238,11 @@ function ConsoleModDialog:create_gui()
 	
 	self._close_button = panel:bitmap({
 		name = "close_button",
-		texture = "guis/textures/pd2/mission_briefing/assets/assets_risklevel_4",
+		texture = buttons_atlas,
+		texture_rect = {
+			3 * 16, 1 * 16,
+			16,16
+		},
 		layer = 102,
 		alpha = 1,
 		color = close_button_color,
@@ -229,7 +255,11 @@ function ConsoleModDialog:create_gui()
 
 	local resize_grip = panel:bitmap({
 		name = "resize_grip",
-		texture = "guis/textures/pd2/mission_briefing/assets/assets_risklevel_4",
+		texture = buttons_atlas,
+		texture_rect = {
+			2 * 16, 1 * 16,
+			16,16
+		},
 		x = panel:w() - resize_grip_w,
 		y = panel:h() - resize_grip_h,
 		color = resize_grip_color,
@@ -251,6 +281,12 @@ function ConsoleModDialog:create_gui()
 		layer = 1
 	})
 	self._body = body
+	local body_bg = body:rect({
+		name = "body_bg",
+		color = bg_color,
+		alpha = 0.5
+	})
+	self._body_bg = body_bg
 	
 	self._caret = body:text({
 		name = "caret",
@@ -683,8 +719,8 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	local panel_right = panel:right()
 	local close_button_margin = 16
 	local close_button_w = 16
-	local body_margin_hor = 24
-	local body_margin_ver = 24
+	local body_margin_hor = 6
+	local body_margin_ver = 6
 	local font_size = self.inherited_settings.window_font_size
 	
 	local resize_grip = self._resize_grip
@@ -702,6 +738,7 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	self._input_box:set_position(body_margin_hor,b_h - font_size)
 	self._prompt:set_size(b_w,b_h)
 	self._prompt:set_text(self._prompt:text())
+	self._body_bg:set_size(b_w,b_h)
 	self._history_text:set_size(b_w,b_h - font_size)
 	self._history_text:set_text(self._history_text:text())
 	self._caret:set_size(b_w,b_h)
@@ -729,15 +766,18 @@ end
 function ConsoleModDialog:generate_history(color)
 --	for k,v in pairs(self._history_log) do 
 --	end
+	local history_text = self._history_text
 	local new_str = Console.table_concat(self._output_log,"\n")
-	self._history_text:set_text(new_str)
+	history_text:set_text(new_str)
 	local new_length = self._current_range_data_index + utf8.len(new_str)
 	table.insert(self._current_window_color_ranges,#self._current_window_color_ranges+1,{
 		start = self._current_range_data_index,
 		finish = new_length,
 		color = color
 	})
-	self._history_text:set_range_color(self._current_range_data_index,new_length,color)
+	local _,_,_,h = history_text:text_rect()
+	history_text:set_h(h)
+	history_text:set_range_color(self._current_range_data_index,new_length,color)
 	self._current_range_data_index = new_length
 end
 
@@ -746,9 +786,18 @@ function ConsoleModDialog:confirm_text()
 	local input_text = self._input_text
 	local current_text = input_text:text()
 	local current_len = utf8.len(current_text)
+	local settings = self.inherited_settings
+	local color = settings.window_text_normal_color
+	local prompt_string = settings.window_prompt_string
 	input_text:set_selection(0,current_len)
 	input_text:replace_text("")
 	self:set_current_history_input_text("")
+	self:add_to_history(prompt_string .. current_text,{
+		start = 0,
+		finish = current_len + utf8.len(prompt_string),
+		color = Color(string.format("%06x",color))
+	})
+	
 	self:_confirm_text(current_text)
 end
 
@@ -861,6 +910,9 @@ end
 function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
 	local history_text = self._history_text
 	
+	local _,_,_,th = history_text:text_rect()
+	history_text:set_h(h)
+	
 	local min_y = -history_text:h()
 	local max_y = 0 + (self._body:h() - self.inherited_settings.window_font_size)
 	local d_y = (max_y - min_y) * (ratio - 0.5)
@@ -877,6 +929,7 @@ end
 function ConsoleModDialog:set_scroll_amount(d_y) --horizontal scroll not supported (no need since we have line wrap)
 	local history_text = self._history_text
 	local tx,ty,tw,th = history_text:text_rect()
+	history_text:set_h(th)
 	local min_y = -history_text:h()
 	local max_y = 0 + (self._body:h() - self.inherited_settings.window_font_size)
 --	self._prompt:set_text(history_text:y() .. " " .. history_text:h())

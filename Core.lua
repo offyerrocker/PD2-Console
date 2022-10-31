@@ -8,7 +8,6 @@
 - session pref with existing vars
 tab key autocomplete
 - display behavior to console for Log()
-- color coded data types for Log
 
 ******************* Secondary feature todo ******************* 
 
@@ -169,7 +168,7 @@ do --init mod vars
 		window_caret_string = "|",
 		window_caret_color = 0xffffff,
 		window_caret_alpha = 0.75,
-		window_prompt_string = "> ",
+		window_prompt_string = "] ",
 		window_prompt_color = 0xffffff,
 		window_prompt_alpha = 0.66
 	}
@@ -638,29 +637,33 @@ function Console:InterpretInput(raw_string)
 			func = func
 		}
 	)
-	local value_sep = "\n"
-	local sep_length = utf8.len(value_sep)
 	local out_s
 	local color_data = {}
-	local current = 1
-	for result_num,v in ipairs(result) do 
-		local _type = type(v)
-		local _v = tostring(v)
-		local color = self:GetLogColorByDataType(_type)
-		local length = utf8.len(_v)
-		local new_current = current + length
-		color_data[result_num] = {
-			start = current,
-			finish = new_current,
-			color = color
-		}
-		if out_s then 
-			out_s = out_s .. value_sep .. _v
-			current = new_current + sep_length
-		else
-			out_s = _v
-			current = new_current + sep_length
+	if result then
+		local value_sep = "\n"
+		local sep_length = utf8.len(value_sep)
+		local current = 1
+		for result_num,v in ipairs(result) do 
+			local _type = type(v)
+			local _v = tostring(v)
+			local color = self:GetLogColorByDataType(_type)
+			local length = utf8.len(_v)
+			local new_current = current + length
+			color_data[result_num] = {
+				start = current,
+				finish = new_current,
+				color = color
+			}
+			if out_s then 
+				out_s = out_s .. value_sep .. _v
+				current = new_current + sep_length
+			else
+				out_s = _v
+				current = new_current + sep_length
+			end
 		end
+	else
+		out_s = nil
 	end
 --	self:AddToOutputLog(result)
 	return out_s,color_data --colors here
@@ -860,11 +863,12 @@ function Console:cmd_partname(params,name)
 end
 
 
-function Console:cmd_echo(s)
+function Console:cmd_echo(param,s)
 	s = tostring(s)
 	for id,value in pairs(self._user_vars) do 
 		s = string.gsub(s,"$" .. id,tostring(value))
 	end
+--	self:InterpretInput("return " .. tostring(s))
 	self:Log(s)
 end
 
@@ -1203,7 +1207,7 @@ end
 function Console:ResetSettings(soft_reset)
 	--empty settings menu instead of creating a new settings menu, since some classes may depend on that specific table reference
 	
-	if not soft then
+	if not soft_reset then
 		--optionally can choose to preserve any vars that aren't overwritten/defined in default settings, ie. user-created vars or potential future advanced settings
 		for k,v in pairs(self.settings) do 
 			self.settings[k] = nil
@@ -1305,7 +1309,16 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 --	Console:LoadSettings() --temp disabled; work from default settings for now
 	Console:AddFonts()
 	Console:LoadFonts()
-	
+		
+	do
+		local texture_ids = Idstring("texture")
+		local file_name = "guis/textures/consolemod/buttons_atlas"
+		local file_path = Console._mod_path .. "assets/" .. file_name
+		local file_name_ids = Idstring(file_name)
+		BLT.AssetManager:CreateEntry(file_name_ids,texture_ids,file_path .. ".texture")
+		managers.dyn_resource:load(texture_ids,file_name_ids,DynamicResourceManager.DYN_RESOURCES_PACKAGE,function() end)
+	end
+
 	if not Console.settings.safe_mode then 
 		if Console.settings.output_log_enabled then 
 			Console:LoadOutputLog()
