@@ -10,8 +10,12 @@
 - session pref with existing vars
 tab key autocomplete
 - display behavior to console for Log()
+- rounded corners in ConsoleModDialog
+	- center submit button and create its own subpanel
+	- increase Console header size
 
 ******************* Secondary feature todo ******************* 
+
 
 - batch file folder system in saves
 	autoexec batch-style files
@@ -118,6 +122,7 @@ do --init mod vars
 		"window_input_box_color",
 		"window_button_normal_color",
 		"window_button_highlight_color",
+		"window_frame_color",
 		"window_bg_color",
 		"window_caret_color",
 		"window_prompt_color",
@@ -162,6 +167,8 @@ do --init mod vars
 		window_y = 50,
 		window_w = 1000,
 		window_h = 600,
+		window_frame_color = 0x666666,
+		window_frame_alpha = 0.5,
 		window_font_name = "fonts/font_bitstream_vera_mono",
 		window_font_size = 10,
 		window_blur_alpha = 0.75,
@@ -171,7 +178,7 @@ do --init mod vars
 		window_caret_color = 0xffffff,
 		window_caret_alpha = 0.75,
 		window_prompt_string = "] ",
-		window_prompt_color = 0xffffff,
+		window_prompt_color = 0xff0000,
 		window_prompt_alpha = 0.66
 	}
 	Console.settings = table.deep_map_copy(Console.default_settings)
@@ -191,6 +198,8 @@ do --init mod vars
 		"window_input_box_color",
 		"window_button_normal_color",
 		"window_button_highlight_color",
+		"window_frame_color",
+		"window_frame_alpha",
 		"window_alpha",
 		"window_x",
 		"window_y",
@@ -313,6 +322,9 @@ function Console.table_concat(tbl,div) --the main difference from table.concat i
 	return str or ""
 end
 
+function Console.hex_number_to_color(n)
+	return type(n) == "number" and Color(string.format("%06x",n))
+end
 
 --loggers
 
@@ -959,7 +971,7 @@ function Console:CreateConsoleWindow()
 			}
 		}
 	}
-	self._window_instance = ConsoleModDialog:new(managers.system_menu,self.dialog_data)
+	self._window_instance = ConsoleModDialog and ConsoleModDialog:new(managers.system_menu,self.dialog_data)
 end
 
 function Console:ShowConsoleWindow()

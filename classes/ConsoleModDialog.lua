@@ -72,450 +72,588 @@ function ConsoleModDialog:init(manager,data)
 end
 
 function ConsoleModDialog:callback_on_delayed_asset_load(font_ids)
-	Console:Log("Setting font " .. tostring(font_ids))
---	do return end 
+--	self._prompt:set_font(font_ids)
 	self._input_text:set_font(font_ids)
-	self._history_text:set_font(font_ids)
 	self._caret:set_font(font_ids)
-	self._prompt:set_font(font_ids)
+	self._history_text:set_font(font_ids)
 	self._header_label:set_font(font_ids)
 	
 	self._font_asset_load_done = true
 end
 
-function ConsoleModDialog:create_gui()
-	local function hex_to_color(hex)
-		if hex and type(hex) == "number" then
-			return Color(string.format("%06x",hex))
-		end
-	end
+function ConsoleModDialog:new_resize()
 	
-	local settings = self.inherited_settings
-	
-	local font_name = settings.window_font_name
-	
-	if not self._font_asset_load_done then
-		font_name = self.DEFAULT_FONT_NAME
-	end
-	
-	self._fullscreen_ws = managers.gui_data:create_fullscreen_workspace()
-	local buttons_atlas = "guis/textures/consolemod/buttons_atlas"
-	local parent_panel = self._fullscreen_ws:panel()
-	self._parent_panel = parent_panel
-	local font_size = settings.window_font_size or 16
-	local prompt_string = tostring(settings.window_prompt_string) or "> "
-	local prompt_text_color = hex_to_color(settings.window_prompt_color)
-	local prompt_text_alpha = settings.window_prompt_alpha
-	local caret_string = tostring(settings.window_caret_string) or "|"
-	local caret_text_color = hex_to_color(settings.window_caret_color)
-	local caret_text_alpha = settings.window_caret_alpha
-	
-	local blur_alpha = settings.window_blur_alpha
-	local bg_color = hex_to_color(settings.window_blur_alpha)
-	local bg_alpha = settings.window_bg_alpha
+end
 
-	local text_normal_color = hex_to_color(settings.window_text_normal_color)
-	local text_highlight_color = hex_to_color(settings.window_text_selected_color)
-	local text_stale_color = hex_to_color(settings.window_text_stale_color)
+
+function ConsoleModDialog:hide_gui()
+	self._panel:hide()
+end
+
+
+
+function ConsoleModDialog:create_gui()
+	
+	
+--	do return self:new_create_gui() end
+	
+
+	local func_hex_to_color = Console.hex_number_to_color
+	local settings = self.inherited_settings
+	local buttons_atlas = "guis/textures/consolemod/buttons_atlas"
+	local fullscreen_ws = managers.gui_data:create_fullscreen_workspace()
+	self._fullscreen_ws = fullscreen_ws
+	local parent_panel = fullscreen_ws:panel()
+	self._parent_panel = parent_panel
+	
+	
+	local text_font_name = settings.window_font_name
+	if not self._font_asset_load_done then
+		text_font_name = self.DEFAULT_FONT_NAME
+	end
+	
+	local text_font_size = settings.window_font_size
+	local text_normal_color = func_hex_to_color(settings.window_text_normal_color)
+	local text_highlight_color = func_hex_to_color(settings.window_text_selected_color)
+	local text_stale_color = func_hex_to_color(settings.window_text_stale_color)
+	local selection_box_color = func_hex_to_color(settings.window_text_highlight_color)
+	
+	local header_label_margin_hor = 16 --used for placement
+	local header_label_margin_ver = 4 --used for sizing, not placement- text is automatically vertically centered
+	local header_label_valign = "center"
+	local header_label_halign = "left"
+	local header_label_font_name = text_font_name
+	local header_label_font_size = text_font_size
+	local header_label_color = text_normal_color
+	local header_label_alpha = 1
+	
+	--prompt is no longer used
+	local prompt_string = tostring(settings.window_prompt_string) or "> "
+	local prompt_text_color = func_hex_to_color(settings.window_prompt_color)
+	local prompt_text_alpha = settings.window_prompt_alpha
+	local prompt_text_font_name = text_font_name
+	local prompt_text_margin_hor = 1
+	
+	local caret_string = tostring(settings.window_caret_string) or "|"
+	local caret_text_color = func_hex_to_color(settings.window_caret_color)
+	local caret_text_alpha = settings.window_caret_alpha
+	local caret_text_font_name = text_font_name
 	
 	local panel_x = settings.window_x
 	local panel_y = settings.window_y
 	local panel_w = settings.window_w
 	local panel_h = settings.window_h
 	local panel_alpha = settings.window_alpha
+	
+	local blur_alpha = settings.window_blur_alpha
+	local bg_color = func_hex_to_color(settings.window_blur_alpha)
+	local bg_alpha = settings.window_bg_alpha
+	
+	local panel_frame_color = func_hex_to_color(settings.window_frame_color)
+	local panel_frame_alpha = settings.window_frame_alpha
+		
+		--aligned from panel right
+	local close_button_margin_ver = 4
+	local close_button_margin_hor = 4
+	local close_button_w = 16
+	local close_button_h = 16
+	local button_normal_color = func_hex_to_color(settings.window_button_normal_color)
+	local button_highlight_color = func_hex_to_color(settings.window_button_highlight_color)
+	local close_button_color = button_normal_color
+	
+	local top_frame_w = panel_w
+	local top_frame_h = 32 --aka body_margin_ver
+	
+	local bottom_frame_w = panel_w
+	local bottom_frame_h = 32
+	
+	local history_margin_hor = 4
+	local history_margin_ver = 4
+	
+	local body_margin_ver = top_frame_h --height of top frame
+	local body_h = panel_h - (body_margin_ver * 2)
+	
+	local scrollbar_w = 16
+	local scrollbar_h = body_h
+	local scrollbar_button_size = scrollbar_w
+	local scrollbar_handle_w = scrollbar_w
+	local scrollbar_handle_h = 100
+	
+	local left_frame_w = 10 --left bar w
+	local right_frame_w = left_frame_w -- + scrollbar_w
+	
+	local body_margin_hor = left_frame_w
+	local body_w = panel_w - (body_margin_hor + right_frame_w)
+	
+	local input_text_margin_hor = 4
+	local input_text_margin_ver = 1 --margin between text and input_box edges
+	local input_text_font_size = text_font_size
+	local input_text_alpha = 1
+	local input_box_color = Color("444444")
+	local input_box_alpha = 1
+	
+	local input_submit_button_w = 48 --! temp disabled
+	local input_submit_button_margin_hor = 4
+	local input_panel_w = body_w
+	local input_panel_h = input_text_margin_ver + input_text_margin_ver + input_text_font_size
+	local input_submit_button_h = input_panel_h
+	local input_panel_margin_hor = left_frame_w
+	local input_panel_margin_ver = (bottom_frame_h - input_panel_h) / 2 --! change this to have customizable above/below v margin
+	local input_submit_button_color = Color("ff5500")
+	local input_submit_button_alpha = 1
+	
+	local left_frame_h = body_h -- - (top_frame_h + bottom_frame_h)
+	local right_frame_h = left_frame_h
+	local left_frame_ver_margin = top_frame_h
+	
+	local resize_grip_w = 16
+	local resize_grip_h = 16
+	local resize_grip_color = Color.white
+	
+	local texture_blank = "guis/textures/test_blur_df"
+	
 	local panel = self._parent_panel:panel({
 		name = "panel",
-		visible = false,
 		x = panel_x,
 		y = panel_y,
 		w = panel_w,
 		h = panel_h,
 		alpha = panel_alpha,
+		visible = false,
 		layer = 999
 	})
 	self._panel = panel
 	
 	self._background_blur = panel:bitmap({
 		name = "background_blur",
-		texture = "guis/textures/test_blur_df",
+		texture = texture_blank,
+		w = panel_w,
+		h = panel_h,
 		valign = "grow",
 		render_template = "VertexColorTexturedBlur3D",
-		alpha = 1,
-		layer = 0,
 		color = Color.white,
-		w = panel_w,
-		h = panel_h
+		alpha = 1,
+		layer = 0
 	})
 	self._background_rect = panel:rect({
 		name = "background_rect",
+		w = panel_w,
+		h = panel_h,
 		blend_mode = "normal",
 		halign = "grow",
 		valign = "grow",
 		alpha = bg_alpha,
-		layer = 0,
 		color = bg_color,
-		w = panel_w,
-		h = panel_h
-	})
-	
-	local body_margin_hor = 6
-	local body_margin_ver = 6
-	local header_margin_hor = body_margin_hor/2
-	local header_margin_ver = body_margin_ver/2
-	
-	local input_box_h = font_size * 1.5
-	local input_text_ver_margin = body_margin_hor + 32
-	local input_box_ver_margin = 6
-	local input_box_hor_margin = 6
-	local input_text_hor_margin = 6
-	
-	
-	local selection_color = hex_to_color(settings.window_text_highlight_color)
-	
-	local input_box_color = hex_to_color(settings.window_input_box_color)
-	
-	local button_normal_color = hex_to_color(settings.window_button_normal_color)
-	local button_highlight_color = hex_to_color(settings.window_button_highlight_color)
-	local close_button_color = Color.red
-	local close_button_w = 24
-	local close_button_h = 24
-	local close_button_margin = 0
-	
-	local scrollbar_w = 16
-	local scrollbar_button_w = scrollbar_w
-	local scrollbar_button_h = 16
-	local vertical_margin = 24
-	
-	local default_scrollbar_handle_height = 100
-	local scrollbar_lock_enabled = settings.window_scrollbar_lock_enabled
-	local scrollbar_lock_alpha_high = 1
-	local scrollbar_lock_alpha_low = 0.5
-	local scrollbar_lock_alpha = scrollbar_lock_enabled and scrollbar_lock_alpha_high or scrollbar_lock_alpha_low
-	
-	local resize_grip_color = Color.white
-	local resize_grip_w = scrollbar_button_w
-	local resize_grip_h = scrollbar_button_h
-	
-	local top_bar_w = panel_w
-	local top_bar_h = 16
-	local top_grip_hor_margin = 48
-	local top_bar_color = Color("777777")
-	local top_grip_alpha = 0.5
-	local top_grip_color = Color("333333")
-	
-	local top_bar = panel:rect({
-		name = "top_bar",
-		color = top_bar_color,
-		alpha = 1,
-		layer = 2,
-		w = top_bar_w,
-		h = top_bar_h,
-		x = 0,
-		y = 0
-	})
-	self._top_bar = top_bar
-	local header_label = panel:text({
-		name = "header_label",
-		font = font,
-		font_size = font_size,
-		text = managers.localization:text("dcc_window_header_title"),
-		font = font_name,
-		x = header_margin_hor,
-		y = header_margin_ver,
-		font_size = font_size,
-		alpha = 1,
-		color = text_normal_color,
-		layer = 105
-	})
-	self._header_label = header_label
-	
-	local top_grip = panel:bitmap({ --draggable top bar
-		name = "top_grip",
-		texture = buttons_atlas,
-		texture_rect = {
-			1 * 16, 1 * 16,
-			16,16
-		},
-		color = top_grip_color,
-		x = top_grip_hor_margin,
-		y = top_bar:y(),
-		w = top_bar_w - (close_button_w + (top_grip_hor_margin * 2)),
-		h = top_bar:h(),
-		alpha = top_grip_alpha,
-		layer = 3
-	})
-	self._top_grip = top_grip
-	
-	self._close_button = panel:bitmap({
-		name = "close_button",
-		texture = buttons_atlas,
-		texture_rect = {
-			3 * 16, 1 * 16,
-			16,16
-		},
-		layer = 102,
-		alpha = 1,
-		color = close_button_color,
-		x = panel:w() - (close_button_w + close_button_margin),
-		y = close_button_margin,
-		w = close_button_w,
-		h = close_button_h
-	})
---	self._close_button:set_right(panel:right() - close_button_margin)
-
-	local resize_grip = panel:bitmap({
-		name = "resize_grip",
-		texture = buttons_atlas,
-		texture_rect = {
-			2 * 16, 1 * 16,
-			16,16
-		},
-		x = panel:w() - resize_grip_w,
-		y = panel:h() - resize_grip_h,
-		color = resize_grip_color,
-		w = resize_grip_w,
-		h = resize_grip_h,
-		layer = 102,
-		alpha = 1
-	})
-	self._resize_grip = resize_grip
-	
-	--the main stuff like the input text and history text are children of this panel
-	local body = panel:panel({
-		name = "body",
-		x = body_margin_hor,
-		y = body_margin_ver + top_bar_h,
-		w = panel_w - (body_margin_hor * 2),
-		h = panel_h - (top_bar_h + (body_margin_ver * 2)),
-		alpha = 1,
 		layer = 1
 	})
-	self._body = body
-	local body_bg = body:rect({
-		name = "body_bg",
-		color = bg_color,
-		alpha = 0.5
-	})
-	self._body_bg = body_bg
-	
-	self._caret = body:text({
-		name = "caret",
-		layer = 103,
-		x = 0,
-		y = 0,
-		text = caret_string,
-		font = font_name,
-		font_size = font_size,
---		monospace = true,
-		alpha = caret_text_alpha,
-		color = caret_text_color
-	})
-	
-	self._history_text = body:text({
-		name = "text",
-		text = "",
---		monospace = true,
---		kern = -16,
-		font = font_name,
-		font_size = font_size,
-		align = "left",
-		vertical = "bottom",
-		x = 0,
-		y = 0,
-		color = text_normal_color,
-		wrap = true,
-		alpha = 1,
-		layer = 1
-	})
-	self._history_text:set_selection_color(text_highlight_color)
-	self._prompt = body:text({
-		name = "prompt",
-		text = prompt_string,
-		x = 0,
-		y = 0,
---		monospace = true,
-		font = font_name,
-		font_size = font_size,
-		align = "left",
-		vertical = "bottom",
---		blend_mode = "add",
-		color = prompt_text_color,
-		alpha = prompt_text_alpha,
-		layer = 102
-	})
-	self._prompt:set_selection_color(text_highlight_color)
-	
-	self._input_text = panel:text({
-		name = "input_text",
-		text = "",
---		monospace = true,
-		font = font_name,
-		font_size = font_size,
-		align = "left",
-		vertical = "bottom",
---		w = body:w(),
---		h = body:h(),
-		x = input_text_hor_margin,
-		y = input_text_ver_margin,
---		y = self._prompt:y(),
-		color = text_normal_color,
-		wrap = false,
-		alpha = 1,
-		layer = 100
-	})
-	self._input_text:set_selection_color(text_highlight_color)
-	self._input_box = panel:rect({
-		name = "input_box",
-		color = input_box_color,
-		layer = 97,
-		w = panel:w() - (input_box_hor_margin * 2),
-		h = input_box_h,
-		x = input_box_hor_margin,
-		y = panel:h() - input_box_ver_margin,
-		alpha = 1
-	})
-	
-	self._selection_box = panel:rect({
-		name = "selection_box",
-		x = 0,
-		y = 0,
-		w = 0,
-		h = 0,
-		color = selection_color,
-		alpha = 1,
-		layer = 99,
-		blend_mode = "normal"
-	})
---	self._selection_box:set_bottom(panel:bottom())
-	
+		
 	local scrollbar_panel = panel:panel({
 		name = "scrollbar_panel",
---		x = body:w(),
-		y = top_bar_h
+		x = panel_w - (right_frame_w + scrollbar_w),
+		y = top_frame_h,
+		w = scrollbar_w,
+		h = scrollbar_h,
+		layer = 1009
 	})
 	self._scrollbar_panel = scrollbar_panel
-	
-	local right_align = scrollbar_panel:w() - scrollbar_w
-	local bottom_align = scrollbar_panel:h() - vertical_margin
-	
-	local scrollbar_lock_button = scrollbar_panel:bitmap({
-		name = "scrollbar_lock_button",
-		color = Color.white,
-		layer = 101,
-		alpha = scrollbar_lock_alpha,
+		
+	local scrollbar_button_lock = scrollbar_panel:bitmap({
+		name = "scrollbar_button_lock",
 		texture = "guis/textures/scroll_items",
 		texture_rect = {
 			0,16,
 			16,16
 		},
-		x = right_align,
-		y = vertical_margin,
-		w = scrollbar_button_w,
-		h = scrollbar_button_h
+		x = 0,
+		y = 0,
+		w = scrollbar_button_size,
+		h = scrollbar_button_size,
+		alpha = scrollbar_lock_alpha,
+		layer = 1000
 	})
-	self._scrollbar_lock_button = scrollbar_lock_button
+	self._scrollbar_button_lock = scrollbar_button_lock
+	
 	local scrollbar_button_top = scrollbar_panel:bitmap({
 		name = "scrollbar_button_top",
-		layer = 101,
 		texture = "guis/textures/scroll_items",
 		texture_rect = {
 			0,0,
 			15,15
 		},
-		w = scrollbar_button_w,
-		h = scrollbar_button_h,
-		x = right_align,
-		y = scrollbar_lock_button:y() + scrollbar_lock_button:h()
+		w = scrollbar_button_size,
+		h = scrollbar_button_size,
+		x = 0,
+		y = scrollbar_button_size,
+		layer = 1000
 	})
 	self._scrollbar_button_top = scrollbar_button_top
 	
 	local scrollbar_button_up = scrollbar_panel:bitmap({
 		name = "scrollbar_button_up",
-		layer = 101,
 		texture = "guis/textures/menu_arrows",
 		texture_rect = {
 			0,0,
 			24,24
 		},
 		rotation = 90,
-		w = scrollbar_button_w,
-		h = scrollbar_button_h,
-		x = right_align,
-		y = scrollbar_button_top:y() + scrollbar_button_top:h()
+		w = scrollbar_button_size,
+		h = scrollbar_button_size,
+		x = 0,
+		y = scrollbar_button_size * 2,
+		layer = 1000
 	})
 	self._scrollbar_button_up = scrollbar_button_up
+	
 	local scrollbar_button_bottom = scrollbar_panel:bitmap({
 		name = "scrollbar_button_bottom",
-		layer = 101,
 		texture = "guis/textures/scroll_items",
 		texture_rect = {
 			15,1,
 			15,15
 		},
-		w = scrollbar_button_w,
-		h = scrollbar_button_h,
-		x = right_align,
-		y = bottom_align - scrollbar_button_h
+		w = scrollbar_button_size,
+		h = scrollbar_button_size,
+		x = 0,
+		y = scrollbar_h - scrollbar_button_size,
+		layer = 1000
 	})
 	self._scrollbar_button_bottom = scrollbar_button_bottom
+	
 	local scrollbar_button_down = scrollbar_panel:bitmap({
 		name = "scrollbar_button_down",
-		layer = 101,
 		texture = "guis/textures/menu_arrows",
 		texture_rect = {
 			0,0,
 			24,24
 		},
 		rotation = 270,
-		w = scrollbar_button_w,
-		h = scrollbar_button_h,
-		x = right_align,
-		y = scrollbar_button_bottom:top() - scrollbar_button_h
+		w = scrollbar_button_size,
+		h = scrollbar_button_size,
+		x = 0,
+		y = scrollbar_h - (scrollbar_button_size * 2),
+		layer = 1000
 	})
 	self._scrollbar_button_down = scrollbar_button_down
 	
 	local scrollbar_handle = scrollbar_panel:bitmap({
 		name = "scrollbar_handle",
-		color = Color.white,
-		layer = 101,
-		alpha = 1,
 		texture = "guis/textures/scroll_items",
 		texture_rect = {
 			32,0,
 			11,32
 		},
-		x = right_align,
-		y = scrollbar_button_up:bottom(),
-		w = scrollbar_button_w,
-		h = default_scrollbar_size
---		h = scrollbar_panel:h() - (scrollbar_cap_top:h() + scrollbar_cap_bottom:h())
+		x = 0,
+		y = scrollbar_button_size * 3,
+		w = scrollbar_handle_w,
+		h = scrollbar_handle_h,
+		color = Color.white,
+		alpha = 1,
+		layer = 1000
 	})
 	self._scrollbar_handle = scrollbar_handle
+	
+	local top_frame_panel = panel:panel({
+		name = "top_frame_panel",
+		x = 0,
+		y = 0,
+		w = top_frame_w,
+		h = top_frame_h,
+		layer = 1000
+	})
+	local top_frame_bg = top_frame_panel:rect({
+		name = "top_frame_bg",
+		w = top_frame_w,
+		h = top_frame_h,
+		valign = "grow",
+		halign = "grow",
+		color = panel_frame_color,
+		alpha = panel_frame_alpha,
+		layer = 1001
+	})
+	local close_button = top_frame_panel:bitmap({
+		name = "close_button",
+		texture = buttons_atlas,
+		texture_rect = {
+			3 * 16, 1 * 16,
+			16,16
+		},
+		x = top_frame_w - (close_button_w + close_button_margin_hor),
+		y = close_button_margin_ver,
+		w = close_button_w,
+		h = close_button_h,
+		color = close_button_color,
+		alpha = 1,
+		layer = 1002
+	})
+	self._close_button = close_button
+	
+	local header_label = top_frame_panel:text({
+		name = "header_label",
+		text = managers.localization:text("dcc_window_header_title"),
+		font = text_font_name,
+		font_size = text_font_size,
+		color = text_normal_color,
+		selection_color = text_highlight_color,
+		align = "left",
+		vertical = "center",
+		x = header_label_margin_hor,
+		y = 0,
+		w = top_frame_w,
+		h = top_frame_h,
+		wrap = false,
+		alpha = header_label_alpha,
+		layer = 1009
+	})
+	self._header_label = header_label
+	
+	local bottom_frame_panel = panel:panel({
+		name = "bottom_frame_panel",
+		x = 0,
+		y = panel_h - bottom_frame_h,
+		w = bottom_frame_w,
+		h = bottom_frame_h,
+		layer = 1001
+	})
+	local bottom_frame_bg = bottom_frame_panel:rect({
+		name = "bottom_frame_bg",
+		w = bottom_frame_w,
+		h = bottom_frame_h,
+		valign = "grow",
+		halign = "grow",
+		color = panel_frame_color,
+		alpha = panel_frame_alpha,
+		layer = 9
+	})
+	local resize_grip = bottom_frame_panel:bitmap({
+		name = "resize_grip",
+		texture = buttons_atlas,
+		texture_rect = {
+			2 * 16, 1 * 16,
+			16,16
+		},
+		x = bottom_frame_w - resize_grip_w,
+		y = bottom_frame_h - resize_grip_h,
+		w = resize_grip_w,
+		h = resize_grip_h,
+		color = resize_grip_color,
+		alpha = 1,
+		layer = 1000
+	})
+	self._resize_grip = resize_grip
+	
+	local left_frame_panel = panel:panel({
+		name = "left_frame_panel",
+		x = 0,
+		y = left_frame_ver_margin,
+		w = left_frame_w,
+		h = left_frame_h,
+		layer = 1001
+	})
+	local left_frame_bg = left_frame_panel:rect({
+		name = "left_frame_bg",
+		w = left_frame_w,
+		h = left_frame_h,
+		valign = "grow",
+		halign = "grow",
+		color = panel_frame_color,
+		alpha = panel_frame_alpha,
+		layer = 1000
+	})
+	
+	local right_frame_panel = panel:panel({
+		name = "right_frame_panel",
+		x = panel_w - right_frame_w,
+		y = left_frame_ver_margin,
+		w = right_frame_w,
+		h = right_frame_h,
+		layer = 1001
+	})
+	local right_frame_bg = right_frame_panel:rect({
+		name = "left_frame_bg",
+		w = right_frame_w,
+		h = right_frame_h,
+		valign = "grow",
+		halign = "grow",
+		color = panel_frame_color,
+		alpha = panel_frame_alpha,
+		layer = 1000
+	})
+	
+	local input_panel = panel:panel({
+		name = "input_panel",
+		x = left_frame_w,
+		y = panel_h - (input_panel_h + input_panel_margin_ver),
+		w = input_panel_w,
+		h = input_panel_h,
+		layer = 1003
+	})
+	self._input_panel = input_panel
+
+	local input_box = input_panel:rect({
+		name = "input_box",
+		w = input_panel_w - (input_submit_button_w + (input_submit_button_margin_hor * 2)),
+		h = input_panel_h,
+		color = input_box_color,
+		alpha = input_box_alpha,
+		layer = 1010
+	})
+	self._input_box = input_box
+	
+	local input_text = input_panel:text({
+		name = "input_text",
+		text = "",
+		font = text_font_name,
+		font_size = text_font_size,
+		color = text_normal_color,
+		selection_color = text_highlight_color,
+		align = "left",
+		vertical = "center",
+		x = input_text_margin_hor,
+		y = input_text_margin_ver,
+		w = input_panel_w,
+		h = input_panel_h,
+		wrap = false,
+		alpha = input_text_alpha,
+		layer = 1111
+	})
+	self._input_text = input_text
+	
+	local input_submit_panel = input_panel:panel({
+		name = "input_submit_panel",
+		x = input_panel_w - input_submit_button_w,
+		y = 0,
+		w = input_submit_button_w,
+		h = input_submit_button_h,
+		layer = 1110
+	})
+	local input_submit_button = input_submit_panel:rect({
+		name = "input_submit_button",
+		w = input_submit_button_w,
+		h = input_submit_button_h,
+		color = input_submit_button_color,
+		alpha = input_submit_button_alpha,
+		layer = 1112
+	})
+	local input_submit_label = input_submit_panel:text({
+		name = "input_submit_label",
+		text = managers.localization:text("dcc_window_button_submit"),
+		font = text_font_name,
+		font_size = text_font_size,
+		color = text_normal_color,
+		selection_color = text_highlight_color,
+		align = "center",
+		vertical = "center",
+		wrap = false,
+		visible = true,
+		alpha = 1,
+		layer = 1113
+	})
+	
+	local caret = input_panel:text({
+		name = "caret",
+		text = caret_string,
+		font = caret_text_font_name,
+		font_size = text_font_size,
+		color = caret_text_color,
+		x = 0,
+		y = 0,
+		alpha = caret_text_alpha,
+		layer = 1112
+	})
+	self._caret = caret
+	
+	local selection_box = input_panel:rect({
+		name = "selection_box",
+		x = 0,
+		y = 0,
+		w = 0,
+		h = 0,
+		color = selection_box_color,
+		alpha = 1,
+		blend_mode = "normal",
+		layer = 1110
+	})
+	self._selection_box = selection_box
+	
+	local body = panel:panel({
+		name = "body",
+		x = body_margin_hor,
+		y = body_margin_ver,
+		w = body_w,
+		h = body_h,
+		alpha = 1,
+		layer = 1009
+	})
+	self._body = body
+	
+	self._prompt = body:text({
+		name = "prompt",
+		text = prompt_string,
+		x = 0,
+		y = 0,
+--		monospace = true,
+		font = text_font_name,
+		font_size = text_font_size,
+		align = "left",
+		vertical = "bottom",
+--		blend_mode = "add",
+		color = prompt_text_color,
+		alpha = prompt_text_alpha,
+		layer = 1002,
+	})
+	
+	local body_bg = body:rect({
+		name = "body_bg",
+		w = body_w,
+		h = body_h,
+		color = bg_color,
+		alpha = bg_alpha,
+		layer = 900
+	}) 
+	
+	local history_text = body:text({
+		name = "history_text",
+		text = "",
+		font = text_font_name,
+		font_size = text_font_size,
+		color = history_color,
+		selection_color = text_highlight_color,
+		x = history_margin_hor,
+		y = history_margin_ver,
+		w = body_w - (history_margin_hor * 2),
+		h = body_h - (history_margin_ver * 2),
+		align = "left",
+		vertical = "bottom",
+		wrap = true,
+		alpha = 1,
+		layer = 1111
+	})
+	self._history_text = history_text
+	
+	
 	local min_window_width = 50
-	local min_window_height = 50 + top_bar_h
+	local min_window_height = 50 + top_frame_h
 	local max_window_hidden_hor_margin = 64 --no more than this many pixels of the window can be horizontally hidden (above or below the edge of the screen)
 	local max_window_hidden_ver_margin = 0 --no more than this many pixels of the window can be vertically hidden (above or below the edge of the screen)
 	self._ui_objects = {
-		top_grip = {
-			object = top_grip,
+		top_frame_bg = {
+			object = top_frame_bg,
 			mouseover_pointer = "hand", --arrow link hand grab
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
 			mouse_left_release_callback = nil,
 			mouse_left_click_callback = function(o,x,y) --left click (on release)
-				log("clicked selection box")
 				if self._save_settings_callback then 
 					self._save_settings_callback()
 				end
 			end,
 			mouse_right_click_callback = function(o,x,y) --right click (on release)
 				--show context menu (click)
-				log("rightclicked selection box")
 			end,
 			mouse_left_press_callback = function(o,x,y) --left click (on initial press)
 				self._mouse_drag_x_start = x
 				self._mouse_drag_y_start = y
-				self._held_object = top_grip
+				self._held_object = o
 				self._target_drag_x_start = panel:x()
 				self._target_drag_y_start = panel:y()
 			end,
@@ -530,8 +668,7 @@ function ConsoleModDialog:create_gui()
 				local start_y = self._target_drag_y_start
 				
 				
-				local bw,bh = top_grip:size()
---				local px,py = panel:world_position()
+				local bw,bh = o:size()
 				local to_x = math.clamp( start_x + d_x, max_window_hidden_hor_margin - bw, parent_panel:w() - max_window_hidden_hor_margin )
 				local to_y = math.clamp( start_y + d_y, max_window_hidden_ver_margin - bh, parent_panel:h() - (bh + max_window_hidden_ver_margin) )
 				
@@ -539,6 +676,20 @@ function ConsoleModDialog:create_gui()
 				self.inherited_settings.window_x = to_x
 				self.inherited_settings.window_y = to_y
 			end
+		},
+		input_submit_button = {
+			object = input_submit_button,
+			mouseover_pointer = "link",
+			mouseover_event_start_callback = nil,
+			mouseover_event_stop_callback = nil,
+			mouse_left_release_callback = nil,
+			mouse_left_click_callback = function(o,x,y) --left click (on release)
+				self:confirm_text()
+			end,
+			mouse_right_click_callback = nil,
+			mouse_left_press_callback = nil,
+			mouse_right_press_callback = nil, --todo context menu?
+			mouse_drag_event_callback = nil
 		},
 		resize_grip = {
 			object = resize_grip,
@@ -570,56 +721,14 @@ function ConsoleModDialog:create_gui()
 				local tsy = self._target_drag_y_start
 				local d_x = msx - tsx
 				local d_y = msy - tsy
---				local rx = start_x + dx
---				local ry = start_y + dy
---				resize_grip:set_position(rx,ry)
---				local rm = resize_grip:right() - panel:right()
---				local pw,ph = panel:size()
-				
---				local to_w = math.max(x - px,min_window_width)
---				local to_h = math.max(y - py,min_window_height)
 
 				local to_w = math.max((x + d_x) - (px),min_window_width)
 				local to_h = math.max((y + d_y) - (py),min_window_height)
 				self:resize_panel(to_w,to_h)
 				self.inherited_settings.window_w = to_w
 				self.inherited_settings.window_h = to_h
-				
-				--[[
-				panel:grow(d_x,d_y)
-				local to_w,to_h = panel:size()
-				--]]
 			end
 		},
-		--[[
-		selection_box = {
-			object = self._selection_box,
-			mouse_left_release_callback = nil,
-			mouse_left_click_callback = function(o,x,y)
-				log("clicked selection box")
-			end,
-			mouse_right_click_callback = function(o,x,y)
-				--show context menu
-				log("rightclicked selection box")
-			end,
-			mouseover_pointer = "link", --arrow link hand grab
-			draggable_x = false,
-			draggable_y = false
-		},
-		--]]
-		--[[
-		input_text = {
-			object = self._input_text,
-			mouseover_pointer = "arrow",
-			draggable_x = false,
-			draggable_y = false,
-			mouse_left_release_callback = nil,
-			mouse_left_click_callback = function(o,x,y)
-				--focus input box 
-				log("clicked input text")
-			end
-		},
-		--]]
 		close_button = {
 			object = self._close_button,
 			mouseover_pointer = "link",
@@ -680,8 +789,8 @@ function ConsoleModDialog:create_gui()
 			mouse_left_release_callback = nil,
 			mouse_left_click_callback = callback(self,self,"callback_scrollbar_top_button_clicked")
 		},
-		scrollbar_lock_button = {
-			object = scrollbar_lock_button,
+		scrollbar_button_lock = {
+			object = scrollbar_button_lock,
 			mouseover_pointer = "link",
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
@@ -725,6 +834,9 @@ function ConsoleModDialog:create_gui()
 end
 
 function ConsoleModDialog:resize_panel(to_w,to_h)
+	
+	do return self:new_resize() end
+	
 	local panel = self._panel
 	panel:set_size(to_w,to_h)
 	local panel_right = panel:right()
@@ -733,8 +845,8 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	local body_margin_hor = 6
 	local body_margin_ver = 6
 	local top_bar_h = 16
-	local font_size = self.inherited_settings.window_font_size
-	local input_box_h = font_size * 1.5
+	local text_font_size = self.inherited_settings.window_font_size
+	local input_box_h = text_font_size * 1.5
 	
 	local resize_grip = self._resize_grip
 	resize_grip:set_right(to_w)
@@ -748,16 +860,16 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	self._input_text:set_size(b_w,b_h)
 	self._input_text:set_text(self._input_text:text())
 	self._input_box:set_size(b_w,input_box_h)
-	self._input_box:set_position(body_margin_hor,b_h - font_size)
+	self._input_box:set_position(body_margin_hor,b_h - text_font_size)
 	self._prompt:set_size(b_w,b_h)
 	self._prompt:set_text(self._prompt:text())
 	self._body_bg:set_size(b_w,b_h)
-	self._history_text:set_size(b_w,b_h - font_size)
+	self._history_text:set_size(b_w,b_h - text_font_size)
 	self._history_text:set_text(self._history_text:text())
 	self._caret:set_size(b_w,b_h)
 	self._caret:set_text(self._caret:text())
 	self._top_bar:set_w(to_w)
-	self._top_grip:set_w(to_w - close_button_w)
+--	self._top_grip:set_w(to_w - close_button_w)
 	self._close_button:set_position(to_w - (close_button_w + close_button_margin))
 	
 	local vertical_margin = 24
@@ -892,6 +1004,8 @@ function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
+	do return end
+	
 	local scrollbar_lock_alpha_high = 1
 	local scrollbar_lock_alpha_low = 0.5
 	local state = not self.inherited_settings.window_scrollbar_lock_enabled
@@ -909,6 +1023,8 @@ end
 --end
 
 function ConsoleModDialog:set_scroll_amount_by_bar_position(y_pos)
+	do return end
+	
 	local scrollbar_handle = self._scrollbar_handle
 	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
 	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
@@ -921,6 +1037,8 @@ function ConsoleModDialog:set_scroll_amount_by_bar_position(y_pos)
 end
 
 function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
+	do return end
+	
 	local history_text = self._history_text
 	
 	local _,_,_,th = history_text:text_rect()
@@ -940,6 +1058,8 @@ function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
 end
 
 function ConsoleModDialog:set_scroll_amount(d_y) --horizontal scroll not supported (no need since we have line wrap)
+	do return end
+	
 	local history_text = self._history_text
 	local tx,ty,tw,th = history_text:text_rect()
 	history_text:set_h(th)
@@ -976,6 +1096,8 @@ function ConsoleModDialog:set_scroll_amount(d_y) --horizontal scroll not support
 end
 
 function ConsoleModDialog:set_scroll_bar_position(ratio)
+	do return end
+	
 	local scrollbar_handle = self._scrollbar_handle
 	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
 	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
@@ -988,6 +1110,8 @@ function ConsoleModDialog:set_scroll_bar_position(ratio)
 end
 
 function ConsoleModDialog:set_scroll_bar_height(ratio)
+	do return end
+
 	local default_scrollbar_handle_height = 100
 	local scrollbar_handle = self._scrollbar_handle
 	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
@@ -1212,6 +1336,7 @@ function ConsoleModDialog:on_key_press(k,held)
 		else
 			input_text:set_selection(0, 0)
 		end
+		self._selection_dir = -1
 	elseif k == Idstring("end") then 
 		local current_len = string.len(current_text)
 		if shift_held then
@@ -1224,6 +1349,7 @@ function ConsoleModDialog:on_key_press(k,held)
 		else
 			input_text:set_selection(current_len,current_len)
 		end
+		self._selection_dir = 1
 	elseif k == Idstring("left") then
 		if shift_held then 
 			if s == e then 
@@ -1446,8 +1572,8 @@ function ConsoleModDialog:update(t,dt)
 	
 	if char_index then
 		local caret = self._caret
-		local font_size = self.inherited_settings.window_font_size
-		local caret_w = font_size / 4
+		local text_font_size = self.inherited_settings.window_font_size
+		local caret_w = text_font_size / 4
 		local caret_x,caret_y = input_text:character_rect(char_index)
 		if input_text:text() == "" then
 --			local prompt = self._prompt
@@ -1477,7 +1603,7 @@ function ConsoleModDialog:update(t,dt)
 			local _,p3y,_,_ = input_text:character_rect(line_breaks[num_line_breaks])
 		end
 		--]]
-		selection_box:set_h((p2y - p1y) + (input_text:number_of_lines() * font_size) )
+		selection_box:set_h((p2y - p1y) + (input_text:number_of_lines() * text_font_size) )
 
 --		self._history_text:set_text(string.format("%i / %i",self._input_text:selection()) .. "\n" .. string.format("%i / %i",selection_box:size()) .. "\n" .. string.format("%i / %i",selection_box:position()) .. "\n" .. string.format("%i / %i",self._mouse_x,self._mouse_y))
 	end
