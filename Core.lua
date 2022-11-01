@@ -4,7 +4,9 @@
 ******************* Feature list todo: ******************* 
 
 - straighten out Log/Print/output call flow
-
+	- different levels of logging
+	print/log behavior option checkboxes
+	
 - session pref with existing vars
 tab key autocomplete
 - display behavior to console for Log()
@@ -178,6 +180,8 @@ do --init mod vars
 		"input_log_enabled",
 		"output_log_enabled",
 		"log_buffer_enabled",
+		"log_buffer_interval",
+		"console_params_guessing_enabled",
 		"window_scrollbar_lock_enabled",
 		"window_scroll_direction_reversed",
 		"window_text_normal_color",
