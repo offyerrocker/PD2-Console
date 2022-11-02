@@ -155,7 +155,7 @@ do --init mod vars
 		style_data_color_userdata = 0xff4c4c,
 		style_data_color_misc = 0x888888,
 		window_scrollbar_lock_enabled = true,
-		window_scroll_direction_reversed = false,
+		window_scroll_direction_reversed = true,
 		window_text_normal_color = 0xffffff,
 		window_text_highlight_color = 0xffd700, --the color of the highlight box around the text
 		window_text_stale_color = 0x777777, --the color of any logs pulled from history log (read from disk, ie from previous state/session)

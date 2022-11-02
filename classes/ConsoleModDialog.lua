@@ -502,7 +502,7 @@ function ConsoleModDialog:create_gui()
 		align = "left",
 		vertical = "center",
 		x = input_text_margin_hor,
-		y = input_text_margin_ver,
+		y = 0,
 		w = input_panel_w,
 		h = input_panel_h,
 		wrap = false,
@@ -819,10 +819,11 @@ function ConsoleModDialog:create_gui()
 				
 				o:set_y(to_y)
 				local ratio = (to_y - y_min) / (y_max - y_min)
+				if self:is_scrollbar_direction_reversed() then 
+					ratio = 1 - ratio
+				end
+				self:set_vscroll_ratio(ratio,true)
 				self:set_vscroll_handle_by_position(to_y)
-				self:set_vscroll_ratio(ratio)
---				self._prompt:set_text(string.format("%i %i %i %i %0.2f",scrollbar_handle_h,to_y,y_min,y_max,ratio))
---				self._input_text:set_text(tostring(to_y/total))
 			end
 		}
 	}
@@ -855,7 +856,7 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	resize_grip:set_bottom(to_h)
 
 --force reposition
-	self:set_scroll_amount(0) --force refresh scroll position
+--	self:set_scroll_amount(0) --force refresh scroll position
 	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(input_box_h + top_bar_h + (body_margin_ver * 2)))
 	local b_w,b_h = self._body:size()
 	--force update text objects
@@ -996,25 +997,29 @@ function ConsoleModDialog:get_mouseover_target(x,y)
 end
 
 function ConsoleModDialog:callback_scrollbar_top_button_clicked(o,x,y)
-	self:set_vscroll_ratio(0)
+	local ratio = 0
+	if self:is_scrollbar_direction_reversed() then 
+		ratio = 1 - ratio
+	end
+	self:set_vscroll_ratio(ratio)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_bottom_button_clicked(o,x,y)
-	self:set_vscroll_ratio(1)
+	local ratio = 1
+	if self:is_scrollbar_direction_reversed() then 
+		ratio = 1 - ratio
+	end
+	self:set_vscroll_ratio(ratio)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_up_button_clicked(o,x,y)
---	local _,_,_,th = self._history_text:text_rect()
 	local direction = self:is_scrollbar_direction_reversed() and -1 or 1
 	self:perform_vscroll_amount(direction * self._body:h())
---	self:set_scroll_amount(-self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
 	local direction = self:is_scrollbar_direction_reversed() and 1 or -1
---	local _,_,_,th = self._history_text:text_rect()
 	self:perform_vscroll_amount(direction * self._body:h())
---	self:set_scroll_amount(self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
@@ -1056,10 +1061,7 @@ function ConsoleModDialog:play_button_released_sound(success)
 	end
 end
 
-function ConsoleModDialog:set_vscroll_ratio(ratio)
-	if self:is_scrollbar_direction_reversed() then 
-		ratio = 1 - ratio
-	end
+function ConsoleModDialog:set_vscroll_ratio(ratio,skip_handle_position)
 	
 	local history_text = self._history_text
 	
@@ -1071,23 +1073,30 @@ function ConsoleModDialog:set_vscroll_ratio(ratio)
 	
 	local d_y = total * ratio
 	
---	self._prompt:set_text(string.format("%i %i %i %0.2f",y_min,y_max,d_y,ratio))
---	self._prompt:set_text(string.format("%i %i %i",history_text:y(),d_y,ratio))
 	history_text:set_y(d_y)
-	self:set_vscroll_handle_by_ratio(ratio)
+	if not skip_handle_position then
+		if not self:is_scrollbar_direction_reversed() then
+			ratio = 1 - ratio
+		end
+		self:set_vscroll_handle_by_ratio(ratio)
+	end
 end
 
-function ConsoleModDialog:perform_vscroll_amount(d_y)
+function ConsoleModDialog:perform_vscroll_amount(d_y,skip_handle_position)
 	local history_text = self._history_text
 	local _,_,_,th = history_text:text_rect() --actual size
 	local y_min = - math.abs(self._body:h() - th)
 	local y_max = 0
 	local to_y = math.clamp(history_text:y() + d_y,y_min,y_max)
---	history_text:move(0,d_y)
 	history_text:set_y(to_y)
 	
 	local ratio = (to_y - y_min) / (y_max - y_min)
-	self:set_vscroll_handle_by_ratio(ratio) --0.5 + r
+	if not skip_handle_position then
+		if not self:is_scrollbar_direction_reversed() then
+			ratio = 1 - ratio
+		end
+		self:set_vscroll_handle_by_ratio(ratio)
+	end
 end
 
 
@@ -1099,8 +1108,6 @@ function ConsoleModDialog:set_vscroll_handle_by_position(position)
 end
 
 function ConsoleModDialog:set_vscroll_handle_by_ratio(ratio)
---	ratio = ratio + 0.5
-	
 	local scrollbar_handle = self._scrollbar_handle
 	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
 	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
@@ -1119,115 +1126,11 @@ function ConsoleModDialog:set_vscroll_handle_height(ratio)
 	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
 end
 
-
---function ConsoleModDialog:perform_scroll(num_lines)
---end
-
---function ConsoleModDialog:perform_page_scroll(pages)
---end
-
-
-function ConsoleModDialog:set_scroll_amount_by_bar_position(y_pos)
-	do return end
-	
-	local scrollbar_handle = self._scrollbar_handle
-	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
-	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
-	
-	local total = bottom - top
-	local current = y_pos - top
-	local ratio = current / total
---	self._prompt:set_text(string.format("%i %i %0.2f",total,current,ratio))
-	return self:set_scroll_amount_by_bar_ratio(1 - ratio)
-end
-
-function ConsoleModDialog:set_scroll_amount_by_bar_ratio(ratio)
-	do return end
-	
-	local history_text = self._history_text
-	
-	local _,_,_,th = history_text:text_rect()
-	history_text:set_h(h)
-	
-	local min_y = -history_text:h()
-	local max_y = 0 + (self._body:h() - self.inherited_settings.window_font_size)
-	local d_y = (max_y - min_y) * (ratio - 0.5)
-	
---	self._prompt:set_text(string.format("%i %i %i %0.2f",min_y,max_y,d_y,ratio))
---	self._prompt:set_text(string.format("%i %i %i",history_text:y(),d_y,ratio))
-	
---	local tx,ty,tw,th = history_text:text_rect()
---	local to_y = math.clamp(history_text:y() + d_y,min_y,max_y)
-	history_text:grow(0,d_y - history_text:y())
-	history_text:set_y(d_y)
-end
-
-function ConsoleModDialog:set_scroll_amount(d_y) --horizontal scroll not supported (no need since we have line wrap)
-	do return end
-	
-	local history_text = self._history_text
-	local tx,ty,tw,th = history_text:text_rect()
-	history_text:set_h(th)
-	local min_y = -history_text:h()
-	local max_y = 0 + (self._body:h() - self.inherited_settings.window_font_size)
---	self._prompt:set_text(history_text:y() .. " " .. history_text:h())
-	
-	local to_y = math.clamp(history_text:y() + d_y,min_y,max_y)
---	local sign = math.sign(d_y)
---	history_text:grow(0,math.max(0,math.abs(to_y - history_text:y())) * sign)
-	history_text:set_y(to_y)
-	
-	local r = to_y / (max_y - min_y)
-	self:set_scroll_bar_position(0.5 + r)
-	
-	
---[[
-
-	if alive(_G.asdlfkjasldf) then 
-		asdlfkjasldf:parent():remove(asdlfkjasldf)
-	end
-	asdlfkjasldf = self._body:rect({
-		name = "asdlfkjasldf",
-		color = Color.red,
-		layer = -100,
-		alpha = 0.7,
-		rotation = 0.01,
-		w = history_text:w(),
-		h = history_text:h(),
-		x = history_text:x(),
-		y = history_text:y()
-	})
-	--]]
-end
-
-function ConsoleModDialog:set_scroll_bar_position(ratio)
-	do return end
-	
-	local scrollbar_handle = self._scrollbar_handle
-	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
-	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
-	local scrollbar_direction_reversed = self.inherited_settings.window_scroll_direction_reversed
-	if scrollbar_direction_reversed then
-		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
-	else
-		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
-	end
-end
-
-function ConsoleModDialog:set_scroll_bar_height(ratio)
-	do return end
-
+function ConsoleModDialog:set_vscroll_bar_height(ratio)
 	local default_scrollbar_handle_height = 100
 	local scrollbar_handle = self._scrollbar_handle
 	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
 end
-
-
-
-
-
-
-
 
 function ConsoleModDialog:callback_mouse_moved(o,x,y)
 --	log("moved " .. tostring(x) .. " " .. tostring(y))
@@ -1644,7 +1547,6 @@ function ConsoleModDialog:callback_key_release(o,k)
 		self._key_held_ids = nil
 		self._key_held_t = nil
 	end
---	Log(o)
 end
 
 function ConsoleModDialog:key_shift_down()
