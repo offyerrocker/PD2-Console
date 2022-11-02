@@ -84,6 +84,42 @@ function ConsoleModDialog:new_resize(to_w,to_h)
 	self._panel:set_size(to_w,to_h)
 end
 
+function ConsoleModDialog:get_creation_params()
+	return {
+		close_button_margin_ver = 4,
+		close_button_margin_hor = 4,
+		close_button_size = 16,
+		top_frame_h = 32,
+		bottom_frame_h = 32,
+		history_margin_hor = 4,
+		scrollbar_w = 16,
+		scrollbar_handle_h = 100,
+		scrollbar_lock_alpha_on = 1,
+		scrollbar_lock_alpha_off = 0.5,
+		scrollbar_bg_color = "6e6e6e",
+		scrollbar_bg_alpha = 1,
+		left_frame_w = 10,
+		right_frame_w = 10,
+		header_label_margin_ver = 4,
+		header_label_valign = "center",
+		header_label_halign = "left",
+		header_font_size = 12,
+		header_label_alpha = 1,
+		input_text_margin_hor = 4,
+		input_text_margin_ver = 1,
+		input_text_alpha = 1,
+		input_box_alpha = 1,
+		input_submit_button_w = 48,
+		input_submit_button_margin_hor = 8,
+		input_submit_button_alpha = 1,
+		resize_grip_size = 16,
+		min_window_width = 50,
+		min_window_height = 82, --50 + top_frame_h
+		max_window_hidden_hor_margin = 64,
+		max_window_hidden_ver_margin = 0
+	}
+end
+
 function ConsoleModDialog:create_gui()
 	local func_hex_to_color = Console.hex_number_to_color
 	local settings = self.inherited_settings
@@ -93,6 +129,7 @@ function ConsoleModDialog:create_gui()
 	local parent_panel = fullscreen_ws:panel()
 	self._parent_panel = parent_panel
 	
+	local params = self:get_creation_params() --todo reroute from settings
 	
 	local text_font_name = settings.window_font_name
 	if not self._font_asset_load_done then
@@ -110,7 +147,6 @@ function ConsoleModDialog:create_gui()
 	local prompt_text_color = func_hex_to_color(settings.window_prompt_color)
 	local prompt_text_alpha = settings.window_prompt_alpha
 	local prompt_text_font_name = text_font_name
-	local prompt_text_margin_hor = 1
 	
 	local caret_string = tostring(settings.window_caret_string) or "|"
 	local caret_text_color = func_hex_to_color(settings.window_caret_color)
@@ -124,48 +160,51 @@ function ConsoleModDialog:create_gui()
 	local panel_alpha = settings.window_alpha
 	
 	local blur_alpha = settings.window_blur_alpha
-	local bg_color = func_hex_to_color(settings.window_blur_alpha)
+	local bg_color = func_hex_to_color(settings.window_bg_color)
 	local bg_alpha = settings.window_bg_alpha
 	
 	local panel_frame_color = func_hex_to_color(settings.window_frame_color)
 	local panel_frame_alpha = settings.window_frame_alpha
 		
 		--aligned from panel right
-	local close_button_margin_ver = 4
-	local close_button_margin_hor = 4
-	local close_button_w = 16
-	local close_button_h = 16
+	local close_button_margin_ver = params.close_button_margin_ver
+	local close_button_margin_hor = params.close_button_margin_hor
+	local close_button_w = params.close_button_size
+	local close_button_h = params.close_button_size
+	
 	local button_normal_color = func_hex_to_color(settings.window_button_normal_color)
 	local button_highlight_color = func_hex_to_color(settings.window_button_highlight_color)
 	local close_button_color = button_normal_color
 	
 	local top_frame_w = panel_w
-	local top_frame_h = 32 --aka body_margin_ver
+	local top_frame_h = params.top_frame_h --aka body_margin_ver
 	
 	local bottom_frame_w = panel_w
-	local bottom_frame_h = 32
+	local bottom_frame_h = params.bottom_frame_h
 	
-	local history_margin_hor = 4
+	local history_margin_hor = params.history_margin_hor
 	
 	local body_margin_ver = top_frame_h --height of top frame
 	local body_h = panel_h - (body_margin_ver * 2)
 	
-	local scrollbar_w = 16
+	local scrollbar_w = params.scrollbar_w
 	local scrollbar_h = body_h
 	local scrollbar_button_size = scrollbar_w
 	local scrollbar_handle_w = scrollbar_w
-	local scrollbar_handle_h = 100
+	local scrollbar_handle_h = params.scrollbar_handle_h
 	local scrollbar_lock_alpha
-	local scrollbar_lock_alpha_on = 1
-	local scrollbar_lock_alpha_off = 0.5
+	local scrollbar_lock_alpha_on = params.scrollbar_lock_alpha_on
+	local scrollbar_lock_alpha_off = params.scrollbar_lock_alpha_on
 	if self:is_scrollbar_lock_enabled() then 
 		scrollbar_lock_alpha = scrollbar_lock_alpha_on
 	else
 		scrollbar_lock_alpha = scrollbar_lock_alpha_off
 	end
+	local scrollbar_bg_color = Color(params.scrollbar_bg_color)
+	local scrollbar_bg_alpha = params.scrollbar_bg_alpha
 	
-	local left_frame_w = 10 --left bar w
-	local right_frame_w = left_frame_w -- + scrollbar_w
+	local left_frame_w = params.left_frame_w --left bar width
+	local right_frame_w = params.right_frame_w --right bar width
 	
 	local body_margin_hor = left_frame_w
 	local body_w = panel_w - (body_margin_hor + right_frame_w)
@@ -173,39 +212,47 @@ function ConsoleModDialog:create_gui()
 	local header_label_text = self._data.title
 	--local header_label_desc = self._data.text
 	local header_label_margin_hor = left_frame_w + 0 --used for placement
-	local header_label_margin_ver = 4 --used for sizing, not placement- text is automatically vertically centered
-	local header_label_valign = "center"
-	local header_label_halign = "left"
+	local header_label_margin_ver = params.header_label_margin_ver --used for sizing, not placement- text is automatically vertically centered
+	local header_label_valign = params.header_label_valign
+	local header_label_halign = params.header_label_halign
 	local header_label_font_name = text_font_name
-	local header_label_font_size = text_font_size
+	local header_label_font_size = params.header_label_font_size
 	local header_label_color = text_normal_color
-	local header_label_alpha = 1
+	local header_label_alpha = params.header_label_alpha
 	
-	local input_text_margin_hor = 4
-	local input_text_margin_ver = 1 --margin between text and input_box edges
+	local input_text_margin_hor = params.input_text_margin_hor
+	local input_text_margin_ver = params.input_text_margin_ver --margin between text and input_box edges
 	local input_text_font_size = text_font_size
-	local input_text_alpha = 1
-	local input_box_color = Color("444444")
-	local input_box_alpha = 1
+	local input_text_alpha = params.input_text_alpha
+	local input_box_color = bg_color
+	local input_box_alpha = params.input_box_alpha
 	
-	local input_submit_button_w = 48 --! temp disabled
-	local input_submit_button_margin_hor = 4
+	local input_submit_button_w = params.input_submit_button_w
+	local input_submit_button_margin_hor = params.input_submit_button_margin_hor
 	local input_panel_w = body_w
 	local input_panel_h = input_text_margin_ver + input_text_margin_ver + input_text_font_size
 	local input_submit_button_h = input_panel_h
 	local input_panel_margin_hor = left_frame_w
 	local input_panel_margin_ver = (bottom_frame_h - input_panel_h) / 2 --! change this to have customizable above/below v margin
-	local input_submit_button_color = Color("ff5500")
-	local input_submit_button_alpha = 1
+	local input_submit_button_color = func_hex_to_color(settings.window_input_submit_color)
+	local input_submit_button_alpha = params.input_submit_button_alpha
 	
 	local left_frame_h = body_h -- - (top_frame_h + bottom_frame_h)
 	local right_frame_h = left_frame_h
 	local left_frame_ver_margin = top_frame_h
 	
-	local resize_grip_w = 16
-	local resize_grip_h = 16
+	local resize_grip_w = params.resize_grip_size
+	local resize_grip_h = params.resize_grip_size
 	local resize_grip_color = Color.white
 	
+	local input_box_w = input_panel_w - (resize_grip_w + input_submit_button_w + (input_submit_button_margin_hor * 2))
+	local input_box_h = input_panel_h
+		
+	local min_window_width = params.min_window_width
+	local min_window_height = params.min_window_height
+	local max_window_hidden_hor_margin = params.max_window_hidden_hor_margin --no more than this many pixels of the window can be horizontally hidden (above or below the edge of the screen)
+	local max_window_hidden_ver_margin = params.max_window_hidden_ver_margin --no more than this many pixels of the window can be vertically hidden (above or below the edge of the screen)
+
 	local texture_blank = "guis/textures/test_blur_df"
 	
 	local panel = self._parent_panel:panel({
@@ -252,7 +299,16 @@ function ConsoleModDialog:create_gui()
 		layer = 1009
 	})
 	self._scrollbar_panel = scrollbar_panel
-		
+	
+	local scrollbar_bg = scrollbar_panel:rect({
+		name = "scrollbar_bg",
+		w = scrollbar_w,
+		h = scrollbar_h,
+		color = scrollbar_bg_color,
+		alpha = scrollbar_bg_alpha,
+		layer = 1000
+	})
+	
 	local scrollbar_button_lock = scrollbar_panel:bitmap({
 		name = "scrollbar_button_lock",
 		texture = "guis/textures/scroll_items",
@@ -487,8 +543,8 @@ function ConsoleModDialog:create_gui()
 
 	local input_box = input_panel:rect({
 		name = "input_box",
-		w = input_panel_w - (input_submit_button_w + (input_submit_button_margin_hor * 2)),
-		h = input_panel_h,
+		w = input_box_w,
+		h = input_box_h,
 		color = input_box_color,
 		alpha = input_box_alpha,
 		layer = 1010
@@ -516,7 +572,7 @@ function ConsoleModDialog:create_gui()
 	
 	local input_submit_panel = input_panel:panel({
 		name = "input_submit_panel",
-		x = input_panel_w - input_submit_button_w,
+		x = input_box_w + input_submit_button_margin_hor,
 		y = 0,
 		w = input_submit_button_w,
 		h = input_submit_button_h,
@@ -625,11 +681,6 @@ function ConsoleModDialog:create_gui()
 		layer = 1111
 	})
 	self._history_text = history_text
-	
-	local min_window_width = 50
-	local min_window_height = 50 + top_frame_h
-	local max_window_hidden_hor_margin = 64 --no more than this many pixels of the window can be horizontally hidden (above or below the edge of the screen)
-	local max_window_hidden_ver_margin = 0 --no more than this many pixels of the window can be vertically hidden (above or below the edge of the screen)
 	self._ui_objects = {
 		top_frame_bg = {
 			object = top_frame_bg,
@@ -702,9 +753,9 @@ function ConsoleModDialog:create_gui()
 			mouse_left_press_callback = function(o,x,y)
 				self._mouse_drag_x_start = x
 				self._mouse_drag_y_start = y
-				self._held_object = resize_grip
-				self._target_drag_x_start = o:x()
-				self._target_drag_y_start = o:y()
+				self._held_object = o
+				self._target_drag_x_start = o:world_x() - panel:x()
+				self._target_drag_y_start = o:world_y() - panel:y()
 			end,
 			mouse_right_press_callback = function(o,x,y)
 			end,

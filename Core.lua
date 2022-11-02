@@ -44,7 +44,7 @@ tab key autocomplete
 	autoexec batch-style files
 - option to de-focus the console and keep it open while playing without hiding it
 - "/" key shortcut to open console window
-
+- "is holding scroll" for temporary scroll lock 
 - button-specific mouseover color
 - mouse-selectable output text
 - mouse-selectable input text
@@ -52,7 +52,8 @@ tab key autocomplete
 	show number of history steps?
 - "undo" steps history
 - limit number/size of input/output logs (enforced on save and load)
-- save scrollbar position to session "settings"
+- scale scrollbar size to num of history lines
+- history line nums + ctrl-G navigation?
 - separate session "settings" from normal configuration settings?
 - allow changing type colors through settings
 
@@ -122,7 +123,7 @@ do --init mod vars
 		"window_text_highlight_color",
 		"window_text_stale_color",
 		"window_text_selected_color",
-		"window_input_box_color",
+		"window_input_submit_color", --todo color schemes instead of individual color entries?
 		"window_button_normal_color",
 		"window_button_highlight_color",
 		"window_frame_color",
@@ -164,7 +165,6 @@ do --init mod vars
 		window_text_highlight_color = 0xffd700, --the color of the highlight box around the text
 		window_text_stale_color = 0x777777, --the color of any logs pulled from history log (read from disk, ie from previous state/session)
 		window_text_selected_color = 0x000000, --the color of highlighted text
-		window_input_box_color = 0x444444, --the color of the bg box behind the input text box
 		window_button_normal_color = 0xffffff, --the color of most ordinary buttons
 		window_button_highlight_color = 0xffd700, --the color of a button being moused over
 		window_alpha = 1,
@@ -172,13 +172,14 @@ do --init mod vars
 		window_y = 50,
 		window_w = 1000,
 		window_h = 600,
-		window_frame_color = 0x666666,
-		window_frame_alpha = 0.5,
 		window_font_name = "fonts/font_bitstream_vera_mono",
 		window_font_size = 10,
 		window_blur_alpha = 0.75,
-		window_bg_color = 0x000000,
-		window_bg_alpha = 0.5,
+		window_frame_color = 0x3c3c3c,
+		window_frame_alpha = 1,
+		window_input_submit_color = 0x7e5c35, --the color of the submit button
+		window_bg_color = 0x252525, --the color of the body box bg, and the bg behind the input text box
+		window_bg_alpha = 0.9,
 		window_caret_string = "|",
 		window_caret_color = 0xffffff,
 		window_caret_alpha = 0.75,
@@ -202,7 +203,6 @@ do --init mod vars
 		"window_text_highlight_color",
 		"window_text_selected_color",
 		"window_text_stale_color",
-		"window_input_box_color",
 		"window_button_normal_color",
 		"window_button_highlight_color",
 		"window_frame_color",
