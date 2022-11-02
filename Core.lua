@@ -1,5 +1,26 @@
 --[[
 
+*******************  Bug list [high priority] ******************* 
+
+- [Console] history navigation is unreliable
+	commands are not shown in input history
+
+- [ConsoleModDialog] scroll function
+	--lock scrollbar (disable autoscroll on new lines) not working
+	- restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
+	shrink the scroll bar during resizing to a percentage of the current window height
+- resizing is currently disabled
+
+
+*******************  Bug list [low priority] ******************* 
+
+- [ConsoleModDialog] separate callbacks in create_gui into their own functions
+- [ConsoleModDialog] color range is broken on adding new history text
+	-solution: save number of stored input and output log lines to color range data, re-apply when appending to the console output 
+
+- [ConsoleModDialog] Dragging any clickable object results in a "drag" mousepointer even if the object is not draggable
+	-solution: add per-item "drag" string mousepointer value
+
 
 ******************* Feature list todo: ******************* 
 
@@ -51,25 +72,6 @@ tab key autocomplete
 
 
 - warning/text-based confirm prompt eg. when a query is expected to have lots of results
-
-
-*******************  Bug list [high priority] ******************* 
-
-- [Console] history navigation is unreliable
-	commands are not shown in input history
-
-- [ConsoleModDialog] scroll function
-	--lock scrollbar (disable autoscroll on new lines) not working
-	- restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
-	shrink the scroll bar during resizing to a percentage of the current window height
-- resizing is currently disabled
-
-
-*******************  Bug list [low priority] ******************* 
-
-- [ConsoleModDialog] separate callbacks in create_gui into their own functions
-- [ConsoleModDialog] color range is broken on adding new history text
-	-solution: save number of stored input and output log lines to color range data, re-apply when appending to the console output 
 
 --]]
 
