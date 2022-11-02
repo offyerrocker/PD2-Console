@@ -85,13 +85,6 @@ function ConsoleModDialog:new_resize()
 	
 end
 
-
-function ConsoleModDialog:hide_gui()
-	self._panel:hide()
-end
-
-
-
 function ConsoleModDialog:create_gui()
 	
 	
@@ -630,7 +623,6 @@ function ConsoleModDialog:create_gui()
 	})
 	self._history_text = history_text
 	
-	
 	local min_window_width = 50
 	local min_window_height = 50 + top_frame_h
 	local max_window_hidden_hor_margin = 64 --no more than this many pixels of the window can be horizontally hidden (above or below the edge of the screen)
@@ -814,17 +806,23 @@ function ConsoleModDialog:create_gui()
 				self._target_drag_y_start = o:y()
 			end,
 			mouse_drag_event_callback = function(o,x,y)
+				local scrollbar_handle_h = scrollbar_handle:h()
 				local y_min = scrollbar_button_up:bottom()
-				local y_max = scrollbar_button_down:top() - scrollbar_handle:h()
+				local y_max = scrollbar_button_down:top() - scrollbar_handle_h
 				local d_x = x - self._mouse_drag_x_start
 				local d_y = y - self._mouse_drag_y_start
 				
 				local to_y = math.clamp(self._target_drag_y_start + d_y, y_min, y_max)
+				local total = y_max - y_min
 				--scroll event (d_y)
 				--disable autoscroll while holding bar
 				
 				o:set_y(to_y)
-				self:set_scroll_amount_by_bar_position(to_y)
+				local ratio = (to_y - y_min) / (y_max - y_min)
+				self:set_vscroll_handle_by_position(to_y)
+				self:set_vscroll_ratio(ratio)
+--				self._prompt:set_text(string.format("%i %i %i %i %0.2f",scrollbar_handle_h,to_y,y_min,y_max,ratio))
+--				self._input_text:set_text(tostring(to_y/total))
 			end
 		}
 	}
@@ -834,6 +832,10 @@ function ConsoleModDialog:create_gui()
 end
 
 function ConsoleModDialog:resize_panel(to_w,to_h)
+	
+	
+	
+	
 	
 	do return self:new_resize() end
 	
@@ -946,11 +948,17 @@ function ConsoleModDialog:add_to_history(s,colors)
 	local current_text = history_text:text()
 	local prev_lines = history_text:number_of_lines()
 	history_text:set_text(current_text .. "\n" .. _s)
+	local _,_,tw,th = history_text:text_rect()
+	history_text:set_size(tw,th)
+	
+	--[[
 	if self._scrollbar_lock_enabled then
 		local current_lines = history_text:number_of_lines()
 		local delta = current_lines - prev_lines
 		self:set_scroll_amount(delta * self.inherited_settings.window_font_size)
 	end
+	--]]
+	
 	local offset = self._current_range_data_index
 	if type(colors) == "table" then
 		for i,range_data in ipairs(colors) do 
@@ -988,39 +996,136 @@ function ConsoleModDialog:get_mouseover_target(x,y)
 end
 
 function ConsoleModDialog:callback_scrollbar_top_button_clicked(o,x,y)
-	self:set_scroll_amount_by_bar_ratio(1)
+	self:set_vscroll_ratio(0)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_bottom_button_clicked(o,x,y)
-	self:set_scroll_amount_by_bar_ratio(0)
+	self:set_vscroll_ratio(1)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_up_button_clicked(o,x,y)
-	self:set_scroll_amount(-self._body:h())
+--	local _,_,_,th = self._history_text:text_rect()
+	local direction = self:is_scrollbar_direction_reversed() and -1 or 1
+	self:perform_vscroll_amount(direction * self._body:h())
+--	self:set_scroll_amount(-self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
-	self:set_scroll_amount(self._body:h())
+	local direction = self:is_scrollbar_direction_reversed() and 1 or -1
+--	local _,_,_,th = self._history_text:text_rect()
+	self:perform_vscroll_amount(direction * self._body:h())
+--	self:set_scroll_amount(self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
-	do return end
-	
 	local scrollbar_lock_alpha_high = 1
 	local scrollbar_lock_alpha_low = 0.5
-	local state = not self.inherited_settings.window_scrollbar_lock_enabled
+	local state = not self:is_scrollbar_lock_enabled()
 	if state then 
 		o:set_alpha(scrollbar_lock_alpha_high)
 	else
 		o:set_alpha(scrollbar_lock_alpha_low)
 	end
+	self:set_scrollbar_lock_enabled(state)
 end
+
+function ConsoleModDialog:is_scrollbar_lock_enabled()
+	return self.inherited_settings.window_scrollbar_lock_enabled
+end
+
+function ConsoleModDialog:set_scrollbar_lock_enabled(state)
+	self.inherited_settings.window_scrollbar_lock_enabled = state
+end
+
+function ConsoleModDialog:is_scrollbar_direction_reversed()
+--if false, the scrollbar at the top of the screen means that you are viewing the latest (most recent) logs
+--if true, the scrollbar at the top of the screen means that you are viewing the earliest (least recent) logs
+
+	return self.inherited_settings.window_scroll_direction_reversed
+end
+
+function ConsoleModDialog:play_button_pressed_sound()
+--	managers.menu:post_event()
+end
+
+function ConsoleModDialog:play_button_released_sound(success)
+	if success then
+--	managers.menu:post_event()
+	else
+--	managers.menu:post_event()
+	end
+end
+
+function ConsoleModDialog:set_vscroll_ratio(ratio)
+	if self:is_scrollbar_direction_reversed() then 
+		ratio = 1 - ratio
+	end
+	
+	local history_text = self._history_text
+	
+	local _,_,_,th = history_text:text_rect() --actual size
+	local y_min = - math.abs(self._body:h() - th)
+	local y_max = 0
+	
+	local total = y_min - y_max
+	
+	local d_y = total * ratio
+	
+--	self._prompt:set_text(string.format("%i %i %i %0.2f",y_min,y_max,d_y,ratio))
+--	self._prompt:set_text(string.format("%i %i %i",history_text:y(),d_y,ratio))
+	history_text:set_y(d_y)
+	self:set_vscroll_handle_by_ratio(ratio)
+end
+
+function ConsoleModDialog:perform_vscroll_amount(d_y)
+	local history_text = self._history_text
+	local _,_,_,th = history_text:text_rect() --actual size
+	local y_min = - math.abs(self._body:h() - th)
+	local y_max = 0
+	local to_y = math.clamp(history_text:y() + d_y,y_min,y_max)
+--	history_text:move(0,d_y)
+	history_text:set_y(to_y)
+	
+	local ratio = (to_y - y_min) / (y_max - y_min)
+	self:set_vscroll_handle_by_ratio(ratio) --0.5 + r
+end
+
+
+function ConsoleModDialog:set_vscroll_handle_by_position(position)
+	local scrollbar_handle = self._scrollbar_handle
+	local y_min = self._scrollbar_button_up:bottom()
+	local y_max = self._scrollbar_button_down:top() - scrollbar_handle:h()
+	self._scrollbar_handle:set_y(math.clamp(position,y_min,y_max))
+end
+
+function ConsoleModDialog:set_vscroll_handle_by_ratio(ratio)
+--	ratio = ratio + 0.5
+	
+	local scrollbar_handle = self._scrollbar_handle
+	local top = self._scrollbar_button_up:y() + self._scrollbar_button_up:h()
+	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
+	local scrollbar_direction_reversed = self.inherited_settings.window_scroll_direction_reversed
+	if scrollbar_direction_reversed then
+		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
+	else
+		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
+	end
+end
+
+
+function ConsoleModDialog:set_vscroll_handle_height(ratio)
+	local default_scrollbar_handle_height = 100
+	local scrollbar_handle = self._scrollbar_handle
+	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
+end
+
 
 --function ConsoleModDialog:perform_scroll(num_lines)
 --end
 
 --function ConsoleModDialog:perform_page_scroll(pages)
 --end
+
 
 function ConsoleModDialog:set_scroll_amount_by_bar_position(y_pos)
 	do return end
@@ -1117,6 +1222,13 @@ function ConsoleModDialog:set_scroll_bar_height(ratio)
 	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
 end
 
+
+
+
+
+
+
+
 function ConsoleModDialog:callback_mouse_moved(o,x,y)
 --	log("moved " .. tostring(x) .. " " .. tostring(y))
 	
@@ -1193,7 +1305,7 @@ function ConsoleModDialog:callback_mouse_moved(o,x,y)
 end
 
 function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
-	log("pressed  " .. tostring(x) .. " " .. tostring(y))
+--	log("pressed  " .. tostring(x) .. " " .. tostring(y))
 	
 	if button == Idstring("0") then
 		self._is_holding_mouse_button = true
@@ -1223,15 +1335,17 @@ function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
 		--context menu for clicked item
 	elseif button == Idstring("mouse wheel up") then 
 		--scroll up
-		self:set_scroll_amount(self.inherited_settings.window_font_size)
+		local direction = self:is_scrollbar_direction_reversed() and 1 or -1
+		self:perform_vscroll_amount(direction * self.inherited_settings.window_font_size)
 	elseif button == Idstring("mouse wheel down") then 
-		self:set_scroll_amount(-self.inherited_settings.window_font_size)
+		local direction = self:is_scrollbar_direction_reversed() and -1 or 1
+		self:perform_vscroll_amount(direction * self.inherited_settings.window_font_size)
 		--scroll down
 	end
 end
 
 function ConsoleModDialog:callback_mouse_released(o,button,x,y)
-	log("released  " .. tostring(x) .. " " .. tostring(y))
+--	log("released  " .. tostring(x) .. " " .. tostring(y))
 	if button == Idstring("0") then
 		
 		local held_object = self._held_object
@@ -1632,11 +1746,11 @@ function ConsoleModDialog:update(t,dt)
 	local s = ""
 --	local id,target = self:get_mouseover_target(self._mouse_x,self._mouse_y)
 --	local s = tostring(id) .. string.format(" %i %i",self._mouse_x,self._mouse_y)
-	s = s .. "\n" .. string.format(" %i %i",self._input_text:position())
-	s = s .. "\n" .. string.format(" %i %i",self._input_text:size())
+	s = s .. "\n" .. string.format("pos %i %i",self._history_text:position())
+	s = s .. "\n" .. string.format("sze %i %i",self._history_text:size())
 --	s = s .. "\n" .. string.format("%i %i",self._mouse_drag_x_start or -1,self._mouse_drag_y_start or -1)
 --	s = s .. "\n" .. string.format("%i %i",self._target_drag_x_start or -1,self._target_drag_y_start or -1)
---	self._prompt:set_text(s)
+	self._prompt:set_text(s)
 --self._history_text:set_text(string.format("%0.2f",self._key_held_t))
 end
 
@@ -1753,8 +1867,8 @@ function ConsoleModDialog:hide()
 	self._key_held_ids = nil
 	self._key_held_t = nil
 	self.is_active = false
-	self._panel:hide()
-
+	self:_hide_dialog_gui()
+	managers.menu:post_event("menu_exit")
 	self._manager:event_dialog_hidden(self)
 end
 
@@ -1775,10 +1889,8 @@ function ConsoleModDialog:force_close()
 --	Dialog.force_close(self)
 end
 
-function ConsoleModDialog:_hide_dialog_gui() --not really used
-	self:set_input_enabled(false)
-	self._parent_panel:set_visible(false)
---	self._panel_script:close()
+function ConsoleModDialog:_hide_dialog_gui()
+	self._panel:hide()
 	managers.viewport:remove_resolution_changed_func(self._resolution_changed_callback)
 end
 

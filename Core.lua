@@ -13,6 +13,8 @@ tab key autocomplete
 - rounded corners in ConsoleModDialog
 	- center submit button and create its own subpanel
 	- increase Console header size
+- ConsoleModDialog scroll button click input repeat
+- 
 
 ******************* Secondary feature todo ******************* 
 
@@ -57,12 +59,11 @@ tab key autocomplete
 	commands are not shown in input history
 
 - [ConsoleModDialog] scroll function
-	--basically all direct scroll functions are not working as intended
 	--lock scrollbar (disable autoscroll on new lines) not working
 	--reverse scroll direction option needs to be redone and applied more broadly
-	restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
+	- restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
 	shrink the scroll bar during resizing to a percentage of the current window height
-
+- resizing is currently disabled
 
 
 *******************  Bug list [low priority] ******************* 
