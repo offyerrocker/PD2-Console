@@ -11,7 +11,6 @@ ConsoleModDialog.INPUT_REPEAT_INTERVAL_CONTINUE = 0.066
 ConsoleModDialog.DEFAULT_FONT_NAME = tweak_data.hud.medium_font
 
 function ConsoleModDialog:init(manager,data)
-	
 --	Dialog.init(self,manager,data)
 	self._manager = manager
 	self._data = data or {}
@@ -410,7 +409,7 @@ function ConsoleModDialog:create_gui()
 		w = scrollbar_handle_w,
 		h = scrollbar_handle_h,
 		color = Color.white,
-		valign = "grow",
+		valign = "scale",
 		alpha = 1,
 		layer = 1000
 	})
@@ -617,7 +616,7 @@ function ConsoleModDialog:create_gui()
 	})
 	local input_submit_label = input_submit_panel:text({
 		name = "input_submit_label",
-		text = managers.localization:text("dcc_window_button_submit"),
+		text = managers.localization:text("menu_consolemod_dialog_submit_title"),
 		font = text_font_name,
 		font_size = text_font_size,
 		color = text_normal_color,
@@ -629,6 +628,7 @@ function ConsoleModDialog:create_gui()
 		alpha = 1,
 		layer = 1113
 	})
+	self._input_submit_label = input_submit_label
 	
 	local caret = input_panel:text({
 		name = "caret",
@@ -960,9 +960,11 @@ function ConsoleModDialog:confirm_text()
 	input_text:replace_text("")
 	self:set_current_history_input_text("")
 	self:add_to_history(prompt_string .. current_text,{
-		start = 0,
-		finish = current_len + utf8.len(prompt_string),
-		color = Color(string.format("%06x",color))
+		{
+			start = 0,
+			finish = current_len + utf8.len(prompt_string),
+			color = Color(string.format("%06x",color))
+		}
 	})
 	
 	self:_confirm_text(current_text)
@@ -977,8 +979,8 @@ function ConsoleModDialog:_confirm_text(s)
 end
 
 function ConsoleModDialog:add_to_history(s,colors)
-	if s then
-		local always_show_nil = true --todo
+	if s == nil then
+		local always_show_nil = self.inherited_settings.console_show_nil_results
 		if not always_show_nil then 
 			return
 		end
@@ -1004,10 +1006,20 @@ function ConsoleModDialog:add_to_history(s,colors)
 	
 	local offset = self._current_range_data_index
 	if type(colors) == "table" then
-		for i,range_data in ipairs(colors) do 
-			range_data.start = range_data.start + offset
-			range_data.finish = range_data.finish + offset
-			table.insert(self._current_window_color_ranges,#self._current_window_color_ranges+1,range_data)
+		for i,range_data in pairs(colors) do 
+			if range_data.start and range_data.finish then 
+				local start = range_data.start + offset
+				local finish = range_data.finish + offset
+				local color = range_data.color
+				if start and finish and color then
+					table.insert(self._current_window_color_ranges,#self._current_window_color_ranges+1,{
+						start = start,
+						finish = finish,
+						color = color
+					})
+--					history_text:set_range_color(start,finish,color)
+				end
+			end
 		end
 	end
 	offset = offset + 1 + utf8.len(_s) --add 1 to offset to account for newline
@@ -1015,9 +1027,9 @@ function ConsoleModDialog:add_to_history(s,colors)
 	self:refresh_history_colors()
 end
 
-function ConsoleModDialog:refresh_history_colors() --not used
+function ConsoleModDialog:refresh_history_colors()
 	local history_text = self._history_text
---		self._history_text:clear_range_color()
+	history_text:clear_range_color()
 	for i,range_data in ipairs(self._current_window_color_ranges) do 
 		history_text:set_range_color(range_data.start,range_data.finish,range_data.color)
 	end
@@ -1498,8 +1510,7 @@ function ConsoleModDialog:on_key_press(k,held)
 			if self._input_history_index == 0 then 
 				self:set_current_history_input_text(current_text)
 			end
-			
-			local history_index = (1 + self._input_history_index) % num_input_log
+			local history_index = (1 + self._input_history_index) % (num_input_log + 1)
 			if history_index == 0 then 
 				new_text = self._current_input_text_string
 			else
@@ -1525,7 +1536,7 @@ function ConsoleModDialog:on_key_press(k,held)
 				self:set_current_history_input_text(current_text)
 			end
 			
-			local history_index = (-1 + self._input_history_index) % num_input_log
+			local history_index = (-1 + self._input_history_index) % (num_input_log + 1)
 			if history_index == 0 then 
 				new_text = self._current_input_text_string
 			else
@@ -1583,7 +1594,6 @@ end
 function ConsoleModDialog:callback_key_press(o,k)
 	self._key_held_ids = k
 	self._key_held_t = self.INPUT_REPEAT_INTERVAL_INITIAL
-	
 	self:on_key_press(k,false)
 end
 
@@ -1621,7 +1631,6 @@ function ConsoleModDialog:enter_text(o,s)
 end
 
 function ConsoleModDialog:update(t,dt)
-	
 	local input_text = self._input_text
 	local s,e = input_text:selection()
 	local char_index

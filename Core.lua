@@ -1,23 +1,14 @@
 --[[
 
 *******************  Bug list [high priority] ******************* 
-
-- [Console] history navigation is unreliable
-	commands are not shown in input history
-	most recent text is not shown in input history
-	
-- [ConsoleModDialog] scroll function
-	--lock scrollbar (disable autoscroll on new lines) not working
-	- restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
-	shrink the scroll bar during resizing to a percentage of the current window height
-- resizing is currently disabled
-
+- Fix internal/external Log/logall use so that user-made Log/logall calls can safely be used on Console's own objects without causing stack overflows
+	- look for another breaker solution
+- [Console] memory crash when using 166k-168k output logs
+- Figure out a memory-safe(r) solution to putting all history output in one continuous string in a single Text object
 
 *******************  Bug list [low priority] ******************* 
 
 - [ConsoleModDialog] separate callbacks in create_gui into their own functions
-- [ConsoleModDialog] color range is broken on adding new history text
-	-solution: save number of stored input and output log lines to color range data, re-apply when appending to the console output 
 
 - [ConsoleModDialog] Dragging any clickable object results in a "drag" mousepointer even if the object is not draggable
 	-solution: add per-item "drag" string mousepointer value
@@ -28,18 +19,18 @@
 - straighten out Log/Print/output call flow
 	- different levels of logging
 	print/log behavior option checkboxes
-	
-- session pref with existing vars
-tab key autocomplete
-- display behavior to console for Log()
+- mouse-selectable output text
+- mouse-selectable input text
+- scale scrollbar size to num of history lines
+
 - rounded corners in ConsoleModDialog
 	- center submit button and create its own subpanel
 	- increase Console header size
 - ConsoleModDialog scroll button click input repeat
-- 
 
 ******************* Secondary feature todo ******************* 
-
+- option to disable color coded logs
+- allow changing type colors through settings
 - [ConsoleModDialog] mouseover tooltips for buttons after n seconds
 - batch file folder system in saves
 	autoexec batch-style files
@@ -47,26 +38,29 @@ tab key autocomplete
 - "/" key shortcut to open console window
 - "is holding scroll" for temporary scroll lock 
 - button-specific mouseover color
-- mouse-selectable output text
-- mouse-selectable input text
+- session pref with existing vars
+- tab key autocomplete
 - preview history in dialog ui
 	show number of history steps?
 - "undo" steps history
 - limit number/size of input/output logs (enforced on save and load)
-- scale scrollbar size to num of history lines
 - history line nums + ctrl-G navigation?
 - separate session "settings" from normal configuration settings?
-- allow changing type colors through settings
 
 
 ******************* Commands todo *******************
-
+- /help - alphabetize
+	-s search function
+- /restart
+	-silent mode parameter (no countdown)
+	-also remember to code the chat countdown
 - echo/print - print result or results to console
 	echo should be mainly for vars
 	
+- /alias
 - setvar/session var business
-	$ var values (saved between sessions)
-	@ temp var values (overrides normal vars, not saved)
+	$ var values (overrides normal vars, not saved)
+	@ temp var values (saved between sessions)
 
 - // executes previous stored loadstring function
 - /// re-evaluates and executes previous stored input
@@ -131,6 +125,7 @@ do --init mod vars
 		"window_bg_color",
 		"window_caret_color",
 		"window_prompt_color",
+		"style_color_error",
 		"style_data_color_function",
 		"style_data_color_string",
 		"style_data_color_number",
@@ -145,10 +140,11 @@ do --init mod vars
 	Console.default_settings = {
 		safe_mode = false,
 		console_params_guessing_enabled = true,
-		input_log_enabled = true,
-		output_log_enabled = false,
+		log_input_enabled = true,
+		log_output_enabled = false,
 		log_buffer_enabled = true,
 		log_buffer_interval = 10, --seconds between flushes
+		style_color_error = 0xff6262,
 		style_data_color_function = 0x7fffff,
 		style_data_color_string = 0x7f7f7f,
 		style_data_color_number = 0xa8ff00,
@@ -160,6 +156,7 @@ do --init mod vars
 		style_data_color_misc = 0x888888,
 		input_mousewheel_scroll_direction_reversed = false,
 		input_mousewheel_scroll_speed = 1,
+		console_show_nil_results = false,
 		window_scrollbar_lock_enabled = true,
 		window_scroll_direction_reversed = true,
 		window_text_normal_color = 0xffffff,
@@ -191,13 +188,15 @@ do --init mod vars
 	Console.settings = table.deep_map_copy(Console.default_settings)
 	Console.settings_sort = {
 		"safe_mode",
-		"input_log_enabled",
-		"output_log_enabled",
+		"log_input_enabled",
+		"log_output_enabled",
 		"log_buffer_enabled",
 		"log_buffer_interval",
+		"style_color_error",
 		"console_params_guessing_enabled",
 		"input_mousewheel_scroll_direction_reversed",
 		"input_mousewheel_scroll_speed",
+		"console_show_nil_results",
 		"window_scrollbar_lock_enabled",
 		"window_scroll_direction_reversed",
 		"window_text_normal_color",
@@ -208,6 +207,7 @@ do --init mod vars
 		"window_button_highlight_color",
 		"window_frame_color",
 		"window_frame_alpha",
+		"window_input_submit_color",
 		"window_alpha",
 		"window_x",
 		"window_y",
@@ -296,9 +296,12 @@ do --init mod vars
 	}
 	Console.VAR_PREFIX = "$"
 	Console._is_reading_log = false
-	--placeholder values for thinngs that will be loaded later
+	--placeholder values for things that will be loaded later
+	Console._restart_timer = false --used for /restart [timer] command: tracks next _restart_timer value to output (every second)
+	Console._restart_timer_t = false  --used for /restart [timer] command: tracks time left til 0 (restart)
 	Console._colorpicker = nil
 	Console._is_font_asset_load_done = nil --if font is loaded
+	
 end
 
 do --load ini parser
@@ -335,12 +338,47 @@ function Console.hex_number_to_color(n)
 end
 
 --loggers
-
+Console.blt_log = Console.blt_log or _G.log
 function Console:Log(info,params)
-	info = tostring(info)
-	log("CONSOLE: " .. info)
-	self:AddToOutputLog(info)
-	return info
+	local _info = tostring(info)
+	if self._window_instance then 
+		params = params or {}
+		if params.skip_window_instance then
+			--don't feed back to ConsoleModDialog instance
+		elseif params.color_ranges and type(params.color_ranges) == "table" then
+			self._window_instance:add_to_history(_info,params.color_ranges)
+		else
+			local color
+			if params.color then 
+				color = params.color
+			else
+				local _type = type(info)
+				local setting_name = self.data_type_colors[_type]
+				if setting_name then 
+					color = self.hex_number_to_color(self.settings[setting_name])
+				end
+			end
+			if color then
+				local length = utf8.len(_info)
+				self._window_instance:add_to_history(_info,{
+					{
+						start = 0,
+						finish = 1 + length,
+						color = color
+					}
+				})
+			else
+				self._window_instance:add_to_history(_info)
+			end
+		end
+	end
+	self:AddToOutputLog(_info)
+	
+	local should_blt_log = true
+	if should_blt_log then 
+		Console.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_info))
+	end
+	
 end
 _G.Log = callback(Console,Console,"Log")
 Console.log = Console.Log
@@ -367,7 +405,7 @@ function Console:LogTable(obj,max_amount)
 	local i = type(max_amount) == "number" and max_amount or 0
 	Console._breaker = false
 	while not Console._breaker do 
-		if t > t + timeout then
+		if os.clock() > t + timeout then
 			Console._breaker = true
 		end
 		if i then 
@@ -378,7 +416,6 @@ function Console:LogTable(obj,max_amount)
 			end
 		end
 		for k,v in pairs(obj) do 
-		--[[
 			local data_type = type(v)
 			if data_type == "userdata" then 
 				for type_name,data in pairs(Console.type_data) do 
@@ -394,9 +431,10 @@ function Console:LogTable(obj,max_amount)
 					end
 				end
 			end
---			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = Console.type_data[data_type] and Console.type_data[data_type].color or Color(1,0.3,0.3)})
-		--]]
-			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]")
+			local color_setting_name = data_type and self.data_type_colors[data_type]
+			local color = color_setting_name and self.hex_number_to_color(self.settings[color_setting_name] or self.settings.style_data_color_misc)
+			self:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = color})
+--			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]")
 		end
 		Console._breaker = true
 	end
@@ -417,10 +455,25 @@ function Console:Update(updater_source,t,dt)
 			self:FlushOutputLogBuffer()
 		end
 	end
+	
+	if self._restart_timer_t then --time at which heist will restart
+		local time_left = math.ceil(self._restart_timer_t - t) --seconds left to restart
+		if (not self._restart_timer) or (self._restart_timer - time_left) >= 1 then --output only once, not every update
+			self._restart_timer = self._restart_timer or time_left 
+			self._restart_timer = time_left
+			
+			self:Log("RESTARTING IN " .. string.format("%i",tostring(time_left)) .. " SECONDS.",{color = Color.yellow})
+		end
+		if time_left <= 0 then 
+			managers.game_play_central:restart_the_game()
+			self._restart_timer_t = nil
+		end
+	end
+	
 end
 
 function Console:InterpretCommand(raw_cmd_string)
-	self:Log("> " .. raw_cmd_string)
+	self.blt_log(self.settings.window_prompt_string .. raw_cmd_string)
 	local cmd_params = {}
 	local cmd_string = string.sub(raw_cmd_string,2) --remove forwardslash
 	local cmd_name = string.match(cmd_string,"[^%s]*")--[%a%s]+")
@@ -594,6 +647,11 @@ function Console:InterpretCommand(raw_cmd_string)
 	
 	if command_data.func then 
 		command_data.func(cmd_params,args_string)
+		self:AddToInputLog({
+			raw_input = raw_cmd_string,
+			input = raw_cmd_string,
+			func = nil --command_data.func
+		})
 	elseif command_data.str then 
 		local func,err = loadstring(command_data.str)
 		if func then
@@ -602,8 +660,7 @@ function Console:InterpretCommand(raw_cmd_string)
 		elseif err then
 			self:Log(err)
 		end
-		
-		table.insert(self._input_log,#self._input_log+1,{
+		self:AddToInputLog({
 			raw_input = raw_cmd_string,
 			input = raw_cmd_string,
 			func = func
@@ -629,20 +686,21 @@ function Console:callback_confirm_text(dialog_instance,text)
 			return self:InterpretCommand(text)
 		end
 	elseif string.gsub(text,"%s","") ~= "" then
-		self:Log(self.settings.window_prompt_string .. text)
 		return self:InterpretInput(text)
 	end
 end
 
 function Console:InterpretInput(raw_string)
+	self.blt_log(self.settings.window_prompt_string .. raw_string)
 --	local s = string.match(raw_string,"[^%s]*.*")
 	local s = raw_string
 	local force_ordered_results = false --todo
 	local result
 	local func,err = loadstring(s)
 	if err then 
-		self:Log("Error loading chunk:")
-		self:Log(err)
+		local err_color = self.hex_number_to_color(self.settings.style_color_error)
+		self:Log("Error loading chunk:",{color=err_color})
+		self:Log(err,{color=err_color})
 	elseif func then 
 		if force_ordered_results then
 			result = pcall(func)
@@ -651,7 +709,6 @@ function Console:InterpretInput(raw_string)
 		end
 		if result[1] == true then
 			table.remove(result,1)
-			logall(result) --does this belong here?
 		end
 	end
 	self:AddToInputLog(
@@ -670,6 +727,7 @@ function Console:InterpretInput(raw_string)
 		for result_num,v in ipairs(result) do 
 			local _type = type(v)
 			local _v = tostring(v)
+			self.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_v))
 			local color = self:GetLogColorByDataType(_type)
 			local length = utf8.len(_v)
 			local new_current = current + length
@@ -721,21 +779,22 @@ function Console:cmd_help(params,subcmd)
 	local cmd_data = subcmd and self._registered_commands[subcmd] 
 	if cmd_data then 
 		self:Log("/" .. tostring(subcmd))
+		self:Log(cmd_data.arg_desc)
 		self:Log(cmd_data.desc)
 		self:Log(cmd_data.manual)
 		if cmd_data.parameters then 
-			for k,v in pairs( cmd_data.parameters ) do 
-				if not v.hidden then
-					self:Log("-" .. k .. " " .. tostring(v.arg_desc))
-					self:Log(tostring(v.short_desc))
+			for param_name,param_data in pairs( cmd_data.parameters ) do 
+				if not param_data.hidden then
+					self:Log("-" .. param_name .. " " .. tostring(param_data.arg_desc))
+					self:Log(tostring(param_data.short_desc))
 				end
 			end
 		end
 	else
 		for cmd_name,_cmd_data in pairs(self._registered_commands) do 
-			if not v.hidden then
-				self:Log("/" .. tostring(k))
-				self:Log(v.desc)
+			if not _cmd_data.hidden then
+				self:Log("/" .. tostring(cmd_name))
+				self:Log(_cmd_data.desc)
 				self:Log("")
 			end
 		end
@@ -885,6 +944,53 @@ function Console:cmd_partname(params,name)
 	self:Log("---Search ended.")
 	return results
 end
+
+function Console:cmd_restart(params,timer)
+	timer = timer == "" and params.timer or timer
+	if timer == "cancel" then
+		self._restart_timer_t = nil
+		self._restart_timer = nil
+	else
+		timer = timer and tonumber(timer)
+		if self._restart_timer_t and timer then 
+			--timer has already started
+			self._restart_timer_t = Application:time() + timer
+		elseif not timer or timer <= 0 then
+			if managers.game_play_central then
+				if Global.game_settings.single_player then 
+				elseif managers.network and managers.network:session():is_host() then
+					if params.vote then 
+						--[[
+						local votemanager = managers.vote
+						if not votemanager._stopped then
+							votemanager._callback_type = "restart"
+							votemanager._callback_counter = TimerManager:wall():time() + tonumber(timer)		
+						end
+						--]]
+						return
+					end
+				else
+					self:Log("You cannot restart the game in which you are not the host!",{color = Color.red})
+					return
+				end
+				if not params.noclose then 
+					self:HideConsoleWindow()
+				end
+				managers.game_play_central:restart_the_game()
+			else
+				if setup and setup.load_start_menu then
+					if not params.noclose then
+						self:HideConsoleWindow()
+					end
+					setup:load_start_menu()
+				end
+			end
+		end
+	end
+	
+end
+
+
 
 
 function Console:cmd_echo(param,s)
@@ -1057,7 +1163,7 @@ end
 
 function Console:AddToInputLog(data)
 	table.insert(self._input_log,#self._input_log+1,data)
-	if self.settings.input_log_enabled then
+	if self.settings.log_input_enabled then
 		local s = data.raw_input or data.input
 		if s then
 			self:WriteToInputLog(string.gsub(s,"\n"," "),false)
@@ -1141,7 +1247,7 @@ end
 
 function Console:AddToOutputLog(s)
 	table.insert(self._output_log,#self._output_log+1,s)
-	if self.settings.output_log_enabled then 
+	if self.settings.log_output_enabled then 
 		self:WriteToOutputLog(s,false)
 	end
 end
@@ -1336,10 +1442,10 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	end
 
 	if not Console.settings.safe_mode then 
-		if Console.settings.output_log_enabled then 
+		if Console.settings.log_output_enabled then 
 			Console:LoadOutputLog()
 		end
-		if Console.settings.input_log_enabled then 
+		if Console.settings.log_input_enabled then 
 			Console:LoadInputLog()
 		end
 		--[[
@@ -1361,19 +1467,34 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
 	
 	
-	
+	Console:RegisterCommand("restart",{
+		str = nil,
+		desc = "Reloads the Lua state. Restart the heist day if in a heist, or reload the menu if at the main menu.",
+		manual = "/restart [String cancel]",
+		arg_desc = "(Boolean) Any truthy value as the first argument will cancel any ongoing restart timer.",
+		name = {
+			arg_desc = "[timer]",
+			short_desc = "(Int) Optional. The number of seconds to delay restarting by. If in-game, will display a timer in chat similar to the one available in the base game. If not supplied, restarts instantly."
+		},
+		name = {
+			arg_desc = "[noclose]",
+			short_desc = "(Boolean) Optional. Any truthy value will prevent the Console window from closing automatically if a restart is performed immediately.\nThis is because the Console window is a dialog, and any open dialog will delay a restart for as long as the dialog is open."
+		},
+		func = callback(Console,Console,"cmd_restart")
+	})
 	Console:RegisterCommand("partname",{
 		str = nil,
 		desc = "Search for a part by localized name/description, internal name/description, internal id, or blackmarket id.",
 		manual = "Usage: /partname [search key]\n\nParameters:\n-type [attachment type]\n-weapon [weapon id]",
+		arg_desc = "(String) The name of the weapon attachment to search for. Single-term, case insensitive, spaces okay.",
 		parameters = {
 			type = {
 				arg_desc = "[attachment type]",
-				short_desc = "The attachment type to filter for, eg. silencer, barrel, stock, etc. Must be exact type match."
+				short_desc = "(String) The attachment type to filter for, eg. silencer, barrel, stock, etc. Must be exact type match."
 			},
 			weapon = {
 				arg_desc = "[weapon]",
-				short_desc = "The weapon id to filter for, eg. m134, flamethrower, saw, m1911, or new_m4. If supplied, partname will only display attachments that can be applied to this weapon. Must be exact weapon_id match."
+				short_desc = "(String) The weapon id to filter for, eg. m134, flamethrower, saw, m1911, or new_m4. If supplied, partname will only display attachments that can be applied to this weapon. Must be exact weapon_id match."
 			}
 		},
 		func = callback(Console,Console,"cmd_partname")
@@ -1382,19 +1503,20 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 		str = nil,
 		desc = "Search for a weapon by localized name/description, internal name/description, internal id, or blackmarket id.",
 		manual = "Usage: /weaponname [search key]",
+		arg_desc = "(String) The name of the weapon to search for. Single-term, case insensitive, spaces okay.",
 		parameters = {
 			name = {
 				arg_desc = "[name]",
-				short_desc = "The name to search for.",
+				short_desc = "(String) The name to of the weapon search for. Single-term, case insensitive, spaces okay.",
 				hidden = true
 			},
 			category = {
 				arg_desc = "[category]",
-				short_desc = "The weapon category to filter for, eg. shotgun, smg, lmg, etc. Must be exact category match."
+				short_desc = "(String) The weapon category to filter for, eg. shotgun, smg, lmg, etc. Must be exact category match."
 			},
 			slot = {
-				arg_desc = "[weapon slot]",
-				short_desc = "The weapon slot number to filter for, eg. 1, 2, etc. Must be exact slot match."
+				arg_desc = "[slot]",
+				short_desc = "(Integer) The weapon slot number to filter for, eg. 1, 2, etc. Must be exact slot match."
 			}
 		},
 		func = callback(Console,Console,"cmd_weaponname")
@@ -1403,6 +1525,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 		str = nil,
 		desc = "Brief list of commands.",
 		manual = "/help [command name]",
+		arg_desc = "(String) The name of the command to search for. Single-term, case insensitive, no spaces.",
 		parameters = {},
 		func = callback(Console,Console,"cmd_help")
 	})
@@ -1505,7 +1628,6 @@ local deprecated_func_list = {
 	"cmd_teleport",
 	"cmd_pause",
 	"cmd_forcestart",
-	"cmd_restart",
 	"cmd_fov",
 	"cmd_sens",
 	"cmd_sens_aim",

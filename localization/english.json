@@ -4,12 +4,10 @@
 	"dcc_toggle_desc" : "Shows or hides the Console Window",
 	
 	"menu_consolemod_window_title" : "Console",
+	"menu_consolemod_window_log_prefix_str" : "CONSOLE: %s",
+	"menu_consolemod_dialog_submit_title" : "Submit",
 
 
-
-
-	"dcc_window_header_title" : "Console",
-	"dcc_window_button_submit" : "Submit",
 	"dcc_window_startup_message_1" : "Initiating a new console session.",
 	"dcc_window_startup_message_2" : "Welcome to the unofficial console!",
 	"dcc_window_startup_message_3" : "Type /help for a list of commands.",
