@@ -181,6 +181,8 @@ function ConsoleModDialog:create_gui()
 	
 	local top_frame_w = panel_w
 	local top_frame_h = params.top_frame_h --aka body_margin_ver
+	local top_frame_grip_w = top_frame_w - (close_button_w + close_button_margin_hor)
+	local top_frame_grip_h = top_frame_h
 	
 	local bottom_frame_w = panel_w
 	local bottom_frame_h = params.bottom_frame_h
@@ -280,7 +282,7 @@ function ConsoleModDialog:create_gui()
 		render_template = "VertexColorTexturedBlur3D",
 		color = Color.white,
 		alpha = 1,
-		layer = 0
+		layer = 998
 	})
 	self._background_rect = panel:rect({
 		name = "background_rect",
@@ -291,7 +293,7 @@ function ConsoleModDialog:create_gui()
 		valign = "scale",
 		alpha = bg_alpha,
 		color = bg_color,
-		layer = 1
+		layer = 998
 	})
 		
 	local scrollbar_panel = panel:panel({
@@ -302,7 +304,7 @@ function ConsoleModDialog:create_gui()
 		h = scrollbar_h,
 		halign = "right",
 		valign = "grow",
-		layer = 1009
+		layer = 1100
 	})
 	self._scrollbar_panel = scrollbar_panel
 	
@@ -329,7 +331,7 @@ function ConsoleModDialog:create_gui()
 		w = scrollbar_button_size,
 		h = scrollbar_button_size,
 		alpha = scrollbar_lock_alpha,
-		layer = 1000
+		layer = 1002
 	})
 	self._scrollbar_button_lock = scrollbar_button_lock
 	
@@ -344,7 +346,7 @@ function ConsoleModDialog:create_gui()
 		h = scrollbar_button_size,
 		x = 0,
 		y = scrollbar_button_size,
-		layer = 1000
+		layer = 1002
 	})
 	self._scrollbar_button_top = scrollbar_button_top
 	
@@ -360,7 +362,7 @@ function ConsoleModDialog:create_gui()
 		h = scrollbar_button_size,
 		x = 0,
 		y = scrollbar_button_size * 2,
-		layer = 1000
+		layer = 1002
 	})
 	self._scrollbar_button_up = scrollbar_button_up
 	
@@ -376,7 +378,7 @@ function ConsoleModDialog:create_gui()
 		x = 0,
 		y = scrollbar_h - scrollbar_button_size,
 		valign = "bottom",
-		layer = 1000
+		layer = 1002
 	})
 	self._scrollbar_button_bottom = scrollbar_button_bottom
 	
@@ -393,7 +395,7 @@ function ConsoleModDialog:create_gui()
 		x = 0,
 		y = scrollbar_h - (scrollbar_button_size * 2),
 		valign = "bottom",
-		layer = 1000
+		layer = 1002
 	})
 	self._scrollbar_button_down = scrollbar_button_down
 	
@@ -411,7 +413,7 @@ function ConsoleModDialog:create_gui()
 		color = Color.white,
 		valign = "scale",
 		alpha = 1,
-		layer = 1000
+		layer = 1002
 	})
 	self._scrollbar_handle = scrollbar_handle
 	
@@ -423,7 +425,18 @@ function ConsoleModDialog:create_gui()
 		h = top_frame_h,
 		valign = "top",
 		halign = "grow",
-		layer = 1000
+		layer = 1001
+	})
+	local top_frame_grip = top_frame_panel:rect({
+		name = "top_frame_grip",
+		x = 0,
+		y = 0,
+		w = top_frame_grip_w,
+		h = top_frame_grip_h,
+		valign = "top",
+		halign = "grow",
+		visible = false,
+		layer = 1001
 	})
 	local top_frame_bg = top_frame_panel:rect({
 		name = "top_frame_bg",
@@ -468,7 +481,7 @@ function ConsoleModDialog:create_gui()
 		h = top_frame_h,
 		wrap = false,
 		alpha = header_label_alpha,
-		layer = 1009
+		layer = 1002
 	})
 	self._header_label = header_label
 	
@@ -490,7 +503,7 @@ function ConsoleModDialog:create_gui()
 		alpha = panel_frame_alpha,
 		valign = "bottom",
 		halign = "grow",
-		layer = 9
+		layer = 1001
 	})
 	local resize_grip = bottom_frame_panel:bitmap({
 		name = "resize_grip",
@@ -507,7 +520,7 @@ function ConsoleModDialog:create_gui()
 		halign = "right",
 		color = resize_grip_color,
 		alpha = 1,
-		layer = 1000
+		layer = 1001
 	})
 	self._resize_grip = resize_grip
 	
@@ -529,7 +542,7 @@ function ConsoleModDialog:create_gui()
 		halign = "left",
 		color = panel_frame_color,
 		alpha = panel_frame_alpha,
-		layer = 1000
+		layer = 1001
 	})
 	
 	local right_frame_panel = panel:panel({
@@ -550,7 +563,7 @@ function ConsoleModDialog:create_gui()
 		halign = "right",
 		color = panel_frame_color,
 		alpha = panel_frame_alpha,
-		layer = 1000
+		layer = 1001
 	})
 	
 	local input_panel = panel:panel({
@@ -561,7 +574,7 @@ function ConsoleModDialog:create_gui()
 		h = input_panel_h,
 		valign = "bottom",
 		halign = "grow",
-		layer = 1003
+		layer = 1001
 	})
 	self._input_panel = input_panel
 
@@ -573,7 +586,7 @@ function ConsoleModDialog:create_gui()
 		alpha = input_box_alpha,
 		valign = "bottom",
 		halign = "grow",
-		layer = 1010
+		layer = 1001
 	})
 	self._input_box = input_box
 	
@@ -592,7 +605,7 @@ function ConsoleModDialog:create_gui()
 		h = input_panel_h,
 		wrap = false,
 		alpha = input_text_alpha,
-		layer = 1111
+		layer = 1002
 	})
 	self._input_text = input_text
 	
@@ -603,7 +616,7 @@ function ConsoleModDialog:create_gui()
 		w = input_submit_button_w,
 		h = input_submit_button_h,
 		halign = "right",
-		layer = 1110
+		layer = 1002
 	})
 	local input_submit_button = input_submit_panel:rect({
 		name = "input_submit_button",
@@ -612,7 +625,7 @@ function ConsoleModDialog:create_gui()
 		color = input_submit_button_color,
 		alpha = input_submit_button_alpha,
 		halignn = "left",
-		layer = 1112
+		layer = 1002
 	})
 	local input_submit_label = input_submit_panel:text({
 		name = "input_submit_label",
@@ -626,7 +639,7 @@ function ConsoleModDialog:create_gui()
 		wrap = false,
 		visible = true,
 		alpha = 1,
-		layer = 1113
+		layer = 1003
 	})
 	self._input_submit_label = input_submit_label
 	
@@ -639,7 +652,7 @@ function ConsoleModDialog:create_gui()
 		x = 0,
 		y = 0,
 		alpha = caret_text_alpha,
-		layer = 1112
+		layer = 1000
 	})
 	self._caret = caret
 	
@@ -652,7 +665,7 @@ function ConsoleModDialog:create_gui()
 		color = selection_box_color,
 		alpha = 1,
 		blend_mode = "normal",
-		layer = 1110
+		layer = 1015
 	})
 	self._selection_box = selection_box
 	
@@ -665,7 +678,7 @@ function ConsoleModDialog:create_gui()
 		valign = "grow",
 		halign = "grow",
 		alpha = 1,
-		layer = 1009
+		layer = 1010
 	})
 	self._body = body
 	
@@ -682,7 +695,7 @@ function ConsoleModDialog:create_gui()
 --		blend_mode = "add",
 		color = prompt_text_color,
 		alpha = prompt_text_alpha,
-		layer = 1002,
+		layer = 1010,
 	})
 	
 	local body_bg = body:rect({
@@ -693,7 +706,7 @@ function ConsoleModDialog:create_gui()
 		halign = "grow",
 		color = bg_color,
 		alpha = bg_alpha,
-		layer = 900
+		layer = 999
 	}) 
 	
 	local history_text = body:text({
@@ -711,12 +724,12 @@ function ConsoleModDialog:create_gui()
 		vertical = "bottom",
 		wrap = true,
 		alpha = 1,
-		layer = 1111
+		layer = 1002
 	})
 	self._history_text = history_text
 	self._ui_objects = {
-		top_frame_bg = {
-			object = top_frame_bg,
+		top_frame_grip = {
+			object = top_frame_grip,
 			mouseover_pointer = "hand", --arrow link hand grab
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
@@ -1809,22 +1822,41 @@ function ConsoleModDialog:show()
 	if _G.setup and _G.setup:has_queued_exec() then
 		return
 	end
+	--[[
+	if self.inherited_settings.console_pause_game_on_focus and Global.game_settings.single_player then 
+		if managers.menu and managers.menu:active_menu() and managers.menu:active_menu().renderer then 
+			Application:set_pause(true)
+			managers.menu:post_event("game_pause_in_game_menu")
+			SoundDevice:set_rtpc("ingame_sound", 0)
+		end
+	end
+	--]]
 	self._input_delay_timer = self.INPUT_IGNORE_DELAY_INTERVAL
-	managers.menu:post_event("prompt_enter") --snd
 	self._panel:show()
-	self._manager:event_dialog_shown(self)
 --	self:set_input_enabled(true)
+--	managers.menu:post_event("prompt_enter") --snd
 	self.is_active = true
+	self._manager:event_dialog_shown(self)
 	return true
 end
 
 function ConsoleModDialog:hide()
+--[[
+	if self.inherited_settings.console_pause_game_on_focus and Global.game_settings.single_player then 
+		if managers.menu and managers.menu:active_menu() and managers.menu:active_menu().renderer then 
+			managers.menu:active_menu().renderer:disable_input(0.01)
+			Application:set_pause(false)
+			managers.menu:post_event("game_resume")
+			SoundDevice:set_rtpc("ingame_sound", 1)
+		end
+	end
+	--]]
 	self:set_input_enabled(false)
 	self._key_held_ids = nil
 	self._key_held_t = nil
 	self.is_active = false
 	self:_hide_dialog_gui()
-	managers.menu:post_event("menu_exit")
+--	managers.menu:post_event("menu_exit")
 	self._manager:event_dialog_hidden(self)
 end
 
