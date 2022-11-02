@@ -59,7 +59,6 @@ function ConsoleModDialog:init(manager,data)
 	self._mouse_drag_y_start = nil
 	self._target_drag_x_start = nil
 	self._target_drag_y_start = nil
-	self._scrollbar_lock_enabled = self.inherited_settings.scrollbar_lock_enabled or false
 	
 	--text ui 
 	self._selection_dir = 1 
@@ -81,16 +80,11 @@ function ConsoleModDialog:callback_on_delayed_asset_load(font_ids)
 	self._font_asset_load_done = true
 end
 
-function ConsoleModDialog:new_resize()
-	
+function ConsoleModDialog:new_resize(to_w,to_h)
+	self._panel:set_size(to_w,to_h)
 end
 
 function ConsoleModDialog:create_gui()
-	
-	
---	do return self:new_create_gui() end
-	
-
 	local func_hex_to_color = Console.hex_number_to_color
 	local settings = self.inherited_settings
 	local buttons_atlas = "guis/textures/consolemod/buttons_atlas"
@@ -110,15 +104,6 @@ function ConsoleModDialog:create_gui()
 	local text_highlight_color = func_hex_to_color(settings.window_text_selected_color)
 	local text_stale_color = func_hex_to_color(settings.window_text_stale_color)
 	local selection_box_color = func_hex_to_color(settings.window_text_highlight_color)
-	
-	local header_label_margin_hor = 16 --used for placement
-	local header_label_margin_ver = 4 --used for sizing, not placement- text is automatically vertically centered
-	local header_label_valign = "center"
-	local header_label_halign = "left"
-	local header_label_font_name = text_font_name
-	local header_label_font_size = text_font_size
-	local header_label_color = text_normal_color
-	local header_label_alpha = 1
 	
 	--prompt is no longer used
 	local prompt_string = tostring(settings.window_prompt_string) or "> "
@@ -161,7 +146,6 @@ function ConsoleModDialog:create_gui()
 	local bottom_frame_h = 32
 	
 	local history_margin_hor = 4
-	local history_margin_ver = 4
 	
 	local body_margin_ver = top_frame_h --height of top frame
 	local body_h = panel_h - (body_margin_ver * 2)
@@ -171,12 +155,31 @@ function ConsoleModDialog:create_gui()
 	local scrollbar_button_size = scrollbar_w
 	local scrollbar_handle_w = scrollbar_w
 	local scrollbar_handle_h = 100
+	local scrollbar_lock_alpha
+	local scrollbar_lock_alpha_on = 1
+	local scrollbar_lock_alpha_off = 0.5
+	if self:is_scrollbar_lock_enabled() then 
+		scrollbar_lock_alpha = scrollbar_lock_alpha_on
+	else
+		scrollbar_lock_alpha = scrollbar_lock_alpha_off
+	end
 	
 	local left_frame_w = 10 --left bar w
 	local right_frame_w = left_frame_w -- + scrollbar_w
 	
 	local body_margin_hor = left_frame_w
 	local body_w = panel_w - (body_margin_hor + right_frame_w)
+	
+	local header_label_text = self._data.title
+	--local header_label_desc = self._data.text
+	local header_label_margin_hor = left_frame_w + 0 --used for placement
+	local header_label_margin_ver = 4 --used for sizing, not placement- text is automatically vertically centered
+	local header_label_valign = "center"
+	local header_label_halign = "left"
+	local header_label_font_name = text_font_name
+	local header_label_font_size = text_font_size
+	local header_label_color = text_normal_color
+	local header_label_alpha = 1
 	
 	local input_text_margin_hor = 4
 	local input_text_margin_ver = 1 --margin between text and input_box edges
@@ -382,7 +385,7 @@ function ConsoleModDialog:create_gui()
 	
 	local header_label = top_frame_panel:text({
 		name = "header_label",
-		text = managers.localization:text("dcc_window_header_title"),
+		text = header_label_text,
 		font = text_font_name,
 		font_size = text_font_size,
 		color = text_normal_color,
@@ -612,9 +615,9 @@ function ConsoleModDialog:create_gui()
 		color = history_color,
 		selection_color = text_highlight_color,
 		x = history_margin_hor,
-		y = history_margin_ver,
+		y = 0,
 		w = body_w - (history_margin_hor * 2),
-		h = body_h - (history_margin_ver * 2),
+		h = body_h,
 		align = "left",
 		vertical = "bottom",
 		wrap = true,
@@ -835,7 +838,7 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	
 	
 	
-	do return self:new_resize() end
+	do return self:new_resize(to_w,to_h) end
 	
 	local panel = self._panel
 	panel:set_size(to_w,to_h)
@@ -946,16 +949,19 @@ function ConsoleModDialog:add_to_history(s,colors)
 	local current_text = history_text:text()
 	local prev_lines = history_text:number_of_lines()
 	history_text:set_text(current_text .. "\n" .. _s)
-	local _,_,tw,th = history_text:text_rect()
-	history_text:set_size(tw,th)
-	
-	--[[
-	if self._scrollbar_lock_enabled then
-		local current_lines = history_text:number_of_lines()
-		local delta = current_lines - prev_lines
-		self:set_scroll_amount(delta * self.inherited_settings.window_font_size)
+	local bw,bh = self._body:size()
+	local history_margin_hor = 4
+	local _,_,_,th = history_text:text_rect()
+	history_text:set_size(bw - (history_margin_hor * 2),th)
+	local history_text_y = history_text:y()
+	if not self:is_scrollbar_lock_enabled() then
+		if history_text_y < bh then 
+			self:set_vscroll_ratio(1)
+			--snap scroll to current line
+		else
+--			self:perform_vscroll_amount(history_text:line_height())
+		end
 	end
-	--]]
 	
 	local offset = self._current_range_data_index
 	if type(colors) == "table" then
@@ -965,7 +971,7 @@ function ConsoleModDialog:add_to_history(s,colors)
 			table.insert(self._current_window_color_ranges,#self._current_window_color_ranges+1,range_data)
 		end
 	end
-	offset = offset + 1 + utf8.len(_s)
+	offset = offset + 1 + utf8.len(_s) --add 1 to offset to account for newline
 	self._current_range_data_index = offset
 	self:refresh_history_colors()
 end
@@ -1836,7 +1842,7 @@ function ConsoleModDialog:dialog_cancel_callback() --not really used?
 	end
 end
 
---inherited Dialog methods
+--inherited Dialog methods --(generally not used)
 function ConsoleModDialog:init_button_text_list()
 	local button_list = self._data.button_list
 
@@ -1866,7 +1872,7 @@ function ConsoleModDialog:focus_button()
 	return self._data.focus_button
 end
 function ConsoleModDialog:button_pressed(button_index)
-	cat_print("dialog_manager", "[SystemMenuManager] Button index pressed: " .. tostring(button_index))
+--	cat_print("dialog_manager", "[SystemMenuManager] Button index pressed: " .. tostring(button_index))
 
 	local button_list = self._data.button_list
 
@@ -1909,7 +1915,7 @@ function ConsoleModDialog:_strip_to_string_text(text)
 end
 
 
---inherited GenericDialog methods 
+--inherited GenericDialog methods (generally not used)
 
 
 function ConsoleModDialog:release_scroll_bar()

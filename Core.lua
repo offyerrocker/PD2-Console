@@ -39,12 +39,13 @@ tab key autocomplete
 
 ******************* Secondary feature todo ******************* 
 
-
+- [ConsoleModDialog] mouseover tooltips for buttons after n seconds
 - batch file folder system in saves
 	autoexec batch-style files
 - option to de-focus the console and keep it open while playing without hiding it
 - "/" key shortcut to open console window
 
+- button-specific mouseover color
 - mouse-selectable output text
 - mouse-selectable input text
 - preview history in dialog ui
@@ -627,7 +628,7 @@ function Console:callback_confirm_text(dialog_instance,text)
 			return self:InterpretCommand(text)
 		end
 	elseif string.gsub(text,"%s","") ~= "" then
-		self:Log("> " .. text)
+		self:Log(self.settings.window_prompt_string .. text)
 		return self:InterpretInput(text)
 	end
 end
@@ -649,7 +650,7 @@ function Console:InterpretInput(raw_string)
 		end
 		if result[1] == true then
 			table.remove(result,1)
-			logall(result)
+			logall(result) --does this belong here?
 		end
 	end
 	self:AddToInputLog(
@@ -953,13 +954,13 @@ end
 --ui
 
 function Console:CreateConsoleWindow()
-	self:Log("Initiating a new console session.")
-	self:Log("Welcome to the unofficial console!")
-	self:Log("Type /help for a list of commands.")
+	self:Log(managers.localization:text("dcc_window_startup_message_1"))
+	self:Log(managers.localization:text("dcc_window_startup_message_2"))
+	self:Log(managers.localization:text("dcc_window_startup_message_3"))
 	self.dialog_data = {
 		id = "ConsoleWindow",
-		title = "console title",
-		text = "text goes here",
+		title = managers.localization:text("menu_consolemod_window_title"),
+		text = "placeholder text",
 		history_log = self._history_log,
 		console_settings = self.settings,
 		input_log = self._input_log,
@@ -967,15 +968,7 @@ function Console:CreateConsoleWindow()
 		confirm_text_callback = callback(self,self,"callback_confirm_text"),
 		save_settings_callback = callback(self,self,"SaveSettings"),
 		font_asset_load_done = self._is_font_asset_load_done,
-		button_list = {
-			{
-				text = "button text",
-				callback_func = function()
-					log("back button")
-				end,
-				cancel_button = true
-			}
-		}
+		button_list = {} --not used
 	}
 	self._window_instance = ConsoleModDialog and ConsoleModDialog:new(managers.system_menu,self.dialog_data)
 end
