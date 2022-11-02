@@ -71,17 +71,21 @@ function ConsoleModDialog:init(manager,data)
 end
 
 function ConsoleModDialog:callback_on_delayed_asset_load(font_ids)
---	self._prompt:set_font(font_ids)
-	self._input_text:set_font(font_ids)
-	self._caret:set_font(font_ids)
-	self._history_text:set_font(font_ids)
+	local font_size = self.inherited_settings.window_font_size
 	self._header_label:set_font(font_ids)
+	self._header_label:set_font_size(font_size)
+	self._input_text:set_font(font_ids)
+	self._input_text:set_font_size(font_size)
+	self._input_submit_label:set_font(font_ids)
+	self._input_submit_label:set_font_size(font_size)
+	self._caret:set_font(font_ids)
+	self._caret:set_font_size(font_size)
+--	self._prompt:set_font(font_ids)
+--	self._prompt:set_font_size(font_size)
+	self._history_text:set_font(font_ids)
+	self._history_text:set_font_size(font_size)
 	
 	self._font_asset_load_done = true
-end
-
-function ConsoleModDialog:new_resize(to_w,to_h)
-	self._panel:set_size(to_w,to_h)
 end
 
 function ConsoleModDialog:get_creation_params()
@@ -113,8 +117,8 @@ function ConsoleModDialog:get_creation_params()
 		input_submit_button_margin_hor = 8,
 		input_submit_button_alpha = 1,
 		resize_grip_size = 16,
-		min_window_width = 50,
-		min_window_height = 82, --50 + top_frame_h
+		min_window_width = 10,
+		min_window_height = 10,
 		max_window_hidden_hor_margin = 64,
 		max_window_hidden_ver_margin = 0
 	}
@@ -248,8 +252,8 @@ function ConsoleModDialog:create_gui()
 	local input_box_w = input_panel_w - (resize_grip_w + input_submit_button_w + (input_submit_button_margin_hor * 2))
 	local input_box_h = input_panel_h
 		
-	local min_window_width = params.min_window_width
-	local min_window_height = params.min_window_height
+	local min_window_width = left_frame_w + params.min_window_width + input_submit_button_w + (input_submit_button_margin_hor * 2) + scrollbar_w + right_frame_w 
+	local min_window_height = top_frame_h + params.min_window_height + (scrollbar_button_size * 6) + bottom_frame_h
 	local max_window_hidden_hor_margin = params.max_window_hidden_hor_margin --no more than this many pixels of the window can be horizontally hidden (above or below the edge of the screen)
 	local max_window_hidden_ver_margin = params.max_window_hidden_ver_margin --no more than this many pixels of the window can be vertically hidden (above or below the edge of the screen)
 
@@ -272,7 +276,8 @@ function ConsoleModDialog:create_gui()
 		texture = texture_blank,
 		w = panel_w,
 		h = panel_h,
-		valign = "grow",
+		valign = "scale",
+		halign = "scale",
 		render_template = "VertexColorTexturedBlur3D",
 		color = Color.white,
 		alpha = 1,
@@ -283,8 +288,8 @@ function ConsoleModDialog:create_gui()
 		w = panel_w,
 		h = panel_h,
 		blend_mode = "normal",
-		halign = "grow",
-		valign = "grow",
+		halign = "scale",
+		valign = "scale",
 		alpha = bg_alpha,
 		color = bg_color,
 		layer = 1
@@ -296,6 +301,8 @@ function ConsoleModDialog:create_gui()
 		y = top_frame_h,
 		w = scrollbar_w,
 		h = scrollbar_h,
+		halign = "right",
+		valign = "grow",
 		layer = 1009
 	})
 	self._scrollbar_panel = scrollbar_panel
@@ -306,6 +313,8 @@ function ConsoleModDialog:create_gui()
 		h = scrollbar_h,
 		color = scrollbar_bg_color,
 		alpha = scrollbar_bg_alpha,
+		halign = "right",
+		valign = "grow",
 		layer = 1000
 	})
 	
@@ -367,6 +376,7 @@ function ConsoleModDialog:create_gui()
 		h = scrollbar_button_size,
 		x = 0,
 		y = scrollbar_h - scrollbar_button_size,
+		valign = "bottom",
 		layer = 1000
 	})
 	self._scrollbar_button_bottom = scrollbar_button_bottom
@@ -383,6 +393,7 @@ function ConsoleModDialog:create_gui()
 		h = scrollbar_button_size,
 		x = 0,
 		y = scrollbar_h - (scrollbar_button_size * 2),
+		valign = "bottom",
 		layer = 1000
 	})
 	self._scrollbar_button_down = scrollbar_button_down
@@ -399,6 +410,7 @@ function ConsoleModDialog:create_gui()
 		w = scrollbar_handle_w,
 		h = scrollbar_handle_h,
 		color = Color.white,
+		valign = "grow",
 		alpha = 1,
 		layer = 1000
 	})
@@ -410,16 +422,17 @@ function ConsoleModDialog:create_gui()
 		y = 0,
 		w = top_frame_w,
 		h = top_frame_h,
+		valign = "top",
+		halign = "grow",
 		layer = 1000
 	})
 	local top_frame_bg = top_frame_panel:rect({
 		name = "top_frame_bg",
 		w = top_frame_w,
 		h = top_frame_h,
-		valign = "grow",
-		halign = "grow",
 		color = panel_frame_color,
 		alpha = panel_frame_alpha,
+		halign = "grow",
 		layer = 1001
 	})
 	local close_button = top_frame_panel:bitmap({
@@ -433,6 +446,8 @@ function ConsoleModDialog:create_gui()
 		y = close_button_margin_ver,
 		w = close_button_w,
 		h = close_button_h,
+		valign = "top",
+		halign = "right",
 		color = close_button_color,
 		alpha = 1,
 		layer = 1002
@@ -464,16 +479,18 @@ function ConsoleModDialog:create_gui()
 		y = panel_h - bottom_frame_h,
 		w = bottom_frame_w,
 		h = bottom_frame_h,
+		valign = "bottom",
+		halign = "grow",
 		layer = 1001
 	})
 	local bottom_frame_bg = bottom_frame_panel:rect({
 		name = "bottom_frame_bg",
 		w = bottom_frame_w,
 		h = bottom_frame_h,
-		valign = "grow",
-		halign = "grow",
 		color = panel_frame_color,
 		alpha = panel_frame_alpha,
+		valign = "bottom",
+		halign = "grow",
 		layer = 9
 	})
 	local resize_grip = bottom_frame_panel:bitmap({
@@ -487,6 +504,8 @@ function ConsoleModDialog:create_gui()
 		y = bottom_frame_h - resize_grip_h,
 		w = resize_grip_w,
 		h = resize_grip_h,
+		valign = "bottom",
+		halign = "right",
 		color = resize_grip_color,
 		alpha = 1,
 		layer = 1000
@@ -499,6 +518,8 @@ function ConsoleModDialog:create_gui()
 		y = left_frame_ver_margin,
 		w = left_frame_w,
 		h = left_frame_h,
+		valign = "grow",
+		halign = "left",
 		layer = 1001
 	})
 	local left_frame_bg = left_frame_panel:rect({
@@ -506,7 +527,7 @@ function ConsoleModDialog:create_gui()
 		w = left_frame_w,
 		h = left_frame_h,
 		valign = "grow",
-		halign = "grow",
+		halign = "left",
 		color = panel_frame_color,
 		alpha = panel_frame_alpha,
 		layer = 1000
@@ -518,6 +539,8 @@ function ConsoleModDialog:create_gui()
 		y = left_frame_ver_margin,
 		w = right_frame_w,
 		h = right_frame_h,
+		valign = "grow",
+		halign = "right",
 		layer = 1001
 	})
 	local right_frame_bg = right_frame_panel:rect({
@@ -525,7 +548,7 @@ function ConsoleModDialog:create_gui()
 		w = right_frame_w,
 		h = right_frame_h,
 		valign = "grow",
-		halign = "grow",
+		halign = "right",
 		color = panel_frame_color,
 		alpha = panel_frame_alpha,
 		layer = 1000
@@ -537,6 +560,8 @@ function ConsoleModDialog:create_gui()
 		y = panel_h - (input_panel_h + input_panel_margin_ver),
 		w = input_panel_w,
 		h = input_panel_h,
+		valign = "bottom",
+		halign = "grow",
 		layer = 1003
 	})
 	self._input_panel = input_panel
@@ -547,6 +572,8 @@ function ConsoleModDialog:create_gui()
 		h = input_box_h,
 		color = input_box_color,
 		alpha = input_box_alpha,
+		valign = "bottom",
+		halign = "grow",
 		layer = 1010
 	})
 	self._input_box = input_box
@@ -576,6 +603,7 @@ function ConsoleModDialog:create_gui()
 		y = 0,
 		w = input_submit_button_w,
 		h = input_submit_button_h,
+		halign = "right",
 		layer = 1110
 	})
 	local input_submit_button = input_submit_panel:rect({
@@ -584,6 +612,7 @@ function ConsoleModDialog:create_gui()
 		h = input_submit_button_h,
 		color = input_submit_button_color,
 		alpha = input_submit_button_alpha,
+		halignn = "left",
 		layer = 1112
 	})
 	local input_submit_label = input_submit_panel:text({
@@ -633,6 +662,8 @@ function ConsoleModDialog:create_gui()
 		y = body_margin_ver,
 		w = body_w,
 		h = body_h,
+		valign = "grow",
+		halign = "grow",
 		alpha = 1,
 		layer = 1009
 	})
@@ -658,6 +689,8 @@ function ConsoleModDialog:create_gui()
 		name = "body_bg",
 		w = body_w,
 		h = body_h,
+		valign = "grow",
+		halign = "grow",
 		color = bg_color,
 		alpha = bg_alpha,
 		layer = 900
@@ -884,62 +917,17 @@ function ConsoleModDialog:create_gui()
 end
 
 function ConsoleModDialog:resize_panel(to_w,to_h)
-	
-	
-	
-	
-	
-	do return self:new_resize(to_w,to_h) end
-	
 	local panel = self._panel
 	panel:set_size(to_w,to_h)
-	local panel_right = panel:right()
-	local close_button_margin = 16
-	local close_button_w = 16
-	local body_margin_hor = 6
-	local body_margin_ver = 6
-	local top_bar_h = 16
-	local text_font_size = self.inherited_settings.window_font_size
-	local input_box_h = text_font_size * 1.5
 	
-	local resize_grip = self._resize_grip
-	resize_grip:set_right(to_w)
-	resize_grip:set_bottom(to_h)
-
---force reposition
---	self:set_scroll_amount(0) --force refresh scroll position
-	self._body:set_size(to_w-(body_margin_hor * 2),to_h-(input_box_h + top_bar_h + (body_margin_ver * 2)))
-	local b_w,b_h = self._body:size()
-	--force update text objects
-	self._input_text:set_size(b_w,b_h)
-	self._input_text:set_text(self._input_text:text())
-	self._input_box:set_size(b_w,input_box_h)
-	self._input_box:set_position(body_margin_hor,b_h - text_font_size)
-	self._prompt:set_size(b_w,b_h)
-	self._prompt:set_text(self._prompt:text())
-	self._body_bg:set_size(b_w,b_h)
-	self._history_text:set_size(b_w,b_h - text_font_size)
-	self._history_text:set_text(self._history_text:text())
-	self._caret:set_size(b_w,b_h)
-	self._caret:set_text(self._caret:text())
-	self._top_bar:set_w(to_w)
---	self._top_grip:set_w(to_w - close_button_w)
-	self._close_button:set_position(to_w - (close_button_w + close_button_margin))
+	local history_text = self._history_text
+	local _,_,_,th = history_text:text_rect() --actual size
+	local y_min = - math.abs(self._body:h() - th)
+	local y_max = 0
+	local ratio = (history_text:y() - y_min) / (y_max - y_min)
 	
-	local vertical_margin = 24
-	local scrollbar_button_h = 16
-	local resize_grip_h = scrollbar_button_h
-	--reposition individual scrollbar elements
-	--recalculate scrollbar_handle position
-	self._scrollbar_panel:set_h(to_h)
---	self._scrollbar_panel:set_x(b_w)
-	self._scrollbar_panel:set_right(panel:w())
-	self._scrollbar_lock_button:set_y(vertical_margin)
-	self._scrollbar_button_top:set_y(self._scrollbar_lock_button:bottom())
-	self._scrollbar_button_up:set_y(self._scrollbar_button_top:bottom())
-	self._scrollbar_button_bottom:set_bottom(self._scrollbar_panel:h() - (vertical_margin + resize_grip_h))
-	self._scrollbar_button_down:set_y(self._scrollbar_button_bottom:top() - scrollbar_button_h)
-	--]]
+	self:set_vscroll_handle_by_ratio(ratio)
+--	self:set_vscroll_handle_height(ratio)
 end
 
 function ConsoleModDialog:generate_history(color)
@@ -1174,17 +1162,17 @@ function ConsoleModDialog:set_vscroll_handle_by_ratio(ratio)
 	end
 end
 
-
 function ConsoleModDialog:set_vscroll_handle_height(ratio)
-	local default_scrollbar_handle_height = 100
+	local params = self:get_creation_params()
+	local default_scrollbar_handle_height = params.scrollbar_handle_h
 	local scrollbar_handle = self._scrollbar_handle
 	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
 end
 
-function ConsoleModDialog:set_vscroll_bar_height(ratio)
+function ConsoleModDialog:set_vscroll_bar_height(mul)
 	local default_scrollbar_handle_height = 100
 	local scrollbar_handle = self._scrollbar_handle
-	scrollbar_handle:set_h(ratio * default_scrollbar_handle_height)
+	scrollbar_handle:set_h(mul * default_scrollbar_handle_height)
 end
 
 function ConsoleModDialog:callback_mouse_moved(o,x,y)

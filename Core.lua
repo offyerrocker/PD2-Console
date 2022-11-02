@@ -4,7 +4,8 @@
 
 - [Console] history navigation is unreliable
 	commands are not shown in input history
-
+	most recent text is not shown in input history
+	
 - [ConsoleModDialog] scroll function
 	--lock scrollbar (disable autoscroll on new lines) not working
 	- restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
