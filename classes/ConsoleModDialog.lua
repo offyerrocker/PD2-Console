@@ -819,9 +819,6 @@ function ConsoleModDialog:create_gui()
 				
 				o:set_y(to_y)
 				local ratio = (to_y - y_min) / (y_max - y_min)
-				if self:is_scrollbar_direction_reversed() then 
-					ratio = 1 - ratio
-				end
 				self:set_vscroll_ratio(ratio,true)
 				self:set_vscroll_handle_by_position(to_y)
 			end
@@ -997,28 +994,20 @@ function ConsoleModDialog:get_mouseover_target(x,y)
 end
 
 function ConsoleModDialog:callback_scrollbar_top_button_clicked(o,x,y)
-	local ratio = 0
-	if self:is_scrollbar_direction_reversed() then 
-		ratio = 1 - ratio
-	end
-	self:set_vscroll_ratio(ratio)
+	self:set_vscroll_ratio(0)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_bottom_button_clicked(o,x,y)
-	local ratio = 1
-	if self:is_scrollbar_direction_reversed() then 
-		ratio = 1 - ratio
-	end
-	self:set_vscroll_ratio(ratio)
+	self:set_vscroll_ratio(1)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_up_button_clicked(o,x,y)
-	local direction = self:is_scrollbar_direction_reversed() and -1 or 1
+	local direction = self:is_scrollbar_direction_reversed() and 1 or -1
 	self:perform_vscroll_amount(direction * self._body:h())
 end
 
 function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
-	local direction = self:is_scrollbar_direction_reversed() and 1 or -1
+	local direction = self:is_scrollbar_direction_reversed() and -1 or 1
 	self:perform_vscroll_amount(direction * self._body:h())
 end
 
@@ -1049,6 +1038,12 @@ function ConsoleModDialog:is_scrollbar_direction_reversed()
 	return self.inherited_settings.window_scroll_direction_reversed
 end
 
+function ConsoleModDialog:is_scrollwheel_direction_reversed()
+	--if true, mouse wheel up will move the scrollbar down (which moves text according to the setting is_scrollbar_direction_reversed() )
+	--if false, mouse wheel down will move the scrollbar down 
+	return self.inherited_settinngs.input_mousewheel_scroll_direction_reversed
+end
+
 function ConsoleModDialog:play_button_pressed_sound()
 --	managers.menu:post_event()
 end
@@ -1075,7 +1070,7 @@ function ConsoleModDialog:set_vscroll_ratio(ratio,skip_handle_position)
 	
 	history_text:set_y(d_y)
 	if not skip_handle_position then
-		if not self:is_scrollbar_direction_reversed() then
+		if self:is_scrollbar_direction_reversed() then
 			ratio = 1 - ratio
 		end
 		self:set_vscroll_handle_by_ratio(ratio)
@@ -1091,12 +1086,15 @@ function ConsoleModDialog:perform_vscroll_amount(d_y,skip_handle_position)
 	history_text:set_y(to_y)
 	
 	local ratio = (to_y - y_min) / (y_max - y_min)
+	--[[
 	if not skip_handle_position then
 		if not self:is_scrollbar_direction_reversed() then
 			ratio = 1 - ratio
 		end
 		self:set_vscroll_handle_by_ratio(ratio)
 	end
+	--]]
+	self:set_vscroll_handle_by_ratio(ratio)
 end
 
 
@@ -1113,9 +1111,9 @@ function ConsoleModDialog:set_vscroll_handle_by_ratio(ratio)
 	local bottom = self._scrollbar_button_down:y() - scrollbar_handle:h()
 	local scrollbar_direction_reversed = self.inherited_settings.window_scroll_direction_reversed
 	if scrollbar_direction_reversed then
-		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
-	else
 		scrollbar_handle:set_y( bottom - ((bottom - top) * ratio) ) --top + ((min_y - max_y) * ratio))
+	else
+		scrollbar_handle:set_y( top + ((bottom - top) * ratio) )
 	end
 end
 
@@ -1238,10 +1236,10 @@ function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
 		--context menu for clicked item
 	elseif button == Idstring("mouse wheel up") then 
 		--scroll up
-		local direction = self:is_scrollbar_direction_reversed() and 1 or -1
+		local direction = self:is_scrollbar_direction_reversed() and -1 or 1
 		self:perform_vscroll_amount(direction * self.inherited_settings.window_font_size)
 	elseif button == Idstring("mouse wheel down") then 
-		local direction = self:is_scrollbar_direction_reversed() and -1 or 1
+		local direction = self:is_scrollbar_direction_reversed() and 1 or -1
 		self:perform_vscroll_amount(direction * self.inherited_settings.window_font_size)
 		--scroll down
 	end
