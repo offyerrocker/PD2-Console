@@ -60,7 +60,6 @@ tab key autocomplete
 
 - [ConsoleModDialog] scroll function
 	--lock scrollbar (disable autoscroll on new lines) not working
-	--reverse scroll direction option needs to be redone and applied more broadly
 	- restrict the vertical size during resizing so that it can't be smaller than all of the scroll buttons
 	shrink the scroll bar during resizing to a percentage of the current window height
 - resizing is currently disabled
@@ -155,6 +154,7 @@ do --init mod vars
 		style_data_color_userdata = 0xff4c4c,
 		style_data_color_misc = 0x888888,
 		input_mousewheel_scroll_direction_reversed = false,
+		input_mousewheel_scroll_speed = 1,
 		window_scrollbar_lock_enabled = true,
 		window_scroll_direction_reversed = true,
 		window_text_normal_color = 0xffffff,
@@ -192,6 +192,7 @@ do --init mod vars
 		"log_buffer_interval",
 		"console_params_guessing_enabled",
 		"input_mousewheel_scroll_direction_reversed",
+		"input_mousewheel_scroll_speed",
 		"window_scrollbar_lock_enabled",
 		"window_scroll_direction_reversed",
 		"window_text_normal_color",

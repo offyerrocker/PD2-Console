@@ -1041,7 +1041,7 @@ end
 function ConsoleModDialog:is_scrollwheel_direction_reversed()
 	--if true, mouse wheel up will move the scrollbar down (which moves text according to the setting is_scrollbar_direction_reversed() )
 	--if false, mouse wheel down will move the scrollbar down 
-	return self.inherited_settinngs.input_mousewheel_scroll_direction_reversed
+	return self.inherited_settings.input_mousewheel_scroll_direction_reversed
 end
 
 function ConsoleModDialog:play_button_pressed_sound()
@@ -1236,11 +1236,13 @@ function ConsoleModDialog:callback_mouse_pressed(o,button,x,y)
 		--context menu for clicked item
 	elseif button == Idstring("mouse wheel up") then 
 		--scroll up
-		local direction = self:is_scrollbar_direction_reversed() and -1 or 1
-		self:perform_vscroll_amount(direction * self.inherited_settings.window_font_size)
+		local direction = self:is_scrollwheel_direction_reversed() and -1 or 1
+		local mul = self.inherited_settings.input_mousewheel_scroll_speed
+		self:perform_vscroll_amount(direction * mul * self.inherited_settings.window_font_size)
 	elseif button == Idstring("mouse wheel down") then 
-		local direction = self:is_scrollbar_direction_reversed() and 1 or -1
-		self:perform_vscroll_amount(direction * self.inherited_settings.window_font_size)
+		local direction = self:is_scrollwheel_direction_reversed() and 1 or -1
+		local mul = self.inherited_settings.input_mousewheel_scroll_speed
+		self:perform_vscroll_amount(direction * mul * self.inherited_settings.window_font_size)
 		--scroll down
 	end
 end
