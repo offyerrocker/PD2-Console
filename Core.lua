@@ -6,6 +6,7 @@
 - [Console] memory crash when using 166k-168k output logs
 - Figure out a memory-safe(r) solution to putting all history output in one continuous string in a single Text object
 
+
 *******************  Bug list [low priority] ******************* 
 
 - [ConsoleModDialog] separate callbacks in create_gui into their own functions
@@ -15,7 +16,9 @@
 
 
 ******************* Feature list todo: ******************* 
-
+- var pipelining from command to command
+	- eg. saving return values of list from /weaponname to $WEAPONS
+- change removing redundant spaces (allow unfiltered string streams per command)
 - "Debug HUD"
 	- show aim-at target (tweakdata and health)
 	- show xyz pos
@@ -34,6 +37,7 @@
 - ConsoleModDialog scroll button click input repeat
 
 ******************* Secondary feature todo ******************* 
+- shortcut function to get log/datatype color from settings
 - option to disable color coded logs
 - allow changing type colors through settings
 - [ConsoleModDialog] mouseover tooltips for buttons after n seconds
@@ -56,15 +60,17 @@
 
 
 ******************* Commands todo *******************
+
 - /help - alphabetize
 	-s search function
 - /restart
 	-silent mode parameter (no countdown)
 	-also remember to code the chat countdown
-- echo/print - print result or results to console
-	echo should be mainly for vars
-	
+- print
+- echo 
+	- escape aliases before applying, so that expanded aliases don't trigger additional expansions
 - /alias
+	- fix var_func_str
 - setvar/session var business
 	$ var values (overrides normal vars, not saved)
 	@ temp var values (saved between sessions)
@@ -290,10 +296,31 @@ do --init mod vars
 	}
 	Console._registered_commands = {}
 	
-	Console._user_vars = {
-	--[[
-		--number-based vars are reserved for system use, for when history log outputs 
-		hello = 1345136
+	Console._aliases = {
+	--[[ ex.
+		test = {
+			value = 12345
+		},
+		time = {
+			get_value = function()
+				return os.date("%X")
+			end
+		},
+		nothing = {
+			--nothing!
+		}
+		FOO = { --all instances of $FOO are replaced with the value: 12345
+			value = 12345
+		},
+		CURRENT_TIME = { --since the get_value function is provided, the value parameter is ignored, and all instances of $CURRENT_TIME are replaced with the return value of get_value()
+			value = 45678,
+			get_value = function()
+				return os.date("%X")
+			end
+		},
+		MoCkInG_CaSe_vAR = {
+			value = "meeee"
+		}
 		
 		
 	--]]
@@ -304,7 +331,10 @@ do --init mod vars
 		input_log = {},
 		output_log = {}
 	}
-	Console.VAR_PREFIX = "$"
+	Console.PREFIXES = {
+		COMMAND = "/",
+		ALIAS = "$"
+	}
 	Console._is_reading_log = false
 	--placeholder values for things that will be loaded later
 	Console._restart_timer = false --used for /restart [timer] command: tracks next _restart_timer value to output (every second)
@@ -312,7 +342,22 @@ do --init mod vars
 	Console._colorpicker = nil
 	Console._is_font_asset_load_done = nil --if font is loaded
 	Console._is_texture_asset_load_done = nil
-	
+end
+
+do --load ini parser
+	local f,e = blt.vm.loadfile(Console._mod_path .. "utils/LIP.lua")
+	local lip
+	if e then 
+		log("[CONSOLE] ERROR: Failed loading LIP module. Try re-installing BeardLib if this error persists.")
+	elseif f then 
+		lip = f()
+	end
+	if lip then 
+		Console._lip = lip
+	end
+end
+
+do --hooks and command registration
 	Hooks:Register("ConsoleMod_RegisterCommands")
 	Hooks:Register("ConsoleMod_AutoExec")
 	
@@ -379,27 +424,33 @@ do --init mod vars
 			parameters = {},
 			func = callback(console,console,"cmd_help")
 		})
+		console:RegisterCommand("echo",{
+			str = nil,
+			desc = "Prints a string and/or aliases back to the console.",
+			manual = "/echo [string]",
+			arg_desc = "(String) The text to print.",
+			parameters = {},
+			func = callback(console,console,"cmd_echo")
+		})
+		console:RegisterCommand("alias",{
+			str = nil,
+			desc = "Assigns a temporary variable with a name and value of your choice. This variable can be accessed with $VARNAME, and is effectively a string substitution/shortcut tool usable in console commands.",
+			manual = "/alias [var name] [var value] [Optional var function]",
+			arg_desc = "(String) The text to print.",
+			parameters = {
+				loadstring = {
+					arg_desc = "",
+					short_desc = "If supplied, attempts to process the function or var through loadstring, instead of only saving the string value. Required if you are supplying a function."
+				}
+			},
+			func = callback(console,console,"cmd_alias")
+		})
 	end)
 
 	Hooks:Add("ConsoleMod_AutoExec","consolemod_autoexec_listener",function(console,state)
 		console:AutoExec(state)
 	end)
 end
-
-do --load ini parser
-	local f,e = blt.vm.loadfile(Console._mod_path .. "utils/LIP.lua")
-	local lip
-	if e then 
-		log("[CONSOLE] ERROR: Failed loading LIP module. Try re-installing BeardLib if this error persists.")
-	elseif f then 
-		lip = f()
-	end
-	if lip then 
-		Console._lip = lip
-	end
-end
-
-
 
 --utils
 
@@ -419,6 +470,23 @@ function Console.hex_number_to_color(n)
 	return type(n) == "number" and Color(string.format("%06x",n))
 end
 
+function Console.string_replace(str,start,finish,new)
+	local str_len = string.len(str)
+	local a,b
+	
+	if start > 1 then 
+		a = string.sub(str,1,start - 1)
+	else
+		a = ""
+	end
+	
+	if finish < str_len then 
+		b = string.sub(str,finish + 1)
+	else
+		b = ""
+	end
+	return a .. new .. b
+end
 
 function Console.file_exists(path)
 	if SystemFS then
@@ -564,19 +632,111 @@ function Console:Update(updater_source,t,dt)
 end
 
 function Console:InterpretCommand(raw_cmd_string)
+	--command string must start with "/"
+	
 	self.blt_log(self.settings.window_prompt_string .. raw_cmd_string)
-	local cmd_params = {}
+
+	--separate cmd_name (cmd_name aliasing is addressed earlier)
+	--check for substitutions
+	--separate positional parameters (aka "arguments"; everything between cmd_name and normal parameters)
+	--separate normal parameters (aka "parameters"; key-value pairs whose keys are denoted by a hyphen character "-" immediately preceding the key token)
+	--restore non-alias substitutions
+	
 	local cmd_string = string.sub(raw_cmd_string,2) --remove forwardslash
 	local cmd_name = string.match(cmd_string,"[^%s]*")--[%a%s]+")
 	
 	if not cmd_name or cmd_name == "" then
 		return
 	end
+
 	local command_data = self._registered_commands[cmd_name]
 	if not command_data then 
-		self:Log(string.format(managers.localization:text("menu_consolemode_error_command_missing"),cmd_name))
+		self:Log(string.format(managers.localization:text("menu_consolemode_error_command_missing"),cmd_name),{color=self.hex_number_to_color(self.settings.style_color_error)})
 		return
 	end
+	
+	local name_len = string.len(cmd_name)
+	cmd_string = string.sub(cmd_string,name_len + 2) --remove cmd name from the string; extra index for end of string and space 
+	
+	local function esc(s)
+		--escape any characters that need escaping (ironically this step only needs to be performed on the substitutes)
+		local escape_magic_chars = {
+			'(',
+			')',
+			'.',
+			'+',
+			'-',
+			'*',
+			'?',
+			'^',
+			'$'
+		}
+		for _,character in pairs(escape_magic_chars) do 
+			local _s = s
+			s = string.gsub(s,"%" .. character,"%%" .. character)
+		end
+		return s
+	end
+	
+	
+	local cmd_string_subbed = cmd_string
+	
+	local sub_patterns = {
+--		'"[^%"]*"',
+--		"'[^%']*'",
+		"%([%w]*%)",
+		"%$[%w_]+"
+	}
+	local sub_index = 1
+	local sub_id = 1
+
+	local substitutions = {}
+	for i,pattern in ipairs(sub_patterns) do 
+		local length = utf8.len(cmd_string_subbed)
+		local do_exit = false
+		
+		--find substitution
+		repeat
+			local a,b = string.find(cmd_string_subbed,pattern,sub_index)
+			if not (a and b) or (sub_index >= length) or (a == b) then 
+				do_exit = true
+			else
+				local token = string.sub(cmd_string_subbed,a,b)
+				local new_sub
+				if i == 3 then
+					local var = self:GetAlias(token)
+					if var ~= nil then 
+						new_sub = var
+					end
+				else
+					new_sub = string.format("##consolemod_sub%i##",sub_id) --idstring is just used as a replacement 
+					sub_id = sub_id + 1
+				end	
+				if new_sub then
+					table.insert(substitutions,#substitutions+1,{
+						a = a,
+						b = b,
+						s1 = token,
+						s2 = new_sub,
+						is_alias = i == 3
+					})
+				end
+				sub_index = b + 1
+			end
+		until do_exit
+	end
+	
+	--perform substitution 
+	for j=#substitutions,1,-1 do 
+		local sub_data = substitutions[j]
+		cmd_string_subbed = self.string_replace(cmd_string_subbed,sub_data.a,sub_data.b,sub_data.s2)
+		if sub_data.is_alias then 
+			--remove the substitution data after execution so that it's not reverted afterward
+			table.remove(substitutions,j)
+		end
+	end
+	
+	--if guessing is enabled, collect the possible parameters for this command for later
 	local possible_params
 	if command_data.parameters then
 		if self.settings.console_params_guessing_enabled then 
@@ -588,77 +748,41 @@ function Console:InterpretCommand(raw_cmd_string)
 		end
 	end
 	
-	--find quotes and ESCAPE THEM
-	local escape_set_characters = {
-		"\"",
-		'\''
-	}
+	--now that quotations and aliases are out of the way, remove extra spaces
+	cmd_string_subbed = string.gsub(cmd_string_subbed,"%s+"," ")
 	
-	local _pair_chars = {}
-	local _pair_data = {}
-	for _,pair_char in pairs(escape_set_characters) do 
-		local pair_start,pair_finish = string.find(cmd_string,pair_char .. "[^" .. pair_char .. "]*" .. pair_char)
-		if pair_start then 
-			table.insert(_pair_chars,#_pair_chars+1,
-				{
-					character = pair_char,
-					start = pair_start,
-					finish = pair_finish
-				}
-			)
-		end
+	local parameters_pattern = "[%-][%a%p]+[^%-]*"
+	local params_start,params_finish = string.find(cmd_string_subbed,parameters_pattern)
+	
+	--get positional arguments
+	local args_string
+	if params_start then
+		args_string = string.sub(cmd_string_subbed,1,params_start - 1) --extra index for the space
+	else
+		args_string = cmd_string_subbed
 	end
-	local has_quotes = #_pair_chars > 0
-	local _pairs = {}
-	if has_quotes then 
-		table.sort(_pair_chars,function(a,b)
-			return a.start < b.start
-		end)
-		
-		for _,v in ipairs(_pair_chars) do 
-			local pair_char = v.character
-			local exit_pair
-			local index = 1
-			repeat
-				local a,b = string.find(cmd_string,pair_char .. "[^" .. pair_char .. "]*" .. pair_char,index+1)
-				if a == b then 
-					exit_pair = true
+	
+	
+	
+	--find normal parameters
+	local params = {} --holds params that are being matched to existing params if param guessing is enabled
+	for parameter_string in string.gmatch(cmd_string_subbed,"%-[%a%p]+[^%-]*") do 
+--		local _token = string.sub(token,params_start+1)
+		local param_name,param_value
+		for token in string.gmatch(parameter_string,"[%w%p][^%s]*") do 
+			if param_value and param_value ~= "" then 
+				param_value = param_value .. " " .. token
+				--3. which are each separated by a single space character " " (but no trailing space)
+			else
+				if not param_name then
+					param_name = string.sub(token,2) --remove hyphen
+					param_value = ""
+					--1. parameter name will be the first word in this string
 				else
-					table.insert(_pairs,1,{
-						character = pair_char,
-						start = a,
-						finish = b
-					})
-					index = b
+					param_value = token
+					--2. all subsequent words will be parts of the concatenated parameter value string 
 				end
-			until exit_pair
-		end
-		for i,pair_data in ipairs(_pairs) do 
-			local start = pair_data.start
-			local finish = pair_data.finish
-			local orig_string = string.sub(cmd_string,start,finish)
-			local sub_string = "DCCQUOTECHAR" .. i
-			pair_data.substitution_string = sub_string
-			pair_data.original_string = orig_string
-			cmd_string = string.sub(cmd_string,1,start-1) .. sub_string .. string.sub(cmd_string,finish+1)
-		end
-	end
-	
-	--reduce redundant spaces
-	cmd_string = string.gsub(cmd_string,"%s+"," ")
-	local params = {}
-	local params_start,params_finish = string.find(cmd_string,"[%-][%a%p]+[^%-]*")
-	for word in string.gmatch(cmd_string,"%-[%a%p]+[^%-]*") do 
-		local _word = string.sub(word,params_start+1)
-		
-		local param_name = ""
-		local param_value = ""
-		local param_name_start,param_name_end = string.find(word,"[^%-][^%s]*")
-		if param_name_start then
-			param_name = string.match(string.sub(word,param_name_start,param_name_end),"[%w%p]+.*")
-			param_name = string.reverse(string.match(string.reverse(param_name),"[%w%p]+.*"))
-			param_value = string.match(string.sub(word,param_name_end+2),"[%w%p]+.*")
-			param_value = string.reverse(string.match(string.reverse(param_value),"[%w%p]+.*"))
+			end
 		end
 		
 		if possible_params then
@@ -669,10 +793,10 @@ function Console:InterpretCommand(raw_cmd_string)
 				confirmed_parameter = true
 			end
 		end
-		table.insert(params,#params+1,{name = param_name,value=param_value,confirmed = confirmed_parameter})
+		table.insert(params,#params+1,{name = param_name,value = param_value,confirmed = confirmed_parameter})
 	end
 	
-	--guess the closest match for any parameter eg. -a --> -all
+		--guess the closest match for any parameter eg. -a --> -all
 	if possible_params then
 		for _,param_data in ipairs(params) do 
 			if param_data.confirmed then
@@ -702,39 +826,30 @@ function Console:InterpretCommand(raw_cmd_string)
 		end
 	end
 	
-	for _,param_data in ipairs(params) do 
-		cmd_params[param_data.name] = param_data.value
-	end
+	local cmd_params = {} --holds final params
 	
-	local args_string
-	if params_start then 
-		args_string = string.sub(cmd_string,string.len(cmd_name) + 2,params_start-2) --extra index for the space
+	--restore substitutions
+	if #substitutions > 0 then 
+	
+		for i=#substitutions,1,-1 do 
+			local sub_data = table.remove(substitutions,i)
+			local orig = sub_data.s1
+			local new = esc(sub_data.s2)
+
+			--restore substitutions to positional parameters
+			args_string = string.gsub(args_string,new,orig)
+			
+			--restore substitutions to normal parameters (and their parameter names)
+			for _,param_data in ipairs(params) do 
+				local d = string.gsub(param_data.name,new,orig)
+				local e = string.gsub(param_data.value,new,orig)
+				cmd_params[d] = e
+			end
+		end
 	else
-		args_string = string.sub(cmd_string,string.len(cmd_name) + 2) --extra index for the space
-	end
-	
-	if has_quotes then
-		local function replace_orig_subs (str,pair_data)
-			local new_str,num_done = string.gsub(str,pair_data.substitution_string,pair_data.original_string)
-			if num_done > 0 then
-				return new_str,true
-			end
-			return str,false
+		for _,param_data in ipairs(params) do 
+			cmd_params[param_data.name] = param_data.value
 		end
-		for i=#_pairs,1,-1 do
-			local pair_data = _pairs[i]
-			for param_name,param_value in pairs(cmd_params) do 
-				cmd_params[param_value] = replace_orig_subs(param_value,pair_data)
-			end
-			
-			args_string = replace_orig_subs(args_string,pair_data)
-			
-		end
-		
-		for i=#_pairs,1,-1 do
-			local pair_data = _pairs[i]
-		end
-		
 	end
 	
 	if command_data.func then 
@@ -762,9 +877,28 @@ end
 
 
 function Console:callback_confirm_text(dialog_instance,text)
-	if string.sub(text,1,1) == "/" then 
+	local first_char = string.sub(text,1,1)
+	if first_char == self.PREFIXES.ALIAS then
+		local _text = string.sub(text,2) --remove alias signifier
+		local a,b = string.find(_text,"[^%s]*")
+		if a then
+			local alias_token = string.sub(_text,a,b)
+			local alias = self:GetAlias(alias_token)
+			if alias then
+				text = self.string_replace(_text,a,b,alias)
+				first_char = string.sub(text,1,1)
+			end
+		else
+			--only command name (no params)
+			local alias = self:GetAlias(_text)
+			if alias then 
+				text = alias
+			end
+		end
+	end	
+	if first_char == self.PREFIXES.COMMAND then 
 		local input_log = self._input_log
-		if text == "//" then 
+		if text == string.rep(self.PREFIXES.COMMAND,2) then 
 			if #input_log > 0 then
 				local data = input_log[#input_log]
 				text = data.input or data.raw_input
@@ -865,11 +999,8 @@ function Console:RegisterCommand(id,data)
 end
 
 function Console:AutoExec(c) --executes the contents of a lua file
-	Log("Autoexec called")
 	if c == "menu_state" then
-		Log("Doing menu state")
 		if self.file_exists(self._autoexec_menustate_path) then 
-			Log("File exists")
 			self:Log(dofile(self._autoexec_menustate_path))
 		end
 	end
@@ -1092,34 +1223,122 @@ function Console:cmd_restart(params,timer)
 	
 end
 
-
+function Console:cmd_alias(params,args)
+	local _args = string.split(args," ")
+	local do_loadstring = params.loadstring --if true, attempts to read the provided func or value as a chunk, instead of just storing the string value
+	local var_name_str = _args[1]
+	local var_value_str = _args[2]
+	local var_func_str -- = _args[3]
+	
+	local var_value,var_func,err,feedback_str,feedback_type
+	
+	if var_name_str and var_name_str ~= "" then
+		if var_func_str and do_loadstring then 
+			var_func,err = loadstring(var_func_str)
+			if var_func then
+				feedback_str = var_func_str
+				feedback_type = type(var_func)
+				--success
+			else
+				local err_col = self.hex_number_to_color(self.settings.style_color_error)
+				self:Log("Error loading func chunk:",{color=err_col})
+				self:Log(var_func_str,{color=err_col})
+				self:Log(err,{color=err_col})
+				return
+			end
+		elseif var_value_str then
+			if do_loadstring then
+				var_func,err = loadstring("return " .. var_value_str)
+				if var_func then 
+					feedback_str = var_value_str
+					feedback_type = type(var_func)
+					--success
+				else
+					local err_col = self.hex_number_to_color(self.settings.style_color_error)
+					self:Log("Error loading string chunk:",{color=err_col})
+					self:Log(var_value_str,{color=err_col})
+					self:Log(err,{color=err_col})
+					return
+				end
+			else
+				var_value = var_value_str
+				feedback_str = var_value
+				feedback_type = type(var_value)
+			end
+		end
+	
+		if var_value or var_func then
+			self:SetAlias(var_name_str,var_value,var_func)
+		end
+		
+		if feedback_str then 
+			local var_len = string.len(feedback_str)
+			local type_color_name = self.data_type_colors[feedback_type]
+			local feedback_col = self.hex_number_to_color(self.settings[type_color_name or "style_data_color_misc"])
+			
+			self:Log(string.format(managers.localization:text("menu_consolemod_cmd_alias_assigned"),feedback_str,self.PREFIXES.ALIAS .. var_name_str),{color_ranges = {{start = 1,finish = var_len + 1,color=feedback_col}}})
+		end
+		
+	end
+end
 
 
 function Console:cmd_echo(param,s)
 	s = tostring(s)
-	for id,value in pairs(self._user_vars) do 
-		s = string.gsub(s,"$" .. id,tostring(value))
+	local ALIAS_PREFIX = self.PREFIXES.ALIAS
+	local prefix_search = "%" .. ALIAS_PREFIX
+	if string.find(s,prefix_search) then
+		for id,data in pairs(self._aliases) do 
+			local cached_value = nil
+			local alias = prefix_search .. id
+			if string.find(s,alias) then 
+				local value
+				if type(data.get_value) == "function" then 
+					local success = pcall(function()
+						value = data.get_value()
+					end)
+				else
+					value = data.value
+				end
+				s = string.gsub(s,alias,tostring(value))
+			end
+		end
 	end
---	self:InterpretInput("return " .. tostring(s))
 	self:Log(s)
 end
 
-function Console:SetUserVar(id,val)
-	if string.sub(tostring(val),1,1) == self.VAR_PREFIX then 
+function Console:SetAlias(id,val,func)
+	if string.sub(tostring(val),1,1) == self.PREFIXES.ALIAS then 
 		val = self:GetUserVar(val)
 	end
-	self:Log(val)
-	self:_SetUserVar(id,val)
+	local data = {
+		value = val,
+		get_value = func
+	}
+	self:_SetAlias(id,data)
 end
 
-function Console:_SetUserVar(id,value)
-	self._user_vars[id] = value
+function Console:_SetAlias(id,data)
+	self._aliases[id] = data
 end
 
-function Console:GetUserVar(id)
-	return self._user_vars[id]
+function Console:RemoveAlias(id)
+	if id ~= nil then
+		self._aliases[tostring(id)] = nil
+	end
+end
+
+function Console:GetAlias(id)
+	local data = id and self._aliases[id]
+	if data then
+		if data.get_value then 
+			return data.get_value()
+		else
+			return data.value
+		end
+	end
 --	for _,id in pairs({...}) do 
---		self:Log(self.VAR_PREFIX .. tostring(id) .. " " .. tostring(self._user_vars[id]))
+--		self:Log(self.PREFIXES.ALIAS .. tostring(id) .. " " .. tostring(self._user_vars[id]))
 --	end
 end
 

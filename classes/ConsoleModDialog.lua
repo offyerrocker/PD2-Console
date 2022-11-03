@@ -652,7 +652,7 @@ function ConsoleModDialog:create_gui()
 		x = 0,
 		y = 0,
 		alpha = caret_text_alpha,
-		layer = 1000
+		layer = 1004
 	})
 	self._caret = caret
 	
@@ -1073,12 +1073,12 @@ end
 
 function ConsoleModDialog:callback_on_scrollbar_up_button_clicked(o,x,y)
 	local direction = self:is_scrollbar_direction_reversed() and 1 or -1
-	self:perform_vscroll_amount(direction * self._body:h())
+	self:perform_scroll_page(direction)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
 	local direction = self:is_scrollbar_direction_reversed() and -1 or 1
-	self:perform_vscroll_amount(direction * self._body:h())
+	self:perform_scroll_page(direction)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
@@ -1167,6 +1167,11 @@ function ConsoleModDialog:perform_vscroll_amount(d_y,skip_handle_position)
 	self:set_vscroll_handle_by_ratio(ratio)
 end
 
+function ConsoleModDialog:perform_scroll_page(direction)
+	if alive(self._body) then
+		self:perform_vscroll_amount(direction * self._body:h())
+	end
+end
 
 function ConsoleModDialog:set_vscroll_handle_by_position(position)
 	local scrollbar_handle = self._scrollbar_handle
@@ -1592,8 +1597,13 @@ function ConsoleModDialog:on_key_press(k,held)
 		input_text:replace_text("")
 		self:reset_caret_blink_t()
 	elseif k == Idstring("page up") then 
+		local direction = self:is_scrollbar_direction_reversed() and 1 or -1
+		self:perform_scroll_page(direction)
+		
 		--do scroll
 	elseif k == Idstring("page down") then 
+		local direction = self:is_scrollbar_direction_reversed() and -1 or 1
+		self:perform_scroll_page(direction)
 		--do scroll
 	end
 end
