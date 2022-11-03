@@ -6,8 +6,10 @@
 	"menu_consolemod_window_title" : "Console",
 	"menu_consolemod_window_log_prefix_str" : "CONSOLE: %s",
 	"menu_consolemod_dialog_submit_title" : "Submit",
-
-
+	"menu_consolemod_restart_dialog_countdown" : "RESTARTING IN %i SECONDS...",
+	"menu_consolemode_error_command_missing" : "/%s: No such command found.",
+	"menu_consolemod_firstboot_autoexec_comment" : "--The contents of this file will be loaded and executed shortly after the game loads.\n--You can use this to automatically set aliases or variables for longer term testing or debugging, or for temporarily overriding Console configuration vars.\n--You may safely delete this message.",
+	
 	"dcc_window_startup_message_1" : "Initiating a new console session.",
 	"dcc_window_startup_message_2" : "Welcome to the unofficial console!",
 	"dcc_window_startup_message_3" : "Type /help for a list of commands.",

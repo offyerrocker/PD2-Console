@@ -665,7 +665,7 @@ function ConsoleModDialog:create_gui()
 		color = selection_box_color,
 		alpha = 1,
 		blend_mode = "normal",
-		layer = 1015
+		layer = 1001
 	})
 	self._selection_box = selection_box
 	

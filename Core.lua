@@ -16,6 +16,11 @@
 
 ******************* Feature list todo: ******************* 
 
+- "Debug HUD"
+	- show aim-at target (tweakdata and health)
+	- show xyz pos
+- optional pause on open console (sp only)
+	- unpause on settings toggle
 - straighten out Log/Print/output call flow
 	- different levels of logging
 	print/log behavior option checkboxes
@@ -36,6 +41,7 @@
 	autoexec batch-style files
 - option to de-focus the console and keep it open while playing without hiding it
 - "/" key shortcut to open console window
+	- or other keys; allow other keys as command character
 - "is holding scroll" for temporary scroll lock 
 - button-specific mouseover color
 - session pref with existing vars
@@ -46,6 +52,7 @@
 - limit number/size of input/output logs (enforced on save and load)
 - history line nums + ctrl-G navigation?
 - separate session "settings" from normal configuration settings?
+- lookup asset loaded table so check when specific assets are loaded without having to make redundant dynresource checks
 
 
 ******************* Commands todo *******************
@@ -83,6 +90,7 @@ do --init mod vars
 	Console._menu_path = mod_path .. "menu/options.json"
 	Console._default_localization_path = mod_path .. "localization/english.json"
 	Console._save_path = save_path .. "console_settings.ini"
+	Console._autoexec_menustate_path = save_path .. "autoexec_menustate.lua"
 	Console._output_log_file_path = save_path .. "console_output_log.txt" --store recent console output; colors and data types are not preserved
 	Console._input_log_file_path = save_path .. "console_input_log.txt" -- store recent console input
 	Console.console_window_menu_id = "console_window_menu" --not used
@@ -140,6 +148,7 @@ do --init mod vars
 	Console.default_settings = {
 		safe_mode = false,
 		console_params_guessing_enabled = true,
+		console_pause_game_on_focus = true,
 		log_input_enabled = true,
 		log_output_enabled = false,
 		log_buffer_enabled = true,
@@ -193,6 +202,7 @@ do --init mod vars
 		"log_buffer_enabled",
 		"log_buffer_interval",
 		"style_color_error",
+		"console_pause_game_on_focus",
 		"console_params_guessing_enabled",
 		"input_mousewheel_scroll_direction_reversed",
 		"input_mousewheel_scroll_speed",
@@ -301,14 +311,86 @@ do --init mod vars
 	Console._restart_timer_t = false  --used for /restart [timer] command: tracks time left til 0 (restart)
 	Console._colorpicker = nil
 	Console._is_font_asset_load_done = nil --if font is loaded
+	Console._is_texture_asset_load_done = nil
 	
+	Hooks:Register("ConsoleMod_RegisterCommands")
+	Hooks:Register("ConsoleMod_AutoExec")
+	
+	Hooks:Add("ConsoleMod_RegisterCommands","consolemod_load_base_commands",function(console)
+		console:RegisterCommand("restart",{
+			str = nil,
+			desc = "Reloads the Lua state. Restart the heist day if in a heist, or reload the menu if at the main menu.",
+			manual = "/restart [String cancel]",
+			arg_desc = "(Boolean) Any truthy value as the first argument will cancel any ongoing restart timer.",
+			name = {
+				arg_desc = "[timer]",
+				short_desc = "(Int) Optional. The number of seconds to delay restarting by. If in-game, will display a timer in chat similar to the one available in the base game. If not supplied, restarts instantly."
+			},
+			name = {
+				arg_desc = "[noclose]",
+				short_desc = "(Boolean) Optional. Any truthy value will prevent the Console window from closing automatically if a restart is performed immediately.\nThis is because the Console window is a dialog, and any open dialog will delay a restart for as long as the dialog is open."
+			},
+			func = callback(console,console,"cmd_restart")
+		})
+		console:RegisterCommand("partname",{
+			str = nil,
+			desc = "Search for a part by localized name/description, internal name/description, internal id, or blackmarket id.",
+			manual = "Usage: /partname [search key]\n\nParameters:\n-type [attachment type]\n-weapon [weapon id]",
+			arg_desc = "(String) The name of the weapon attachment to search for. Single-term, case insensitive, spaces okay.",
+			parameters = {
+				type = {
+					arg_desc = "[attachment type]",
+					short_desc = "(String) The attachment type to filter for, eg. silencer, barrel, stock, etc. Must be exact type match."
+				},
+				weapon = {
+					arg_desc = "[weapon]",
+					short_desc = "(String) The weapon id to filter for, eg. m134, flamethrower, saw, m1911, or new_m4. If supplied, partname will only display attachments that can be applied to this weapon. Must be exact weapon_id match."
+				}
+			},
+			func = callback(console,console,"cmd_partname")
+		})
+		console:RegisterCommand("weaponname",{
+			str = nil,
+			desc = "Search for a weapon by localized name/description, internal name/description, internal id, or blackmarket id.",
+			manual = "Usage: /weaponname [search key]",
+			arg_desc = "(String) The name of the weapon to search for. Single-term, case insensitive, spaces okay.",
+			parameters = {
+				name = {
+					arg_desc = "[name]",
+					short_desc = "(String) The name to of the weapon search for. Single-term, case insensitive, spaces okay.",
+					hidden = true
+				},
+				category = {
+					arg_desc = "[category]",
+					short_desc = "(String) The weapon category to filter for, eg. shotgun, smg, lmg, etc. Must be exact category match."
+				},
+				slot = {
+					arg_desc = "[slot]",
+					short_desc = "(Integer) The weapon slot number to filter for, eg. 1, 2, etc. Must be exact slot match."
+				}
+			},
+			func = callback(console,console,"cmd_weaponname")
+		})
+		console:RegisterCommand("help",{
+			str = nil,
+			desc = "Brief list of commands.",
+			manual = "/help [command name]",
+			arg_desc = "(String) The name of the command to search for. Single-term, case insensitive, no spaces.",
+			parameters = {},
+			func = callback(console,console,"cmd_help")
+		})
+	end)
+
+	Hooks:Add("ConsoleMod_AutoExec","consolemod_autoexec_listener",function(console,state)
+		console:AutoExec(state)
+	end)
 end
 
 do --load ini parser
 	local f,e = blt.vm.loadfile(Console._mod_path .. "utils/LIP.lua")
 	local lip
 	if e then 
-		log("[Horizon Indicator in HUD] ERROR: Failed loading LIP module. Try re-installing BeardLib if this error persists.")
+		log("[CONSOLE] ERROR: Failed loading LIP module. Try re-installing BeardLib if this error persists.")
 	elseif f then 
 		lip = f()
 	end
@@ -335,6 +417,15 @@ end
 
 function Console.hex_number_to_color(n)
 	return type(n) == "number" and Color(string.format("%06x",n))
+end
+
+
+function Console.file_exists(path)
+	if SystemFS then
+		return SystemFS:exists(path)
+	else
+		return file.FileExists(path)
+	end
 end
 
 --loggers
@@ -462,7 +553,7 @@ function Console:Update(updater_source,t,dt)
 			self._restart_timer = self._restart_timer or time_left 
 			self._restart_timer = time_left
 			
-			self:Log("RESTARTING IN " .. string.format("%i",tostring(time_left)) .. " SECONDS.",{color = Color.yellow})
+			self:Log(string.format(managers.localization:text("menu_consolemod_restart_dialog_countdown"),time_left),{color = Color.yellow})
 		end
 		if time_left <= 0 then 
 			managers.game_play_central:restart_the_game()
@@ -483,7 +574,7 @@ function Console:InterpretCommand(raw_cmd_string)
 	end
 	local command_data = self._registered_commands[cmd_name]
 	if not command_data then 
-		self:Log("/" .. cmd_name .. ": No such command found.")
+		self:Log(string.format(managers.localization:text("menu_consolemode_error_command_missing"),cmd_name))
 		return
 	end
 	local possible_params
@@ -502,6 +593,7 @@ function Console:InterpretCommand(raw_cmd_string)
 		"\"",
 		'\''
 	}
+	
 	local _pair_chars = {}
 	local _pair_data = {}
 	for _,pair_char in pairs(escape_set_characters) do 
@@ -772,6 +864,16 @@ function Console:RegisterCommand(id,data)
 	self._registered_commands[id] = data
 end
 
+function Console:AutoExec(c) --executes the contents of a lua file
+	Log("Autoexec called")
+	if c == "menu_state" then
+		Log("Doing menu state")
+		if self.file_exists(self._autoexec_menustate_path) then 
+			Log("File exists")
+			self:Log(dofile(self._autoexec_menustate_path))
+		end
+	end
+end
 
 --commands
 
@@ -1340,6 +1442,7 @@ function Console:ResetSettings(soft_reset)
 	end
 end
 
+
 --asset loading
 
 function Console:AddFonts()
@@ -1422,26 +1525,50 @@ function Console:LoadFonts()
 	--]]
 end
 
+function Console:AddTextures()
+	local texture_ids = Idstring("texture")
+	local file_name = "guis/textures/consolemod/buttons_atlas"
+	local file_path = Console._mod_path .. "assets/" .. file_name
+	local file_name_ids = Idstring(file_name)
+	BLT.AssetManager:CreateEntry(file_name_ids,texture_ids,file_path .. ".texture")
+end
+
+function Console:LoadTextures()
+	local texture_ids = Idstring("texture")
+	local file_name = "guis/textures/consolemod/buttons_atlas"
+	local file_name_ids = Idstring(file_name)
+	managers.dyn_resource:load(texture_ids,file_name_ids,DynamicResourceManager.DYN_RESOURCES_PACKAGE,
+		function(done,resource_type_ids,resource_ids)
+			self._is_texture_asset_load_done = done
+		end
+	)
+end
+
+function Console:LoadAllAssets()
+	self:AddTextures()
+	self:LoadTextures()
+	self:AddFonts()
+	self:LoadFonts()
+end
 
 --menu hooks
 
-Hooks:Register("ConsoleMod_RegisterCommands")
-
 Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager)
 --	Console:LoadSettings() --temp disabled; work from default settings for now
-	Console:AddFonts()
-	Console:LoadFonts()
-		
-	do
-		local texture_ids = Idstring("texture")
-		local file_name = "guis/textures/consolemod/buttons_atlas"
-		local file_path = Console._mod_path .. "assets/" .. file_name
-		local file_name_ids = Idstring(file_name)
-		BLT.AssetManager:CreateEntry(file_name_ids,texture_ids,file_path .. ".texture")
-		managers.dyn_resource:load(texture_ids,file_name_ids,DynamicResourceManager.DYN_RESOURCES_PACKAGE,function() end)
-	end
+
+	
 
 	if not Console.settings.safe_mode then 
+		if not Console.file_exists(Console._autoexec_menustate_path) then 
+			local file = io.open(Console._autoexec_menustate_path,"w+")
+			if file then
+				file:write(managers.localization:text("menu_consolemod_firstboot_autoexec_comment"))
+				file:close()
+			end
+		end
+		
+		Console:LoadAllAssets()
+		
 		if Console.settings.log_output_enabled then 
 			Console:LoadOutputLog()
 		end
@@ -1466,75 +1593,12 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	MenuCallbackHandler.callback_dcc_close = function(self) end --not used
 	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
 	
-	
-	Console:RegisterCommand("restart",{
-		str = nil,
-		desc = "Reloads the Lua state. Restart the heist day if in a heist, or reload the menu if at the main menu.",
-		manual = "/restart [String cancel]",
-		arg_desc = "(Boolean) Any truthy value as the first argument will cancel any ongoing restart timer.",
-		name = {
-			arg_desc = "[timer]",
-			short_desc = "(Int) Optional. The number of seconds to delay restarting by. If in-game, will display a timer in chat similar to the one available in the base game. If not supplied, restarts instantly."
-		},
-		name = {
-			arg_desc = "[noclose]",
-			short_desc = "(Boolean) Optional. Any truthy value will prevent the Console window from closing automatically if a restart is performed immediately.\nThis is because the Console window is a dialog, and any open dialog will delay a restart for as long as the dialog is open."
-		},
-		func = callback(Console,Console,"cmd_restart")
-	})
-	Console:RegisterCommand("partname",{
-		str = nil,
-		desc = "Search for a part by localized name/description, internal name/description, internal id, or blackmarket id.",
-		manual = "Usage: /partname [search key]\n\nParameters:\n-type [attachment type]\n-weapon [weapon id]",
-		arg_desc = "(String) The name of the weapon attachment to search for. Single-term, case insensitive, spaces okay.",
-		parameters = {
-			type = {
-				arg_desc = "[attachment type]",
-				short_desc = "(String) The attachment type to filter for, eg. silencer, barrel, stock, etc. Must be exact type match."
-			},
-			weapon = {
-				arg_desc = "[weapon]",
-				short_desc = "(String) The weapon id to filter for, eg. m134, flamethrower, saw, m1911, or new_m4. If supplied, partname will only display attachments that can be applied to this weapon. Must be exact weapon_id match."
-			}
-		},
-		func = callback(Console,Console,"cmd_partname")
-	})
-	Console:RegisterCommand("weaponname",{
-		str = nil,
-		desc = "Search for a weapon by localized name/description, internal name/description, internal id, or blackmarket id.",
-		manual = "Usage: /weaponname [search key]",
-		arg_desc = "(String) The name of the weapon to search for. Single-term, case insensitive, spaces okay.",
-		parameters = {
-			name = {
-				arg_desc = "[name]",
-				short_desc = "(String) The name to of the weapon search for. Single-term, case insensitive, spaces okay.",
-				hidden = true
-			},
-			category = {
-				arg_desc = "[category]",
-				short_desc = "(String) The weapon category to filter for, eg. shotgun, smg, lmg, etc. Must be exact category match."
-			},
-			slot = {
-				arg_desc = "[slot]",
-				short_desc = "(Integer) The weapon slot number to filter for, eg. 1, 2, etc. Must be exact slot match."
-			}
-		},
-		func = callback(Console,Console,"cmd_weaponname")
-	})
-	Console:RegisterCommand("help",{
-		str = nil,
-		desc = "Brief list of commands.",
-		manual = "/help [command name]",
-		arg_desc = "(String) The name of the command to search for. Single-term, case insensitive, no spaces.",
-		parameters = {},
-		func = callback(Console,Console,"cmd_help")
-	})
-	--Console:RegisterCommand("weaponinfo")
 	Hooks:Call("ConsoleMod_RegisterCommands",Console)
 	
-	
 	Console:CreateConsoleWindow()
-
+	
+	Hooks:Call("ConsoleMod_AutoExec",Console,"menu_state")
+	
 	MenuHelper:LoadFromJsonFile(Console._menu_path, Console, Console.settings)
 end)
 
