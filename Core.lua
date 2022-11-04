@@ -397,6 +397,14 @@ do --hooks and command registration
 				weapon = {
 					arg_desc = "[weapon]",
 					short_desc = "(String) The weapon id to filter for, eg. m134, flamethrower, saw, m1911, or new_m4. If supplied, partname will only display attachments that can be applied to this weapon. Must be exact weapon_id match."
+				},
+				blueprint = {
+					arg_desc = "[]",
+					short_desc = "If supplied, lists the ids of all the weapons that use a given part."
+				},
+				npcs = {
+					arg_desc = "[]",
+					short_desc = "If supplied, allows NPC weapons (NPC-only weapon variants, typically with a _crew or _npc suffix) to be listed."
 				}
 			},
 			func = callback(console,console,"cmd_partname")
@@ -751,7 +759,6 @@ function Console:InterpretCommand(raw_cmd_string)
 	
 	local cmd_string = string.sub(raw_cmd_string,2) --remove forwardslash
 	local cmd_name = string.match(cmd_string,"[^%s]*")--[%a%s]+")
-	
 	if not cmd_name or cmd_name == "" then
 		return
 	end
@@ -844,11 +851,14 @@ function Console:InterpretCommand(raw_cmd_string)
 	
 	local parameters_pattern = "[%-][%a%p]+[^%-]*"
 	local params_start,params_finish = string.find(cmd_string_subbed,parameters_pattern)
-	
 	--get positional arguments
 	local args_string
 	if params_start then
-		args_string = string.sub(cmd_string_subbed,1,params_start - 2) --extra indices for the space and hyphen
+		if params_start > 2 then
+			args_string = string.sub(cmd_string_subbed,1,params_start - 2) --extra indices for the space and hyphen
+		else
+			args_string = ""
+		end
 	else
 		args_string = cmd_string_subbed
 	end
@@ -890,23 +900,20 @@ function Console:InterpretCommand(raw_cmd_string)
 		--guess the closest match for any parameter eg. -a --> -all
 	if possible_params then
 		for _,param_data in ipairs(params) do 
+			local p = table.deep_map_copy(possible_params)
 			if param_data.confirmed then
 				--exact match already exists
 			else
-				local best_match
-				local p = table.deep_map_copy(possible_params)
-				for j=1,string.len(param_data.name),1 do 		
-					local subs = string.sub(param_data.name,1,j)
-					--check a growing substring of the parameter
-					for i=#p,1,-1 do
-						--against each possible parameter
-						local pn = p[i]
-						if not string.find(pn,subs) then
-							table.remove(p,i)
-							break
-						end
+				for i=#p,1,-1 do 
+					local possible_param_name = p[i]
+					local search_key = "^" .. self.string_escape_magic_characters(param_data.name) .. ""
+					if (string.find(possible_param_name,search_key)) then
+						--
+					else
+						table.remove(p,i)
 					end
 				end
+				
 				if #p > 0 then
 					local pn = p[1]
 					param_data.name = pn
@@ -942,7 +949,6 @@ function Console:InterpretCommand(raw_cmd_string)
 			cmd_params[param_data.name] = param_data.value
 		end
 	end
-	
 	local meta_params = {
 		raw_input = raw_cmd_string, --store this here and pass it to any command to allow custom parsing
 		cmd_string = cmd_string_no_cmd_name
@@ -1166,6 +1172,8 @@ function Console:cmd_partname(params,name,meta_params)
 	local results = {}
 	local _type = params.type
 	local weapon_id = params.weapon_id or params.weapon
+	local list_weapons = params.blueprint
+	local allow_npc_weapons = params.npcs
 	
 	local search_feedback_str = "--- Searching for"
 	if name and name ~= "" then 
@@ -1197,10 +1205,10 @@ function Console:cmd_partname(params,name,meta_params)
 					return false
 				end
 			end
-			self:Log(tostring(part_id) .. " / " .. tostring(localized_name or "UNKNOWN"))
 			return true
 		end
 	end
+	local use_weapons
 	if weapon_id then
 		local bm_id = managers.weapon_factory:get_factory_id_by_weapon_id(weapon_id)
 		local bm_weapon_data = bm_id and tweak_data.weapon.factory[bm_id]
@@ -1218,6 +1226,25 @@ function Console:cmd_partname(params,name,meta_params)
 		for part_id,data in pairs(tweak_data.weapon.factory.parts) do 
 			if check_part(part_id,data) then
 				table.insert(results,part_id)
+			end
+		end
+	end
+	
+	table.sort(results)
+	
+	for _,part_id in ipairs(results) do 
+		local part_data = tweak_data.weapon.factory.parts[part_id]
+		local localized_name = part_data.name_id and managers.localization:text(part_data.name_id)
+		self:Log(tostring(part_id) .. " / " .. tostring(localized_name or "UNKNOWN"))
+		if list_weapons then 
+			for bm_id,weapon_data in pairs(tweak_data.weapon.factory) do 
+				if weapon_data.uses_parts and table.contains(weapon_data.uses_parts,part_id) then 
+					local weapon_id = managers.weapon_factory:get_weapon_id_by_factory_id(bm_id)
+					local localized_weapon_name = weapon_id and managers.weapon_factory:get_weapon_name_by_weapon_id(weapon_id)
+					if localized_weapon_name or allow_npc_weapons then
+						self:Log("    - " .. tostring(bm_id) .. " / " .. tostring(weapon_id) .. " / " .. tostring(localized_weapon_name or "UNKNOWN"))
+					end
+				end
 			end
 		end
 	end

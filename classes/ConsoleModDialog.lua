@@ -1058,6 +1058,9 @@ function ConsoleModDialog:confirm_text()
 --	log("confirm button presed")
 	local input_text = self._input_text
 	local current_text = input_text:text()
+	if string.gsub(current_text,"%s","") == "" then 
+		return
+	end
 	local current_len = utf8.len(current_text)
 	local settings = self.inherited_settings
 	local color = settings.window_text_normal_color
