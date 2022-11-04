@@ -722,6 +722,8 @@ function ConsoleModDialog:create_gui()
 		h = body_h,
 		align = "left",
 		vertical = "bottom",
+		halign = "grow",
+--		valign = "grow",
 		wrap = true,
 		alpha = 1,
 		layer = 1002
@@ -932,13 +934,20 @@ end
 function ConsoleModDialog:resize_panel(to_w,to_h)
 	local panel = self._panel
 	panel:set_size(to_w,to_h)
-	
+	local params = self:get_creation_params()
+	local history_margin_hor= params.history_margin_hor
+	local bw,bh = self._body:size()
 	local history_text = self._history_text
+	history_text:set_w(bw - (history_margin_hor * 2))
+
+	--force re-evaluate word wrap
+	history_text:set_align("right")
+	history_text:set_align("left")
+	
 	local _,_,_,th = history_text:text_rect() --actual size
-	local y_min = - math.abs(self._body:h() - th)
+	local y_min = - math.abs(bh - th)
 	local y_max = 0
 	local ratio = (history_text:y() - y_min) / (y_max - y_min)
-	
 	self:set_vscroll_handle_by_ratio(ratio)
 --	self:set_vscroll_handle_height(ratio)
 end

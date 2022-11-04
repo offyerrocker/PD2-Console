@@ -16,6 +16,7 @@
 
 
 ******************* Feature list todo: ******************* 
+- use coroutines for at-risk loops
 - var pipelining from command to command
 	- eg. saving return values of list from /weaponname to $WEAPONS
 - change removing redundant spaces (allow unfiltered string streams per command)
@@ -57,10 +58,14 @@
 - history line nums + ctrl-G navigation?
 - separate session "settings" from normal configuration settings?
 - lookup asset loaded table so check when specific assets are loaded without having to make redundant dynresource checks
-
+- support inline images?
+	- would need to move history text into another child panel 
 
 ******************* Commands todo *******************
 
+- multithreading
+	/threads
+	/kill
 - /help - alphabetize
 	-s search function
 - /restart
@@ -70,7 +75,8 @@
 - echo 
 	- escape aliases before applying, so that expanded aliases don't trigger additional expansions
 - /alias
-	- fix var_func_str
+	- alias reference copying (copy func between aliases)
+- /unalias
 - setvar/session var business
 	$ var values (overrides normal vars, not saved)
 	@ temp var values (saved between sessions)
@@ -269,27 +275,23 @@ do --init mod vars
 	--[[ ex.
 		[1] = {
 			input = "/echo hello -p",
-			saved_input = nil,
 			func = function 0xd3adb33f --from loadstring
 		},
 		[2] = {
-			raw_input = "//", --shortcut for repeat previous execution
-			saved_input = "/echo hello -p",
+			input = "/echo hello -p",
 			func = function 0xd3adb33f --same direct reference to previous function
 		},
 		[3] = {
-			raw_input = "/print $hello",
-			saved_input = nil,
+			input = "/print $hello",
 			func = function 0x1234567 --different direct referencce
 		},
 		[4] = {
-			raw_input = "///", --shortcut for re-interpret previous input and execute (eg. if the value of a var has changed since previous execution)
-			saved_input = "/print $hello",
-			re-evaluate = true, --cue loadstring of input
+			input = "/print $hello",
+			reevaluate = true, --cue loadstring of input
 			func = new function --result of loadstring
 		},
 		[5] = {
-			raw_input = "/set $hello 69", --set var $hello to 69
+			input = "/set $hello 69", --set var $hello to 69
 			func = new function --result of loadstring
 		}
 		--]]
@@ -441,6 +443,10 @@ do --hooks and command registration
 				loadstring = {
 					arg_desc = "",
 					short_desc = "If supplied, attempts to process the function or var through loadstring, instead of only saving the string value. Required if you are supplying a function."
+				},
+				noalias = {
+					arg_desc = "",
+					short_desc = "If supplied, prevents interpreting aliases in the supplied value, eg. \"/alias a $b\" will interpret the new alias value $a as the literal string \"$b\"."
 				}
 			},
 			func = callback(console,console,"cmd_alias")
@@ -604,31 +610,111 @@ _G.logall = callback(Console,Console,"LogTable")
 
 --core functionality
 
-function Console:Update(updater_source,t,dt)
-	if self.settings.log_buffer_enabled then 
-		local buffer_timer = self._log_buffer_timer
-		buffer_timer = buffer_timer - dt
-		if buffer_timer < 0 then 
-			buffer_timer = self.settings.log_buffer_interval
-			self:FlushInputLogBuffer()
-			self:FlushOutputLogBuffer()
+function Console:callback_confirm_text(dialog_instance,text)
+	self:ParseTextInput(text)
+end
+
+function Console:ParseTextInput(text)
+	local COMMAND_PREFIX = self.PREFIXES.COMMAND
+	local ALIAS_PREFIX = self.PREFIXES.ALIAS
+	local command_repeat = string.rep(COMMAND_PREFIX,2)
+	if string.sub(text,1,2) == command_repeat then
+		--special repeat command "//" executes previous input
+		local input_log = self._input_log
+		if #input_log > 0 then
+			local data = input_log[#input_log]
+			text = data.input
+		else
+			self:Log("Error: No command history!")
 		end
 	end
 	
-	if self._restart_timer_t then --time at which heist will restart
-		local time_left = math.ceil(self._restart_timer_t - t) --seconds left to restart
-		if (not self._restart_timer) or (self._restart_timer - time_left) >= 1 then --output only once, not every update
-			self._restart_timer = self._restart_timer or time_left 
-			self._restart_timer = time_left
-			
-			self:Log(string.format(managers.localization:text("menu_consolemod_restart_dialog_countdown"),time_left),{color = Color.yellow})
-		end
-		if time_left <= 0 then 
-			managers.game_play_central:restart_the_game()
-			self._restart_timer_t = nil
+	local first_char = string.sub(text,1,1)
+	if first_char == ALIAS_PREFIX then
+		local _text = string.sub(text,2) --remove alias signifier
+		local a,b = string.find(_text,"[^%s]*")
+		if a then
+			local alias_token = string.sub(_text,a,b)
+			local alias = self:GetAlias(alias_token)
+			if alias then
+				text = self.string_replace(_text,a,b,alias)
+				first_char = string.sub(text,1,1)
+			end
+			--alias cannot trigger special repeat command "//"
+		else
+			--only command name (no params)
+			local alias = self:GetAlias(_text)
+			if alias then 
+				text = alias
+			end
 		end
 	end
 	
+	if first_char == COMMAND_PREFIX then 
+		return self:InterpretCommand(text)
+	elseif string.gsub(text,"%s","") ~= "" then
+		return self:InterpretLua(text)
+	end
+end
+
+function Console:InterpretLua(raw_string)
+	self.blt_log(self.settings.window_prompt_string .. raw_string)
+--	local s = string.match(raw_string,"[^%s]*.*")
+	local s = raw_string
+	local force_ordered_results = false --todo
+	local result
+	local func,err = loadstring(s)
+	if err then 
+		local err_color = self.hex_number_to_color(self.settings.style_color_error)
+		self:Log("Error loading chunk:",{color=err_color})
+		self:Log(err,{color=err_color})
+	elseif func then 
+		if force_ordered_results then
+			result = pcall(func)
+		else
+			result = {pcall(func)}
+		end
+		if result[1] == true then
+			table.remove(result,1)
+		end
+	end
+	self:AddToInputLog(
+		{
+			input = s,
+			func = func
+		}
+	)
+	local out_s
+	local color_data = {}
+	if result then
+		local value_sep = "\n"
+		local sep_length = utf8.len(value_sep)
+		local current = 1
+		for result_num,v in ipairs(result) do 
+			local _type = type(v)
+			local _v = tostring(v)
+			self.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_v))
+			local color = self:GetLogColorByDataType(_type)
+			local length = utf8.len(_v)
+			local new_current = current + length
+			color_data[result_num] = {
+				start = current,
+				finish = new_current,
+				color = color
+			}
+			if out_s then 
+				out_s = out_s .. value_sep .. _v
+				current = new_current + sep_length
+			else
+				out_s = _v
+				current = new_current + sep_length
+			end
+		end
+	else
+		out_s = nil
+	end
+--	self:AddToOutputLog(result)
+	return out_s,color_data --colors here
 end
 
 function Console:InterpretCommand(raw_cmd_string)
@@ -657,26 +743,10 @@ function Console:InterpretCommand(raw_cmd_string)
 	
 	local name_len = string.len(cmd_name)
 	cmd_string = string.sub(cmd_string,name_len + 2) --remove cmd name from the string; extra index for end of string and space 
-	
-	local function esc(s)
-		--escape any characters that need escaping (ironically this step only needs to be performed on the substitutes)
-		local escape_magic_chars = {
-			'(',
-			')',
-			'.',
-			'+',
-			'-',
-			'*',
-			'?',
-			'^',
-			'$'
-		}
-		for _,character in pairs(escape_magic_chars) do 
-			local _s = s
-			s = string.gsub(s,"%" .. character,"%%" .. character)
-		end
-		return s
-	end
+	local cmd_string_no_cmd_name = cmd_string
+
+	--escape any characters that need escaping (ironically this step only needs to be performed on the substitutes)
+	local esc = self.string_escape_magic_characters
 	
 	
 	local cmd_string_subbed = cmd_string
@@ -834,7 +904,7 @@ function Console:InterpretCommand(raw_cmd_string)
 		for i=#substitutions,1,-1 do 
 			local sub_data = table.remove(substitutions,i)
 			local orig = sub_data.s1
-			local new = esc(sub_data.s2)
+			local new = esc(sub_data.s2,to)
 
 			--restore substitutions to positional parameters
 			args_string = string.gsub(args_string,new,orig)
@@ -852,129 +922,57 @@ function Console:InterpretCommand(raw_cmd_string)
 		end
 	end
 	
+	local meta_params = {
+		raw_input = raw_cmd_string, --store this here and pass it to any command to allow custom parsing
+		cmd_string = cmd_string_no_cmd_name
+	}
+	
 	if command_data.func then 
-		command_data.func(cmd_params,args_string)
 		self:AddToInputLog({
-			raw_input = raw_cmd_string,
 			input = raw_cmd_string,
 			func = nil --command_data.func
 		})
+		return command_data.func(cmd_params,args_string,meta_params)
 	elseif command_data.str then 
 		local func,err = loadstring(command_data.str)
 		if func then
 			command_data.func = func
-			return pcall(func,cmd_params,args_string)
+			return pcall(func,cmd_params,args_string,meta_params)
 		elseif err then
 			self:Log(err)
 		end
 		self:AddToInputLog({
-			raw_input = raw_cmd_string,
 			input = raw_cmd_string,
 			func = func
 		})
 	end
 end
 
-
-function Console:callback_confirm_text(dialog_instance,text)
-	local first_char = string.sub(text,1,1)
-	if first_char == self.PREFIXES.ALIAS then
-		local _text = string.sub(text,2) --remove alias signifier
-		local a,b = string.find(_text,"[^%s]*")
-		if a then
-			local alias_token = string.sub(_text,a,b)
-			local alias = self:GetAlias(alias_token)
-			if alias then
-				text = self.string_replace(_text,a,b,alias)
-				first_char = string.sub(text,1,1)
-			end
-		else
-			--only command name (no params)
-			local alias = self:GetAlias(_text)
-			if alias then 
-				text = alias
-			end
-		end
-	end	
-	if first_char == self.PREFIXES.COMMAND then 
-		local input_log = self._input_log
-		if text == string.rep(self.PREFIXES.COMMAND,2) then 
-			if #input_log > 0 then
-				local data = input_log[#input_log]
-				text = data.input or data.raw_input
-				--if data.func then 
-				
-				--end
-			else
-				self:Log("Error: No command history!")
-			end
-		else
-			return self:InterpretCommand(text)
-		end
-	elseif string.gsub(text,"%s","") ~= "" then
-		return self:InterpretInput(text)
-	end
-end
-
-function Console:InterpretInput(raw_string)
-	self.blt_log(self.settings.window_prompt_string .. raw_string)
---	local s = string.match(raw_string,"[^%s]*.*")
-	local s = raw_string
-	local force_ordered_results = false --todo
-	local result
-	local func,err = loadstring(s)
-	if err then 
-		local err_color = self.hex_number_to_color(self.settings.style_color_error)
-		self:Log("Error loading chunk:",{color=err_color})
-		self:Log(err,{color=err_color})
-	elseif func then 
-		if force_ordered_results then
-			result = pcall(func)
-		else
-			result = {pcall(func)}
-		end
-		if result[1] == true then
-			table.remove(result,1)
+function Console:Update(updater_source,t,dt)
+	if self.settings.log_buffer_enabled then 
+		local buffer_timer = self._log_buffer_timer
+		buffer_timer = buffer_timer - dt
+		if buffer_timer < 0 then 
+			buffer_timer = self.settings.log_buffer_interval
+			self:FlushInputLogBuffer()
+			self:FlushOutputLogBuffer()
 		end
 	end
-	self:AddToInputLog(
-		{
-			raw_input = raw_string,
-			input = s,
-			func = func
-		}
-	)
-	local out_s
-	local color_data = {}
-	if result then
-		local value_sep = "\n"
-		local sep_length = utf8.len(value_sep)
-		local current = 1
-		for result_num,v in ipairs(result) do 
-			local _type = type(v)
-			local _v = tostring(v)
-			self.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_v))
-			local color = self:GetLogColorByDataType(_type)
-			local length = utf8.len(_v)
-			local new_current = current + length
-			color_data[result_num] = {
-				start = current,
-				finish = new_current,
-				color = color
-			}
-			if out_s then 
-				out_s = out_s .. value_sep .. _v
-				current = new_current + sep_length
-			else
-				out_s = _v
-				current = new_current + sep_length
-			end
+	
+	if self._restart_timer_t then --time at which heist will restart
+		local time_left = math.ceil(self._restart_timer_t - t) --seconds left to restart
+		if (not self._restart_timer) or (self._restart_timer - time_left) >= 1 then --output only once, not every update
+			self._restart_timer = self._restart_timer or time_left 
+			self._restart_timer = time_left
+			
+			self:Log(string.format(managers.localization:text("menu_consolemod_restart_dialog_countdown"),time_left),{color = Color.yellow})
 		end
-	else
-		out_s = nil
+		if time_left <= 0 then 
+			managers.game_play_central:restart_the_game()
+			self._restart_timer_t = nil
+		end
 	end
---	self:AddToOutputLog(result)
-	return out_s,color_data --colors here
+	
 end
 
 function Console:GetLogColorByDataType(_type)
@@ -983,7 +981,6 @@ function Console:GetLogColorByDataType(_type)
 	local color = setting_name and self.settings[setting_name] or self.settings.style_data_color_misc
 	return Color(string.format("%06x",color))
 end
-
 
 --management
 
@@ -1007,6 +1004,36 @@ function Console:AutoExec(c) --executes the contents of a lua file
 end
 
 --commands
+
+function Console.string_escape_magic_characters(s,to)
+	local escape_magic_chars = {
+		'(',
+		')',
+		'.',
+		'+',
+		'-',
+		'*',
+		'?',
+		'^',
+		'$'
+	}
+	local a,b
+	if to then 
+		a = 1
+		b = 2
+	else
+		a = 4
+		b = 2
+	end
+	for _,character in pairs(escape_magic_chars) do 
+		local _s = s
+		s = string.gsub(s,string.rep("%",a) .. character,string.rep("%",b) .. character)
+	end
+	return s
+end
+
+
+
 
 function Console:cmd_help(params,subcmd)
 	local cmd_data = subcmd and self._registered_commands[subcmd] 
@@ -1223,67 +1250,99 @@ function Console:cmd_restart(params,timer)
 	
 end
 
-function Console:cmd_alias(params,args)
-	local _args = string.split(args," ")
-	local do_loadstring = params.loadstring --if true, attempts to read the provided func or value as a chunk, instead of just storing the string value
-	local var_name_str = _args[1]
-	local var_value_str = _args[2]
-	local var_func_str -- = _args[3]
+function Console:cmd_alias(params,args,meta_params)
+	local do_loadstring = params.loadstring --if true, attempts to read the provided value as a chunk, instead of just storing the string value
+	local noalias = params.noalias
+	local raw_input = meta_params.raw_input
+	local cmd_no_name = meta_params.cmd_string 
+	local name_start,name_finish = string.find(args,"%w+[%w_]*") --must start with alphanum
+	local var_name = string.sub(args,name_start,name_finish)
+	local err_col = self.hex_number_to_color(self.settings.style_color_error)
 	
-	local var_value,var_func,err,feedback_str,feedback_type
-	
-	if var_name_str and var_name_str ~= "" then
-		if var_func_str and do_loadstring then 
-			var_func,err = loadstring(var_func_str)
-			if var_func then
-				feedback_str = var_func_str
-				feedback_type = type(var_func)
-				--success
+	local feedback_val,feedback_type
+	local value,func,err
+	local args_no_params
+		
+	if var_name and string.gsub(var_name,"%s","") ~= "" then
+		cmd_no_name = string.sub(cmd_no_name,name_finish + 2)
+		local esc_chars = {
+			"'",
+			'"'
+		}
+		local param_char = "-"
+		local param_index
+		local char_pair
+		if cmd_no_name and string.find(cmd_no_name,"%" .. param_char) then
+			for i=1,utf8.len(cmd_no_name),1 do 
+				local current_char = string.sub(cmd_no_name,i,i)
+				if not char_pair then
+					if current_char == param_char then
+						param_index = i
+						break
+					end
+					if table.contains(esc_chars,current_char) then
+						char_pair = current_char
+					end
+				else
+					if char_pair == current_char then
+						char_pair = nil
+					end
+				end
+			end
+		end
+		if param_index then 
+			args_no_params = string.sub(cmd_no_name,1,param_index-2) --extra index for space and param char
+		else
+			args_no_params = cmd_no_name
+		end
+		
+		if do_loadstring then 
+			func,err = loadstring(args_no_params)
+			if func then 
+				feedback_val = args_no_params
+				feedback_type = type(func)
 			else
-				local err_col = self.hex_number_to_color(self.settings.style_color_error)
-				self:Log("Error loading func chunk:",{color=err_col})
-				self:Log(var_func_str,{color=err_col})
+				self:Log("Error loading string chunk:",{color=err_col})
+				self:Log(args_no_params,{color=err_col})
 				self:Log(err,{color=err_col})
+				
 				return
 			end
-		elseif var_value_str then
-			if do_loadstring then
-				var_func,err = loadstring("return " .. var_value_str)
-				if var_func then 
-					feedback_str = var_value_str
-					feedback_type = type(var_func)
-					--success
-				else
-					local err_col = self.hex_number_to_color(self.settings.style_color_error)
-					self:Log("Error loading string chunk:",{color=err_col})
-					self:Log(var_value_str,{color=err_col})
-					self:Log(err,{color=err_col})
-					return
-				end
-			else
-				var_value = var_value_str
-				feedback_str = var_value
-				feedback_type = type(var_value)
+		else
+			if not noalias then
+				value = self:replace_aliases_in_string(args_no_params)
 			end
+			feedback_val = value
+			feedback_type = type(value)
 		end
+	else
+		self:Log(managers.localization:text("menu_consolemod_cmd_alias_bad_name"),{color=err_col})
+		return
+	end
 	
-		if var_value or var_func then
-			self:SetAlias(var_name_str,var_value,var_func)
-		end
-		
-		if feedback_str then 
-			local var_len = string.len(feedback_str)
-			local type_color_name = self.data_type_colors[feedback_type]
-			local feedback_col = self.hex_number_to_color(self.settings[type_color_name or "style_data_color_misc"])
-			
-			self:Log(string.format(managers.localization:text("menu_consolemod_cmd_alias_assigned"),feedback_str,self.PREFIXES.ALIAS .. var_name_str),{color_ranges = {{start = 1,finish = var_len + 1,color=feedback_col}}})
-		end
-		
+	if value or func then
+		self:SetAlias(var_name,value,func)
+	else
+		self:Log(managers.localization:text("menu_consolemod_cmd_alias_bad_value"),{color=err_col})
+		return
+	end
+	
+	if feedback_val then 
+		local feedback_len = utf8.len(feedback_val)
+		local type_color_name = self.data_type_colors[feedback_type]
+		local feedback_col = self.hex_number_to_color(self.settings[type_color_name or "style_data_color_misc"])
+		self:Log(string.format(managers.localization:text("menu_consolemod_cmd_alias_assigned"),tostring(feedback_val),self.PREFIXES.ALIAS .. var_name),{color_ranges = {{start = 1,finish = feedback_len + 1,color=feedback_col}}})
 	end
 end
 
 
 function Console:cmd_echo(param,s)
+	s = self:replace_aliases_in_string(s)
+	self:Log(s)
+end
+
+function Console:replace_aliases_in_string(s)
+	--todo escape quotes or "\" 
 	s = tostring(s)
 	local ALIAS_PREFIX = self.PREFIXES.ALIAS
 	local prefix_search = "%" .. ALIAS_PREFIX
@@ -1304,13 +1363,10 @@ function Console:cmd_echo(param,s)
 			end
 		end
 	end
-	self:Log(s)
+	return s
 end
 
 function Console:SetAlias(id,val,func)
-	if string.sub(tostring(val),1,1) == self.PREFIXES.ALIAS then 
-		val = self:GetUserVar(val)
-	end
 	local data = {
 		value = val,
 		get_value = func
@@ -1341,8 +1397,6 @@ function Console:GetAlias(id)
 --		self:Log(self.PREFIXES.ALIAS .. tostring(id) .. " " .. tostring(self._user_vars[id]))
 --	end
 end
-
-
 
 --colorpicker stuff
 function Console:GetPalettes()
@@ -1471,7 +1525,6 @@ function Console:LoadInputLog()
 					end
 					self._input_log[i] = {
 						input = line,
-						raw_input = line,
 						saved_input = nil,
 						func = func
 					}		
@@ -1485,7 +1538,7 @@ end
 function Console:AddToInputLog(data)
 	table.insert(self._input_log,#self._input_log+1,data)
 	if self.settings.log_input_enabled then
-		local s = data.raw_input or data.input
+		local s = data.input
 		if s then
 			self:WriteToInputLog(string.gsub(s,"\n"," "),false)
 		end
