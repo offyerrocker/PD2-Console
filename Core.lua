@@ -4,8 +4,9 @@
 - Fix internal/external Log/logall use so that user-made Log/logall calls can safely be used on Console's own objects without causing stack overflows
 	- look for another breaker solution
 - [Console] memory crash when using 166k-168k output logs
-- Figure out a memory-safe(r) solution to putting all history output in one continuous string in a single Text object
-
+- [ConsoleModDialog] Fix "scroll lock off" not scrolling properly
+- [Console] Figure out a memory-safe(r) solution to putting all history output in one continuous string in a single Text object
+- [ConsoleModDialog] Prevent "mouse hold" vars from sticking around after the console window is closed, if holding down a key or button when hiding console window
 
 *******************  Bug list [low priority] ******************* 
 
@@ -13,7 +14,9 @@
 
 - [ConsoleModDialog] Dragging any clickable object results in a "drag" mousepointer even if the object is not draggable
 	-solution: add per-item "drag" string mousepointer value
-
+	
+- [ConsoleModDialog] move get_mouseover_target function to use ordered indices so that click priority is possible
+- [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
 
 ******************* Feature list todo: ******************* 
 - use coroutines for at-risk loops
@@ -38,28 +41,28 @@
 - ConsoleModDialog scroll button click input repeat
 
 ******************* Secondary feature todo ******************* 
-- shortcut function to get log/datatype color from settings
 - option to disable color coded logs
 - allow changing type colors through settings
 - [ConsoleModDialog] mouseover tooltips for buttons after n seconds
-- batch file folder system in saves
-	autoexec batch-style files
 - option to de-focus the console and keep it open while playing without hiding it
-- "/" key shortcut to open console window
-	- or other keys; allow other keys as command character
 - "is holding scroll" for temporary scroll lock 
-- button-specific mouseover color
+- button-specific mouseover color/texture
 - session pref with existing vars
 - tab key autocomplete
 - preview history in dialog ui
 	show number of history steps?
 - "undo" steps history
+-highlight text color for main history panel
 - limit number/size of input/output logs (enforced on save and load)
 - history line nums + ctrl-G navigation?
 - separate session "settings" from normal configuration settings?
 - lookup asset loaded table so check when specific assets are loaded without having to make redundant dynresource checks
+- "/" key shortcut to open console window
+	- or other keys; allow other keys as command character
 - support inline images?
 	- would need to move history text into another child panel 
+- batch file folder system in saves
+	autoexec batch-style files
 
 ******************* Commands todo *******************
 
@@ -73,9 +76,11 @@
 	-also remember to code the chat countdown
 - print
 - echo 
+	- preserve type data while replacing aliases to apply type colorcoding
 	- escape aliases before applying, so that expanded aliases don't trigger additional expansions
 - /alias
 	- alias reference copying (copy func between aliases)
+	- alias syntax for functions
 - /unalias
 - setvar/session var business
 	$ var values (overrides normal vars, not saved)
@@ -451,6 +456,22 @@ do --hooks and command registration
 			},
 			func = callback(console,console,"cmd_alias")
 		})
+		console:RegisterCommand("clear",{
+			str = nil,
+			desc = "Clears the Console window. Can be configured to clear the input/output log data on the hard disk as well.",
+			manual = "",
+			parameters = {
+				input_clear = {
+					arg_desc = "",
+					short_desc = "Clears the input log and file."
+				},
+				output_clear = {
+					arg_desc = "",
+					short_desc = "Clears the outlog and file."
+				}
+			},
+			func = callback(console,console,"cmd_clear")
+		})
 	end)
 
 	Hooks:Add("ConsoleMod_AutoExec","consolemod_autoexec_listener",function(console,state)
@@ -611,7 +632,7 @@ _G.logall = callback(Console,Console,"LogTable")
 --core functionality
 
 function Console:callback_confirm_text(dialog_instance,text)
-	self:ParseTextInput(text)
+	return self:ParseTextInput(text)
 end
 
 function Console:ParseTextInput(text)
@@ -827,7 +848,7 @@ function Console:InterpretCommand(raw_cmd_string)
 	--get positional arguments
 	local args_string
 	if params_start then
-		args_string = string.sub(cmd_string_subbed,1,params_start - 1) --extra index for the space
+		args_string = string.sub(cmd_string_subbed,1,params_start - 2) --extra indices for the space and hyphen
 	else
 		args_string = cmd_string_subbed
 	end
@@ -1035,7 +1056,7 @@ end
 
 
 
-function Console:cmd_help(params,subcmd)
+function Console:cmd_help(params,subcmd,meta_params)
 	local cmd_data = subcmd and self._registered_commands[subcmd] 
 	if cmd_data then 
 		self:Log("/" .. tostring(subcmd))
@@ -1061,7 +1082,7 @@ function Console:cmd_help(params,subcmd)
 	end
 end
 
-function Console:cmd_weaponname(params,name)
+function Console:cmd_weaponname(params,name,meta_params)
 	params = type(params) == "table" and params or {}
 	local results = {}
 	if name == "" then
@@ -1140,7 +1161,7 @@ function Console:cmd_weaponname(params,name)
 	return results
 end
 
-function Console:cmd_partname(params,name)
+function Console:cmd_partname(params,name,meta_params)
 	params = type(params) == "table" and params or {}
 	local results = {}
 	local _type = params.type
@@ -1183,7 +1204,7 @@ function Console:cmd_partname(params,name)
 	if weapon_id then
 		local bm_id = managers.weapon_factory:get_factory_id_by_weapon_id(weapon_id)
 		local bm_weapon_data = bm_id and tweak_data.weapon.factory[bm_id]
-		if bm_weapon_data.uses_parts then
+		if bm_weapon_data and bm_weapon_data.uses_parts then
 			for _,part_id in pairs(bm_weapon_data.uses_parts) do 
 				local data = tweak_data.weapon.factory.parts[part_id]
 				if data then 
@@ -1205,7 +1226,7 @@ function Console:cmd_partname(params,name)
 	return results
 end
 
-function Console:cmd_restart(params,timer)
+function Console:cmd_restart(params,args,meta_params)
 	timer = timer == "" and params.timer or timer
 	if timer == "cancel" then
 		self._restart_timer_t = nil
@@ -1335,11 +1356,32 @@ function Console:cmd_alias(params,args,meta_params)
 	end
 end
 
+function Console:cmd_clear(params,args,meta_params) --clears the console
+	local clear_output = params.output_clear
+	local clear_input = params.input_clear
+	if self._window_instance then 
+		self._window_instance:clear_history_text()
+	end
+	if clear_output then 
+		for i=#self._output_log,1,-1 do 
+			self._output_log[i] = nil
+		end
+		self:SaveOutputLog()
+	end
+	if clear_input then 
+		for i=#self._input_log,1,-1 do 
+			self._input_log[i] = nil
+		end
+		self:SaveInputLog()
+	end
+end
 
-function Console:cmd_echo(param,s)
+function Console:cmd_echo(param,s,meta_params)
 	s = self:replace_aliases_in_string(s)
 	self:Log(s)
 end
+
+--alias management
 
 function Console:replace_aliases_in_string(s)
 	--todo escape quotes or "\" 
@@ -1480,14 +1522,12 @@ end
 
 
 --i/o
-function Console:SaveInputLog() --not used
---[[
+function Console:SaveInputLog() --only used to clear log; normally, use append mode
 	local file = io.open(self._input_log_file_path,"w+")
 	if file then
-		file:write(self._input_log)
+		file:write(self.table_concat(self._input_log,"\n"))
 		file:close()
 	end
---]]
 end
 
 function Console:LoadInputLog()
@@ -1581,11 +1621,11 @@ function Console:FlushInputLogBuffer()
 end
 
 
-function Console:SaveOutputLog() --save full log directly
+function Console:SaveOutputLog() --only used to clear log; normally, use append mode
 	if not self._is_reading_log then
 		local file = io.open(self._output_log_file_path,"w+")
 		if file then
-			file:write(self._output_log)
+			file:write(self.table_concat(self._output_log,"\n"))
 			file:close()
 		end
 	end

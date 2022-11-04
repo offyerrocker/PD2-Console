@@ -52,6 +52,7 @@ function ConsoleModDialog:init(manager,data)
 	self._key_held_ids = nil
 	self._key_held_t = nil
 	
+	self._focused_text = nil
 	self._held_object = nil
 	self._mouseover_object = nil
 	self._mouse_drag_x_start = nil
@@ -656,7 +657,7 @@ function ConsoleModDialog:create_gui()
 	})
 	self._caret = caret
 	
-	local selection_box = input_panel:rect({
+	local selection_box = input_panel:rect({ --parent to panel to re-enable selection box on main text
 		name = "selection_box",
 		x = 0,
 		y = 0,
@@ -715,7 +716,7 @@ function ConsoleModDialog:create_gui()
 		font = text_font_name,
 		font_size = text_font_size,
 		color = history_color,
-		selection_color = text_highlight_color,
+		selection_color = selection_box_color,
 		x = history_margin_hor,
 		y = 0,
 		w = body_w - (history_margin_hor * 2),
@@ -735,14 +736,10 @@ function ConsoleModDialog:create_gui()
 			mouseover_pointer = "hand", --arrow link hand grab
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
-			mouse_left_release_callback = nil,
-			mouse_left_click_callback = function(o,x,y) --left click (on release)
+			mouse_left_click_callback = function(o,x,y) --left click (on releasing if this object is the currently held object)
 				if self._save_settings_callback then 
 					self._save_settings_callback()
 				end
-			end,
-			mouse_right_click_callback = function(o,x,y) --right click (on release)
-				--show context menu (click)
 			end,
 			mouse_left_press_callback = function(o,x,y) --left click (on initial press)
 				self._mouse_drag_x_start = x
@@ -750,6 +747,10 @@ function ConsoleModDialog:create_gui()
 				self._held_object = o
 				self._target_drag_x_start = panel:x()
 				self._target_drag_y_start = panel:y()
+			end,
+			mouse_left_release_callback = nil,
+			mouse_right_click_callback = function(o,x,y) --right click (on release) 
+				--show context menu (click)
 			end,
 			mouse_right_press_callback = function(o,x,y)
 				--open context menu (hold)
@@ -771,32 +772,111 @@ function ConsoleModDialog:create_gui()
 				self.inherited_settings.window_y = to_y
 			end
 		},
+		body = {
+			object = body,
+			mouseover_pointer = "arrow",
+			mouseover_event_start_callback = nil,
+			mouseover_event_stop_callback = nil,
+			mouse_left_click_callback = nil,
+			mouse_left_press_callback = function(o,x,y)
+				self._mouse_drag_x_start = x
+				self._mouse_drag_y_start = y
+				self._held_object = o
+				self._focused_text = history_text
+				local drag_index_start = history_text:point_to_index(x,y)
+				if drag_index_start then
+					self._mouse_drag_text_index_start = drag_index_start
+					history_text:set_selection(drag_index_start,drag_index_start)
+					local input_text_len = utf8.len(input_text:text())
+					input_text:set_selection(input_text_len,input_text_len)
+				end
+			end,
+			mouse_left_release_callback = function(o,x,y)
+				self._mouse_drag_text_index_start = nil
+			end,
+			mouse_right_click_callback = nil,
+			mouse_right_press_callback = nil,
+			mouse_drag_event_callback = function(o,x,y)
+				local drag_index_start = self._mouse_drag_text_index_start 
+				if drag_index_start then
+					local drag_index_end = history_text:point_to_index(x,y)
+					if drag_index_end then
+						if drag_index_end < drag_index_start then 
+							self._selection_dir = -1
+							history_text:set_selection(drag_index_end,drag_index_start)
+						else
+							history_text:set_selection(drag_index_start,drag_index_end)
+							self._selection_dir = 1
+						end
+					end
+				end
+			end
+		},
 		input_submit_button = {
 			object = input_submit_button,
 			mouseover_pointer = "link",
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
-			mouse_left_release_callback = nil,
 			mouse_left_click_callback = function(o,x,y) --left click (on release)
 				self:confirm_text()
 			end,
-			mouse_right_click_callback = nil,
 			mouse_left_press_callback = nil,
+			mouse_left_release_callback = nil,
+			mouse_right_click_callback = nil,
 			mouse_right_press_callback = nil, --todo context menu?
 			mouse_drag_event_callback = nil
+		},
+		input_box = {
+			object = input_box,
+			mouseover_pointer = "arrow",
+			mouseover_event_start_callback = nil,
+			mouseover_event_stop_callback = nil,
+			mouse_left_click_callback = function(o,x,y)
+				self._focused_text = input_text
+			end,
+			function(o,x,y)
+				self._mouse_drag_x_start = x
+				self._mouse_drag_y_start = y
+				self._held_object = o
+				self._focused_text = input_text
+				local drag_index_start = history_text:point_to_index(x,y)
+				if drag_index_start then
+					self._mouse_drag_text_index_start = drag_index_start
+					input_text:set_selection(drag_index_start,drag_index_start)
+					local history_text_len = utf8.len(history_text:text())
+					history_text:set_selection(history_text_len,input_text_len)
+				end
+			end,
+			mouse_left_release_callback = function(o,x,y)
+				self._mouse_drag_text_index_start = nil
+			end,
+			mouse_right_click_callback = nil,
+			mouse_right_press_callback = nil, --todo context menu?
+			mouse_drag_event_callback = function(o,x,y)
+				local drag_index_start = self._mouse_drag_text_index_start 
+				if drag_index_start then
+					local drag_index_end = input_text:point_to_index(x,y)
+					if drag_index_end then
+						if drag_index_end < drag_index_start then 
+							self._selection_dir = -1
+							input_text:set_selection(drag_index_end,drag_index_start)
+						else
+							input_text:set_selection(drag_index_start,drag_index_end)
+							self._selection_dir = 1
+						end
+					end
+				end
+			end
 		},
 		resize_grip = {
 			object = resize_grip,
 			mouseover_pointer = "hand",
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
-			mouse_left_release_callback = nil,
 			mouse_left_click_callback = function(o,x,y)
 				if self._save_settings_callback then 
 					self._save_settings_callback()
 				end
-			end,
-			mouse_right_click_callback = function(o,x,y)
 			end,
 			mouse_left_press_callback = function(o,x,y)
 				self._mouse_drag_x_start = x
@@ -804,6 +884,9 @@ function ConsoleModDialog:create_gui()
 				self._held_object = o
 				self._target_drag_x_start = o:world_x() - panel:x()
 				self._target_drag_y_start = o:world_y() - panel:y()
+			end,
+			mouse_left_release_callback = nil,
+			mouse_right_click_callback = function(o,x,y)
 			end,
 			mouse_right_press_callback = function(o,x,y)
 			end,
@@ -926,7 +1009,8 @@ function ConsoleModDialog:create_gui()
 			end
 		}
 	}
-	self._input_text:enter_text(callback(self,self,"enter_text"))
+	self._focused_text = input_text
+	input_text:enter_text(callback(self,self,"enter_text"))
 	self:generate_history(text_stale_color)
 	self:resize_panel(panel_w,panel_h)
 end
@@ -1018,7 +1102,8 @@ function ConsoleModDialog:add_to_history(s,colors)
 	history_text:set_size(bw - (history_margin_hor * 2),th)
 	local history_text_y = history_text:y()
 	if not self:is_scrollbar_lock_enabled() then
-		if history_text_y < bh then 
+		if bh - (th - history_text_y) < 0 then 
+--			log(th - history_text_y)
 			self:set_vscroll_ratio(1)
 			--snap scroll to current line
 		else
@@ -1214,6 +1299,17 @@ function ConsoleModDialog:set_vscroll_bar_height(mul)
 	scrollbar_handle:set_h(mul * default_scrollbar_handle_height)
 end
 
+function ConsoleModDialog:clear_history_text()
+	local history_text = self._history_text
+	history_text:set_text("")
+	local _,_,_,th = history_text:text_rect()
+	self._current_window_color_ranges = {}
+	self._current_range_data_index = 0
+	self:resize_panel(self._panel:size())
+--	self._body:set_h(th)
+	history_text:set_h(self._body:h())
+end
+
 function ConsoleModDialog:callback_mouse_moved(o,x,y)
 --	log("moved " .. tostring(x) .. " " .. tostring(y))
 	
@@ -1342,7 +1438,7 @@ function ConsoleModDialog:callback_mouse_released(o,button,x,y)
 				local ui_object_data = self._ui_objects[id]
 				if mouseover_target == held_object then 
 					if ui_object_data.mouse_left_click_callback then
-						log("leftclick  " .. tostring(x) .. " " .. tostring(y))
+--						log("leftclick  " .. tostring(x) .. " " .. tostring(y))
 						ui_object_data.mouse_left_click_callback(mouseover_target,x,y)
 					end
 				end
@@ -1367,7 +1463,15 @@ function ConsoleModDialog:callback_mouse_released(o,button,x,y)
 		self._mouse_drag_y_start = nil
 
 		--check pointer image
+	elseif button == Idstring("1") then 
+	--[[
+		local id,mouseover_target = self:get_mouseover_target(x,y)
 		
+		local ui_object_data = self._ui_objects[id]
+		if ui_object_data.mouse_right_release_callback then
+			ui_object_data.mouse_right_release_callback(mouseover_target,x,y)
+		end
+	--]]
 	end
 end
 
@@ -1397,13 +1501,19 @@ function ConsoleModDialog:reset_caret_blink_t()
 end
 
 function ConsoleModDialog:on_key_press(k,held)
+	local focused_text = self._focused_text
+	if not alive(focused_text) then 
+		return
+	end
+	local is_input_focused = self._input_text == focused_text
+	local is_writable = self:is_focused_text_writable()
 	local input_text = self._input_text
-	local current_text = input_text:text()
+	local current_text = focused_text:text()
 	
-	local s,e = input_text:selection()
+	local s,e = focused_text:selection()
 	if not (s and e) then 
-		input_text:set_selection(0,0)
-		s,e = input_text:selection()
+		focused_text:set_selection(0,0)
+		s,e = focused_text:selection()
 	end
 	local shift_held = self:key_shift_down()
 	local ctrl_held = self:key_ctrl_down()
@@ -1412,20 +1522,28 @@ function ConsoleModDialog:on_key_press(k,held)
 		self:set_current_history_input_text(current_text)
 		self:confirm_text()
 	elseif k == Idstring("`") and not shift_held then 
-	elseif k == Idstring("v") and ctrl_held then
-		local clipboard = Application:get_clipboard()
-		if clipboard then
-			input_text:replace_text(tostring(clipboard))
+	elseif k == Idstring("z") and ctrl_held then 
+		--todo
+	elseif k == Idstring("x") and ctrl_held then
+		if is_writable and (s ~= e) then
+			Application:set_clipboard(string.sub(current_text,s+1,e+1))
+			focused_text:replace_text("")
+			focused_text:set_selection(s,s)
 		end
-		self:reset_caret_blink_t()
-		self:set_current_history_input_text(current_text)
 	elseif k == Idstring("c") and ctrl_held then
 		if s ~= e then
 			--copy selection to clipboard, 
-			Application:set_clipboard(string.sub(current_text,s,e))
+			Application:set_clipboard(string.sub(current_text,s+1,e+1))
 			--success feedback?
 		end
 		self:reset_caret_blink_t()
+	elseif k == Idstring("v") and ctrl_held then
+		local clipboard = Application:get_clipboard()
+		if clipboard and is_writable then
+			focused_text:replace_text(tostring(clipboard))
+		end
+		self:reset_caret_blink_t()
+		self:set_current_history_input_text(current_text)
 	elseif k == Idstring("home") then 
 		if shift_held then
 			if self._selection_dir == -1 then 
@@ -1433,9 +1551,9 @@ function ConsoleModDialog:on_key_press(k,held)
 			else
 				direction = e
 			end
-			input_text:set_selection(0,direction)
+			focused_text:set_selection(0,direction)
 		else
-			input_text:set_selection(0, 0)
+			focused_text:set_selection(0, 0)
 		end
 		self._selection_dir = -1
 	elseif k == Idstring("end") then 
@@ -1446,9 +1564,9 @@ function ConsoleModDialog:on_key_press(k,held)
 			else
 				direction = e
 			end
-			input_text:set_selection(direction,current_len)
+			focused_text:set_selection(direction,current_len)
 		else
-			input_text:set_selection(current_len,current_len)
+			focused_text:set_selection(current_len,current_len)
 		end
 		self._selection_dir = 1
 	elseif k == Idstring("left") then
@@ -1459,15 +1577,15 @@ function ConsoleModDialog:on_key_press(k,held)
 
 		--elseif control_held then find next space/char
 			if (s > 0) and (self._selection_dir < 0) then -- forward select (increase selection)
-				input_text:set_selection(s-1,e)
+				focused_text:set_selection(s-1,e)
 			elseif (e > 0) and (self._selection_dir > 0) then --backward select (decrease selection) 
-				input_text:set_selection(s,e-1)
+				focused_text:set_selection(s,e-1)
 			end
 		else --move caret
 			if (s < e) then --cancel selection and move caret left
-				input_text:set_selection(s,s)
+				focused_text:set_selection(s,s)
 			elseif (s > 0) then --else if no selection then keep caret left
-				input_text:set_selection(s - 1, s - 1)
+				focused_text:set_selection(s - 1, s - 1)
 			end
 		end
 		self:reset_caret_blink_t()
@@ -1504,9 +1622,9 @@ function ConsoleModDialog:on_key_press(k,held)
 				local next_space_index_start,next_space_index_end = string.find(current_text,pattern,direction)
 				if next_space_index_start then 
 					if self._selection_dir == -1 then 
-						input_text:set_selection(s,next_space_index_start)
+						focused_text:set_selection(s,next_space_index_start)
 					else
-						input_text:set_selection(next_space_index_start,e)
+						focused_text:set_selection(next_space_index_start,e)
 					end
 				end
 			end
@@ -1517,93 +1635,97 @@ function ConsoleModDialog:on_key_press(k,held)
 				self._selection_dir = 1
 			end
 			if (e < current_len) and (self._selection_dir > 0) then --forward select (increase selection)
-				input_text:set_selection(s,e + 1)
+				focused_text:set_selection(s,e + 1)
 			elseif (e > s) and (self._selection_dir < 0) then --backward select (decrease selection)
-				input_text:set_selection(s + 1,e)	
+				focused_text:set_selection(s + 1,e)	
 			end
 		else
 			if s < e then --cancel selection and keep caret right
-				input_text:set_selection(e,e)
+				focused_text:set_selection(e,e)
 			elseif s < current_len then --move caret right
-				input_text:set_selection(s + 1, s + 1)
+				focused_text:set_selection(s + 1, s + 1)
 			end
 		end
 		self:reset_caret_blink_t()
 	elseif k == Idstring("down") then
 		--newer history
-		local num_input_log = #self._input_log
-		if num_input_log > 0 then
-			local new_text
-			if self._input_history_index == 0 then 
-				self:set_current_history_input_text(current_text)
-			end
-			local history_index = (1 + self._input_history_index) % (num_input_log + 1)
-			if history_index == 0 then 
-				new_text = self._current_input_text_string
-			else
-				input_text:set_alpha(0.5)
-				new_text = self._input_log[history_index].input
-			end
-			self._input_history_index = history_index
-			if new_text then
-				input_text:set_text(new_text)
-				local new_len = string.len(new_text)
-				input_text:set_selection(new_len,new_len)
+		if is_input_focused then
+			local num_input_log = #self._input_log
+			if num_input_log > 0 then
+				local new_text
+				if self._input_history_index == 0 then 
+					self:set_current_history_input_text(current_text)
+				end
+				local history_index = (1 + self._input_history_index) % (num_input_log + 1)
+				if history_index == 0 then 
+					new_text = self._current_input_text_string
+				else
+					focused_text:set_alpha(0.5)
+					new_text = self._input_log[history_index].input
+				end
+				self._input_history_index = history_index
+				if new_text then
+					focused_text:set_text(new_text)
+					local new_len = string.len(new_text)
+					focused_text:set_selection(new_len,new_len)
+				end
 			end
 		end
 		
 		self:reset_caret_blink_t()
 	elseif k == Idstring("up") then
 		--older history
-		
-		local num_input_log = #self._input_log
-		if num_input_log > 0 then
-			local new_text
-			if self._input_history_index == 0 then 
-				self:set_current_history_input_text(current_text)
-			end
-			
-			local history_index = (-1 + self._input_history_index) % (num_input_log + 1)
-			if history_index == 0 then 
-				new_text = self._current_input_text_string
-			else
-				input_text:set_alpha(0.5)
-				new_text = self._input_log[history_index].input
-			end
-			self._input_history_index = history_index
-			if new_text then
-				input_text:set_text(new_text)
-				local new_len = string.len(new_text)
-				input_text:set_selection(new_len,new_len)
+		if is_input_focused then
+			local num_input_log = #self._input_log
+			if num_input_log > 0 then
+				local new_text
+				if self._input_history_index == 0 then 
+					self:set_current_history_input_text(current_text)
+				end
+				
+				local history_index = (-1 + self._input_history_index) % (num_input_log + 1)
+				if history_index == 0 then 
+					new_text = self._current_input_text_string
+				else
+					focused_text:set_alpha(0.5)
+					new_text = self._input_log[history_index].input
+				end
+				self._input_history_index = history_index
+				if new_text then
+					focused_text:set_text(new_text)
+					local new_len = string.len(new_text)
+					focused_text:set_selection(new_len,new_len)
+				end
 			end
 		end
 		
 		self:reset_caret_blink_t()
 	elseif k == Idstring("a") and ctrl_held then 
 		local current_len = string.len(current_text)
-		input_text:set_selection(0,current_len)	
---		input_text:replace_text("")
+		focused_text:set_selection(0,current_len)
 		self:reset_caret_blink_t()
 	elseif k == Idstring("backspace") then --delete selection or text character behind caret
-		self:set_current_history_input_text(current_text)
-		local current_len = string.len(current_text)
-		if s == e and s > 0 then
-			input_text:set_selection(s - 1, e)
+		if is_writable then
+			self:set_current_history_input_text(current_text)
+			local current_len = string.len(current_text)
+			if s == e and s > 0 then
+				focused_text:set_selection(s - 1, e)
+			end
+			focused_text:replace_text("")
 		end
-		input_text:replace_text("")
-		
 		self:reset_caret_blink_t()
 	elseif k == Idstring("delete") then --delete selection or text character after caret
-		self:set_current_history_input_text(current_text)
-		
-		if not shift_held then
-			local current_len = string.len(current_text)
-			if s == e and s < current_len then
-				input_text:set_selection(s, e + 1)
+		if is_writable then
+			self:set_current_history_input_text(current_text)
+			
+			if not shift_held then
+				local current_len = string.len(current_text)
+				if s == e and s < current_len then
+					focused_text:set_selection(s, e + 1)
+				end
 			end
+			focused_text:replace_text("")
 		end
-		--input_text:set_selection(s,s)
-		input_text:replace_text("")
 		self:reset_caret_blink_t()
 	elseif k == Idstring("page up") then 
 		local direction = self:is_scrollbar_direction_reversed() and 1 or -1
@@ -1656,60 +1778,81 @@ function ConsoleModDialog:enter_text(o,s)
 	if self:key_ctrl_down() or self:key_alt_down() then 
 		return 
 	end
+	self._focused_text = self._input_text
 	self:reset_caret_blink_t()
 --	Console:Print("enter text ", s)
+	local history_text = self._history_text
+	local history_length = string.len(history_text:text())
+	self._history_text:set_selection(history_length,history_length)
 	o:replace_text(s)
 	self:set_current_history_input_text(o:text())
 end
 
-function ConsoleModDialog:update(t,dt)
-	local input_text = self._input_text
-	local s,e = input_text:selection()
-	local char_index
-	if self._selection_dir == -1 then
-		char_index = s
-	else
-		char_index = e
+function ConsoleModDialog:is_focused_text_writable()
+	if self._focused_text == self._input_text then
+		return true
+	elseif self._focused_text == self._history_text then 
+		return false
 	end
-	
-	if char_index then
-		local caret = self._caret
-		local text_font_size = self.inherited_settings.window_font_size
-		local caret_w = text_font_size / 4
-		local caret_x,caret_y = input_text:character_rect(char_index)
-		if input_text:text() == "" then
---			local prompt = self._prompt
---			local prompt_text = prompt:text()
---			local prompt_len = utf8.len(prompt_text)
---			caret_x,caret_y = prompt:character_rect(prompt_len)
-			caret_x = self._input_box:x()
-			--self._input_box:y()
-			caret_y = self._prompt:y()
-		else
-	--		local _,_,caret_w,caret_h = caret:text_rect()
-		end
-		caret:set_world_position(caret_x - caret_w,caret_y)
-		caret:set_alpha(math.sin(self._caret_blink_speed * (t - self._caret_blink_t)) > 0 and self._caret_blink_alpha_high or self._caret_blink_alpha_low)
-		
-		local p1x,p1y,_,_ = input_text:character_rect(s)
-		local p2x,p2y,_,_ = input_text:character_rect(e)
-		local selection_box = self._selection_box
-		selection_box:set_world_position(p1x,p1y)
-		selection_box:set_w(p2x - p1x)
-		--[[
-		local line_breaks = input_text:line_breaks()
-		local num_line_breaks = #line_breaks
-		if num_line_breaks > 1 then
-			p1y = math.min(p1y,p2y)
-			p2y = math.max(p2y,p3y)
-			local _,p3y,_,_ = input_text:character_rect(line_breaks[num_line_breaks])
-		end
-		--]]
-		selection_box:set_h((p2y - p1y) + (input_text:number_of_lines() * text_font_size) )
+end
 
---		self._history_text:set_text(string.format("%i / %i",self._input_text:selection()) .. "\n" .. string.format("%i / %i",selection_box:size()) .. "\n" .. string.format("%i / %i",selection_box:position()) .. "\n" .. string.format("%i / %i",self._mouse_x,self._mouse_y))
+function ConsoleModDialog:update(t,dt)
+	local focused_text = self._focused_text
+	if focused_text then
+		local input_text = self._input_text
+		local input_text_focused = input_text == self._focused_text
+		local s,e = focused_text:selection()
+		local char_index
+		if self._selection_dir == -1 then
+			char_index = s
+		else
+			char_index = e
+		end
+		
+		if char_index then
+			if self:is_focused_text_writable() then 
+				local caret = self._caret
+				local text_font_size = self.inherited_settings.window_font_size
+				local caret_w = text_font_size / 4
+				local caret_x,caret_y = focused_text:character_rect(char_index)
+				if input_text_focused and focused_text:text() == "" then
+		--			local prompt = self._prompt
+		--			local prompt_text = prompt:text()
+		--			local prompt_len = utf8.len(prompt_text)
+		--			caret_x,caret_y = prompt:character_rect(prompt_len)
+					caret_x = self._input_box:x()
+					--self._input_box:y()
+					caret_y = self._prompt:y()
+				else
+			--		local _,_,caret_w,caret_h = caret:text_rect()
+				end
+				caret:set_world_position(caret_x - caret_w,caret_y)
+				caret:set_alpha(math.sin(self._caret_blink_speed * (t - self._caret_blink_t)) > 0 and self._caret_blink_alpha_high or self._caret_blink_alpha_low)
+			end
+			local selection_box = self._selection_box
+			if input_text_focused then
+				local p1x,p1y,_,_ = focused_text:character_rect(s)
+				local p2x,p2y,_,_ = focused_text:character_rect(e)
+				selection_box:set_world_position(p1x,p1y)
+				selection_box:set_w(p2x - p1x)
+				selection_box:set_h((p2y - p1y) + (focused_text:number_of_lines() * focused_text:line_height()) )
+			else
+				selection_box:set_w(0)
+				selection_box:set_h(0)
+			end
+			--[[
+			local line_breaks = input_text:line_breaks()
+			local num_line_breaks = #line_breaks
+			if num_line_breaks > 1 then
+				p1y = math.min(p1y,p2y)
+				p2y = math.max(p2y,p3y)
+				local _,p3y,_,_ = input_text:character_rect(line_breaks[num_line_breaks])
+			end
+			--]]
+
+	--		self._history_text:set_text(string.format("%i / %i",self._input_text:selection()) .. "\n" .. string.format("%i / %i",selection_box:size()) .. "\n" .. string.format("%i / %i",selection_box:position()) .. "\n" .. string.format("%i / %i",self._mouse_x,self._mouse_y))
+		end
 	end
-	
 	
 	
 	if self._is_holding_mouse_button then
