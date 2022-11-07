@@ -1012,7 +1012,6 @@ function Console:Update(updater_source,t,dt)
 			
 			local message_t = restart_data.message_t or -1
 			local MESSAGE_INTERVAL = 1
-			Console._window_instance._prompt:set_text(string.format("%0.2f %0.2f",t,message_t))
 			if message_t <= t then 
 				restart_data.message_t = t + MESSAGE_INTERVAL 
 				local out_str = string.format(managers.localization:text("menu_consolemod_cmd_restart_dialog_countdown"),time_left)
