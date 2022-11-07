@@ -69,11 +69,9 @@
 - multithreading
 	/threads
 	/kill
+- /bind
 - /help - alphabetize
 	-s search function
-- /restart
-	-silent mode parameter (no countdown)
-	-also remember to code the chat countdown
 - print
 - echo 
 	- preserve type data while replacing aliases to apply type colorcoding
@@ -150,6 +148,7 @@ do --init mod vars
 		"window_bg_color",
 		"window_caret_color",
 		"window_prompt_color",
+		"style_color_system",
 		"style_color_error",
 		"style_data_color_function",
 		"style_data_color_string",
@@ -180,6 +179,7 @@ do --init mod vars
 		style_data_color_thread = 0xffff7f,
 		style_data_color_userdata = 0xff4c4c,
 		style_data_color_misc = 0x888888,
+		style_color_system = 0xffd700,
 		input_mousewheel_scroll_direction_reversed = false,
 		input_mousewheel_scroll_speed = 1,
 		console_show_nil_results = false,
@@ -218,7 +218,6 @@ do --init mod vars
 		"log_output_enabled",
 		"log_buffer_enabled",
 		"log_buffer_interval",
-		"style_color_error",
 		"console_pause_game_on_focus",
 		"console_params_guessing_enabled",
 		"input_mousewheel_scroll_direction_reversed",
@@ -251,6 +250,8 @@ do --init mod vars
 		"window_prompt_string",
 		"window_prompt_color",
 		"window_prompt_alpha",
+		"style_color_error",
+		"style_color_system",
 		"style_data_color_function",
 		"style_data_color_string",
 		"style_data_color_number",
@@ -262,7 +263,9 @@ do --init mod vars
 		"style_data_color_misc"
 	}
 	
-	Console.data_type_colors = {
+	Console.color_data = {
+		["error"] = "style_color_error",
+		["system"] = "style_color_system",
 		--base data types
 		["function"] = "style_data_color_function",
 		["string"] = "style_data_color_string",
@@ -272,6 +275,7 @@ do --init mod vars
 		["userdata"] = "style_data_color_userdata",
 		["thread"] = "style_data_color_thread",
 		["nil"] = "style_data_color_nil",
+		
 		["misc"] = "style_data_color_misc"
 	}
 	Console._log_buffer_timer = 0
@@ -344,6 +348,16 @@ do --init mod vars
 	}
 	Console._is_reading_log = false
 	--placeholder values for things that will be loaded later
+	
+	Console._restart_data = nil 
+	--[[ ex.
+		{
+			restart_t = 71.58935692, -- the time at which the heist will reload (or at which the game state will reload, if in a menu)
+			duration = 10, --if present and restart_t is not, starts the countdown (sets restart_t to current time + duration)
+			message_t = 0, --the next time at which a chat message or Console log will be printed, giving the current countdown timer
+			is_silent = false --if true, outputs the countdown to the chat/console window
+		}
+	--]]
 	Console._restart_timer = false --used for /restart [timer] command: tracks next _restart_timer value to output (every second)
 	Console._restart_timer_t = false  --used for /restart [timer] command: tracks time left til 0 (restart)
 	Console._colorpicker = nil
@@ -381,6 +395,14 @@ do --hooks and command registration
 			name = {
 				arg_desc = "[noclose]",
 				short_desc = "(Boolean) Optional. Any truthy value will prevent the Console window from closing automatically if a restart is performed immediately.\nThis is because the Console window is a dialog, and any open dialog will delay a restart for as long as the dialog is open."
+			},
+			silent = {
+				arg_desc = "[silent]",
+				short_desc = "Optional. If supplied, does not send a countdown message in the chat. (Countdown messages will still be displayed in the Console.)"
+			},
+			vote = {
+				arg_desc = "[vote]",
+				short_desc = "Optional. If supplied, ignores any currennt or supplied timer and triggers a vote-restart instead."
 			},
 			func = callback(console,console,"cmd_restart")
 		})
@@ -547,10 +569,7 @@ function Console:Log(info,params)
 				color = params.color
 			else
 				local _type = type(info)
-				local setting_name = self.data_type_colors[_type]
-				if setting_name then 
-					color = self.hex_number_to_color(self.settings[setting_name])
-				end
+				color = self:GetColorByName(_type)
 			end
 			if color then
 				local length = utf8.len(_info)
@@ -625,8 +644,7 @@ function Console:LogTable(obj,max_amount)
 					end
 				end
 			end
-			local color_setting_name = data_type and self.data_type_colors[data_type]
-			local color = color_setting_name and self.hex_number_to_color(self.settings[color_setting_name] or self.settings.style_data_color_misc)
+			local color = self:GetColorByName(data_type,"misc")
 			self:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = color})
 --			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]")
 		end
@@ -723,7 +741,7 @@ function Console:InterpretLua(raw_string)
 			local _type = type(v)
 			local _v = tostring(v)
 			self.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_v))
-			local color = self:GetLogColorByDataType(_type)
+			local color = self:GetColorByName(_type)
 			local length = utf8.len(_v)
 			local new_current = current + length
 			color_data[result_num] = {
@@ -986,27 +1004,77 @@ function Console:Update(updater_source,t,dt)
 		end
 	end
 	
-	if self._restart_timer_t then --time at which heist will restart
-		local time_left = math.ceil(self._restart_timer_t - t) --seconds left to restart
-		if (not self._restart_timer) or (self._restart_timer - time_left) >= 1 then --output only once, not every update
-			self._restart_timer = self._restart_timer or time_left 
-			self._restart_timer = time_left
+	local restart_data = self._restart_data
+	if restart_data then
+		local restart_t = restart_data.restart_t
+		if restart_t then --time at which heist will restart
+			local time_left = math.ceil(restart_t - t) --seconds left to restart
 			
-			self:Log(string.format(managers.localization:text("menu_consolemod_restart_dialog_countdown"),time_left),{color = Color.yellow})
-		end
-		if time_left <= 0 then 
-			managers.game_play_central:restart_the_game()
-			self._restart_timer_t = nil
+			local message_t = restart_data.message_t or -1
+			local MESSAGE_INTERVAL = 1
+			Console._window_instance._prompt:set_text(string.format("%0.2f %0.2f",t,message_t))
+			if message_t <= t then 
+				restart_data.message_t = t + MESSAGE_INTERVAL 
+				local out_str = string.format(managers.localization:text("menu_consolemod_cmd_restart_dialog_countdown"),time_left)
+				local out_col = self:GetColorByName("system")
+				self:Log(out_str,{color = out_col})
+				
+				if not restart_data.is_silent then
+					local sender_str = managers.localization:text("menu_consolemod_window_log_prefix_short")
+					if managers.chat then
+						managers.chat:_receive_message(1,sender_str,out_str, color)
+						managers.chat:send_message(managers.chat._channel_id, sender_str or managers.network.account:username() or "Nobody",out_str)
+					end
+				end
+			end
+			
+			if time_left <= 0 then --do actual restart here
+				if not restart_data.noclose then
+					self:HideConsoleWindow()
+				end
+				self._restart_data = nil
+				
+				if game_state_machine and game_state_machine:current_state_name() == "menu_main" then
+					if setup and setup.load_start_menu then
+						setup:load_start_menu()
+					end
+				elseif managers.game_play_central then
+					if Global.game_settings.single_player or (managers.network and managers.network:session():is_host()) then
+						managers.game_play_central:restart_the_game()
+					end
+				else
+					self._restart_data = nil
+				end
+				
+			end
+		elseif restart_data.duration then
+			--start timer
+			self._restart_data.restart_t = t + restart_data.duration
+		else
+			--invalid data
+			self._restart_data = nil
 		end
 	end
-	
 end
 
-function Console:GetLogColorByDataType(_type)
-	local data_type_colors = self.data_type_colors
-	local setting_name = _type and data_type_colors[_type]
-	local color = setting_name and self.settings[setting_name] or self.settings.style_data_color_misc
-	return Color(string.format("%06x",color))
+function Console:GetColorByName(color_name,fallback)
+	local color
+	local color_setting_name = color_name and self.color_data[color_name]
+	if not color_setting_name then 
+		if fallback ~= false then
+			fallback = "misc"
+		end
+		if type(fallback) == "userdata" then 
+			color = fallback
+		else
+			color_setting_name = self.color_data[fallback]
+		end
+	end
+	if color_setting_name then
+		local color_setting = self.settings[color_setting_name]
+		color = Color(string.format("%06x",color_setting or 0))
+	end
+	return color
 end
 
 --management
@@ -1254,47 +1322,85 @@ function Console:cmd_partname(params,name,meta_params)
 end
 
 function Console:cmd_restart(params,args,meta_params)
-	timer = timer == "" and params.timer or timer
-	if timer == "cancel" then
-		self._restart_timer_t = nil
-		self._restart_timer = nil
-	else
-		timer = timer and tonumber(timer)
-		if self._restart_timer_t and timer then 
-			--timer has already started
-			self._restart_timer_t = Application:time() + timer
-		elseif not timer or timer <= 0 then
-			if managers.game_play_central then
-				if Global.game_settings.single_player then 
-				elseif managers.network and managers.network:session():is_host() then
-					if params.vote then 
-						--[[
-						local votemanager = managers.vote
-						if not votemanager._stopped then
-							votemanager._callback_type = "restart"
-							votemanager._callback_counter = TimerManager:wall():time() + tonumber(timer)		
-						end
-						--]]
-						return
-					end
-				else
-					self:Log("You cannot restart the game in which you are not the host!",{color = Color.red})
-					return
-				end
-				if not params.noclose then 
-					self:HideConsoleWindow()
-				end
-				managers.game_play_central:restart_the_game()
-			else
-				if setup and setup.load_start_menu then
-					if not params.noclose then
-						self:HideConsoleWindow()
-					end
-					setup:load_start_menu()
-				end
+	local timer_str = args == "" and params.timer or args
+	local noclose = params.noclose and true or false --if instant restart and not noclose, close the console window
+	local is_silent = params.silent and true or false
+	local timer = tonumber(timer_str)
+	local message_t
+	
+	local is_in_menu = game_state_machine and game_state_machine:current_state_name() == "menu_main"
+
+	
+	
+	Log("args[" .. timer_str .. "]")
+	if timer_str == "cancel" or timer_str == "stop" then
+		--assuming the player doesn't want to do anything if their timer is "stop"
+		self._restart_data = nil
+		return
+	end
+	
+	if self._restart_data then
+		--cancel any current restart
+		if not is_silent then 
+			local sender_str = managers.localization:text("menu_consolemod_window_log_prefix_short")
+			local out_str = managers.localization:text("menu_consolemod_cmd_restart_dialog_cancelled")
+			if managers.chat then
+				local color = self:GetColorByName("system")
+				managers.chat:_receive_message(1,sender_str,out_str, color)
+				managers.chat:send_message(managers.chat._channel_id, sender_str or managers.network.account:username() or "Nobody",out_str)
 			end
 		end
 	end
+	
+	if timer then
+		message_t = 0
+	else
+		timer = -1
+		message_t = nil -- 0-second countdowns are not very helpful
+	end
+	
+	
+	if managers.game_play_central then
+		if Global.game_settings.single_player then 
+			--allowed to restart
+		elseif managers.network then 
+			if params.vote and managers.vote and managers.vote:option_vote_restart() then 
+				managers.vote:restart()
+				--[[
+				local votemanager = managers.vote
+				if not votemanager._stopped then
+					votemanager._callback_type = "restart"
+					votemanager._callback_counter = TimerManager:wall():time() + tonumber(timer)		
+				end
+				--]]
+				
+				--no need to prevent closing since the restart presumably is not happening immediately
+--				if not params.noclose then 
+--					self:HideConsoleWindow()
+--				end
+
+				--ignore timer here
+				return
+			elseif managers.network:session():is_host() then
+				--allowed to restart
+			else
+				self:Log("You cannot restart the game in which you are not the host!",{color = self:GetColorByName("error")})
+				return
+			end
+		else
+			self:Log("Invalid game state- cannot restart")
+		end
+	elseif is_in_menu then
+			--at main menu; allowed to reload state
+		--in menu- allowed to restart
+	end
+	
+	self._restart_data = {
+		duration = timer,
+		message_t = message_t,
+		is_silent = is_silent,
+		noclose = noclose
+	}
 	
 end
 
@@ -1377,8 +1483,7 @@ function Console:cmd_alias(params,args,meta_params)
 	
 	if feedback_val then 
 		local feedback_len = utf8.len(feedback_val)
-		local type_color_name = self.data_type_colors[feedback_type]
-		local feedback_col = self.hex_number_to_color(self.settings[type_color_name or "style_data_color_misc"])
+		local feedback_col = self:GetColorByName(feedback_type,"misc")
 		self:Log(string.format(managers.localization:text("menu_consolemod_cmd_alias_assigned"),tostring(feedback_val),self.PREFIXES.ALIAS .. var_name),{color_ranges = {{start = 1,finish = feedback_len + 1,color=feedback_col}}})
 	end
 end
