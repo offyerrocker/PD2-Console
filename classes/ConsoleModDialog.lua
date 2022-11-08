@@ -1040,6 +1040,8 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	history_text:set_align("right")
 	history_text:set_align("left")
 	
+	self._input_text:set_w(self._input_box:w() - self._input_text:x())
+	
 	local _,_,_,th = history_text:text_rect() --actual size
 	local y_min = - math.abs(bh - th)
 	local y_max = 0

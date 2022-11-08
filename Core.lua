@@ -1196,7 +1196,7 @@ function Console:UpdateCoroutines(t,dt)
 					end
 				end
 			end
-		elseif self.settings.console_autocull_dead_threads
+		elseif self.settings.console_autocull_dead_threads then
 			table.remove(self._threads,i)
 		end
 	end
