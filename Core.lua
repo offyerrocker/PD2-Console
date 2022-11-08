@@ -1593,7 +1593,7 @@ function Console:cmd_alias(params,args,meta_params)
 	local raw_input = meta_params.raw_input
 	local cmd_no_name = meta_params.cmd_string 
 	local name_start,name_finish = string.find(args,"%w+[%w_]*") --must start with alphanum
-	local var_name = string.sub(args,name_start,name_finish)
+	local var_name = name_start and string.sub(args,name_start,name_finish)
 	local err_col = self.hex_number_to_color(self.settings.style_color_error)
 	
 	local feedback_val,feedback_type
