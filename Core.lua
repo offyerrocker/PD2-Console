@@ -10,24 +10,15 @@
 
 *******************  Bug list [low priority] ******************* 
 
-- [ConsoleModDialog] separate callbacks in create_gui into their own functions
-
-- [ConsoleModDialog] Dragging any clickable object results in a "drag" mousepointer even if the object is not draggable
-	-solution: add per-item "drag" string mousepointer value
-	
 - [ConsoleModDialog] move get_mouseover_target function to use ordered indices so that click priority is possible
 - [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
 
 ******************* Feature list todo: ******************* 
 - use coroutines for at-risk loops
-- var pipelining from command to command
-	- eg. saving return values of list from /weaponname to $WEAPONS
 - change removing redundant spaces (allow unfiltered string streams per command)
 - "Debug HUD"
 	- show aim-at target (tweakdata and health)
 	- show xyz pos
-- optional pause on open console (sp only)
-	- unpause on settings toggle
 - straighten out Log/Print/output call flow
 	- different levels of logging
 	print/log behavior option checkboxes
@@ -40,7 +31,32 @@
 	- increase Console header size
 - ConsoleModDialog scroll button click input repeat
 
+
+Parity with 1.0:
+	-unit tagging
+	-hitbox display
+	-trackers
+		-popups (trackers but worldspace)
+	-commands
+		-bind/unbind
+		-skillname/skillinfo
+		-whisper
+		-rot
+		-tp
+		-state
+		-quit
+		-bltmods
+		-gotonav/editnav
+		-forcestart
+		-say
+		
+
+
 ******************* Secondary feature todo ******************* 
+- var pipelining from command to command
+	- eg. saving return values of list from /weaponname to $WEAPONS
+- optional pause on open console (sp only)
+	- unpause on settings toggle
 - option to disable color coded logs
 - allow changing type colors through settings
 - [ConsoleModDialog] mouseover tooltips for buttons after n seconds
@@ -66,12 +82,15 @@
 
 ******************* Commands todo *******************
 
+- /texture
+	-create console mini-window showing texture
 - multithreading
 	/threads
 	/kill
 - /bind
 - /help - alphabetize
 	-s search function
+	-/commands alias
 - print
 - echo 
 	- preserve type data while replacing aliases to apply type colorcoding
@@ -80,15 +99,6 @@
 	- alias reference copying (copy func between aliases)
 	- alias syntax for functions
 - /unalias
-- setvar/session var business
-	$ var values (overrides normal vars, not saved)
-	@ temp var values (saved between sessions)
-
-- // executes previous stored loadstring function
-- /// re-evaluates and executes previous stored input
-
-- /clear command to clear logs
-
 
 - warning/text-based confirm prompt eg. when a query is expected to have lots of results
 
@@ -601,7 +611,12 @@ function Console:Print(...)
 end
 _G.Print = callback(Console,Console,"Print")
 
-function Console:LogTable(obj,max_amount)
+function Console:LogTable(obj)
+	--create thread to log table
+end
+_G.logall = callback(Console,Console,"LogTable")
+
+function Console:_LogTable(o)
 --generally best used to log all of the properties of a Class:
 --functions;
 --and values, such as numbers, strings, tables, etc.
@@ -609,51 +624,35 @@ function Console:LogTable(obj,max_amount)
 	
 	--i don't really know how else to do this
 --todo save this as a global to Console so that i can create and delete examples but save their references
-	local t = os.clock()
-	local timeout = 5
 	if not obj then 
-		Console:Log("Nil obj to argument1 [" .. tostring(obj) .. "]",{color = Color.red})
+		local err_col = self:GetColorByName("error")
+		Console:Log("Error: LogTable(" .. tostring(obj) .. ")",{color = err_col})
 		return
 	end
-	local i = type(max_amount) == "number" and max_amount or 0
-	Console._breaker = false
-	while not Console._breaker do 
-		if os.clock() > t + timeout then
-			Console._breaker = true
-		end
-		if i then 
-			i = i + 1
-			if max_amount and i > max_amount then
-				Console:Log("Reached manual log limit " .. tostring(max_amount),{color = Color.yellow})
-				return
-			end
-		end
-		for k,v in pairs(obj) do 
-			local data_type = type(v)
-			if data_type == "userdata" then 
-				for type_name,data in pairs(Console.type_data) do 
-					if data.example then
-						local a1 = getmetatable(data.example)
-						local a2 = a1 and a1.__index
-						local b1 = getmetatable(v)
-						local b2 = b1 and b1.__index
-						if (b2 and a2) and (b2 == a2) then
-							data_type = type_name
-							break
-						end
+	for k,v in pairs(obj) do 
+		local data_type = type(v)
+			--[[
+		if data_type == "userdata" then 
+			for type_name,data in pairs(Console.type_data) do 
+				if data.example then
+					local a1 = getmetatable(data.example)
+					local a2 = a1 and a1.__index
+					local b1 = getmetatable(v)
+					local b2 = b1 and b1.__index
+					if (b2 and a2) and (b2 == a2) then
+						data_type = type_name
+						break
 					end
 				end
 			end
-			local color = self:GetColorByName(data_type,"misc")
-			self:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = color})
---			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]")
 		end
-		Console._breaker = true
+			--]]
+		local color = self:GetColorByName(data_type,"misc")
+		self:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = color})
+--			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]")
+		coroutine.yield()
 	end
-	Console._breaker = false
 end
-_G.logall = callback(Console,Console,"LogTable")
-
 
 --core functionality
 
@@ -1570,6 +1569,34 @@ function Console:GetAlias(id)
 --		self:Log(self.PREFIXES.ALIAS .. tostring(id) .. " " .. tostring(self._user_vars[id]))
 --	end
 end
+
+
+--hud trackers
+
+function Console:CreateTrackerHUD()
+	self._trackers = {}
+	self._ws = self._ws or managers.gui_data:create_fullscreen_workspace()
+	self._panel = self._panel or self._ws:panel()
+end
+
+function Console:NewTracker(name,params)
+	local panel = self._panel:panel({
+		name = params.name
+	})
+	
+	local bitmap
+	if params.bitmap then 
+		bitmap = panel:bitmap(params.bitmap)
+	end
+	
+	table.insert(self._trackers,{
+		panel = panel,
+		params = params
+	})
+end
+
+
+
 
 --colorpicker stuff
 function Console:GetPalettes()

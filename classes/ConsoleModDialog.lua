@@ -734,6 +734,7 @@ function ConsoleModDialog:create_gui()
 		top_frame_grip = {
 			object = top_frame_grip,
 			mouseover_pointer = "hand", --arrow link hand grab
+			drag_pointer = "grab",
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
 			mouse_left_click_callback = function(o,x,y) --left click (on releasing if this object is the currently held object)
@@ -775,6 +776,7 @@ function ConsoleModDialog:create_gui()
 		body = {
 			object = body,
 			mouseover_pointer = "arrow",
+			drag_pointer = nil,
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
 			mouse_left_click_callback = nil,
@@ -815,6 +817,7 @@ function ConsoleModDialog:create_gui()
 		input_submit_button = {
 			object = input_submit_button,
 			mouseover_pointer = "link",
+			drag_pointer = nil,
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
 			mouse_left_click_callback = function(o,x,y) --left click (on release)
@@ -829,6 +832,7 @@ function ConsoleModDialog:create_gui()
 		input_box = {
 			object = input_box,
 			mouseover_pointer = "arrow",
+			drag_pointer = nil,
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
 			mouse_left_click_callback = function(o,x,y)
@@ -871,6 +875,7 @@ function ConsoleModDialog:create_gui()
 		resize_grip = {
 			object = resize_grip,
 			mouseover_pointer = "hand",
+			drag_pointer = "grab",
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
 			mouse_left_click_callback = function(o,x,y)
@@ -909,6 +914,7 @@ function ConsoleModDialog:create_gui()
 		close_button = {
 			object = self._close_button,
 			mouseover_pointer = "link",
+			drag_pointer = nil,
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
 			end,
@@ -921,6 +927,7 @@ function ConsoleModDialog:create_gui()
 		scrollbar_button_down = {
 			object = scrollbar_button_down,
 			mouseover_pointer = "link",
+			drag_pointer = nil,
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
 			end,
@@ -933,6 +940,7 @@ function ConsoleModDialog:create_gui()
 		scrollbar_button_bottom = {
 			object = scrollbar_button_bottom,
 			mouseover_pointer = "link",
+			drag_pointer = nil,
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
 			end,
@@ -945,6 +953,7 @@ function ConsoleModDialog:create_gui()
 		scrollbar_button_up = {
 			object = scrollbar_button_up,
 			mouseover_pointer = "link",
+			drag_pointer = nil,
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
 			end,
@@ -957,6 +966,7 @@ function ConsoleModDialog:create_gui()
 		scrollbar_button_top = {
 			object = scrollbar_button_top,
 			mouseover_pointer = "link",
+			drag_pointer = nil,
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
 			end,
@@ -969,6 +979,7 @@ function ConsoleModDialog:create_gui()
 		scrollbar_button_lock = {
 			object = scrollbar_button_lock,
 			mouseover_pointer = "link",
+			drag_pointer = nil,
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
 			end,
@@ -981,6 +992,7 @@ function ConsoleModDialog:create_gui()
 		scrollbar_handle = {
 			object = scrollbar_handle,
 			mouseover_pointer = "hand",
+			drag_pointer = "grab",
 			mouseover_event_start_callback = nil,
 			mouseover_event_stop_callback = nil,
 			mouse_left_press_callback = function(o,x,y) --drag start
@@ -1019,7 +1031,7 @@ function ConsoleModDialog:resize_panel(to_w,to_h)
 	local panel = self._panel
 	panel:set_size(to_w,to_h)
 	local params = self:get_creation_params()
-	local history_margin_hor= params.history_margin_hor
+	local history_margin_hor = params.history_margin_hor
 	local bw,bh = self._body:size()
 	local history_text = self._history_text
 	history_text:set_w(bw - (history_margin_hor * 2))
@@ -1331,7 +1343,9 @@ function ConsoleModDialog:callback_mouse_moved(o,x,y)
 --			if ui_object_data.pointer then 
 --				managers.mouse_pointer:set_pointer_image(ui_object_data.pointer)
 --			end
-			managers.mouse_pointer:set_pointer_image("grab")
+			if ui_object_data.drag_pointer then 
+				managers.mouse_pointer:set_pointer_image(ui_object_data.drag_pointer)
+			end
 			
 			
 		else
