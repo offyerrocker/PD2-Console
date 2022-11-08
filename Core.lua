@@ -356,6 +356,7 @@ do --init mod vars
 		ALIAS = "$"
 	}
 	Console._threads = {}
+	Console._trackers = {}
 	Console._is_reading_log = false
 	--placeholder values for things that will be loaded later
 	
@@ -368,6 +369,7 @@ do --init mod vars
 			is_silent = false --if true, outputs the countdown to the chat/console window
 		}
 	--]]
+	
 	Console._restart_timer = false --used for /restart [timer] command: tracks next _restart_timer value to output (every second)
 	Console._restart_timer_t = false  --used for /restart [timer] command: tracks time left til 0 (restart)
 	Console._colorpicker = nil
@@ -1173,6 +1175,7 @@ function Console:Update(updater_source,t,dt)
 		end
 	end
 	self:UpdateCoroutines(t,dt)
+	self:UpdateTrackers(t,dt)
 end
 
 function Console:UpdateCoroutines(t,dt)
@@ -1957,7 +1960,6 @@ function Console:cmd_thread(params,args,meta_params)
 	--]]
 end
 
-
 --coroutine/thread management
 function Console:AddCoroutine(func,params)
 --desc is separate from id;
@@ -2095,27 +2097,223 @@ end
 --hud trackers
 
 function Console:CreateTrackerHUD()
-	self._trackers = {}
-	self._ws = self._ws or managers.gui_data:create_fullscreen_workspace()
-	self._panel = self._panel or self._ws:panel()
+	if managers.gui_data then
+		self._ws = self._ws or managers.gui_data:create_fullscreen_workspace()
+		self._panel = self._panel or self._ws:panel()
+		
+		for _,data in pairs(self._trackers) do 
+			self:ConfigTracker(data.name,data.params,data.text_params,data.bitmap_params)
+		end
+		
+	end
 end
 
-function Console:NewTracker(name,params)
-	local panel = self._panel:panel({
-		name = params.name
-	})
-	
-	local bitmap
-	if params.bitmap then 
-		bitmap = panel:bitmap(params.bitmap)
+function Console:NewTracker(tracker_name,params,text_params,bitmap_params)
+	local tracker_panel
+	local tracker_text,tracker_bitmap
+	local i = #self._trackers + 1
+	params = type(params) == "table" and params or {}
+	if alive(self._panel) then
+		tracker_panel = self._panel:panel({
+			name = name,
+			layer = 1
+		})
+			
+		local upd_bitmap_func = params.upd_bitmap_func 
+		local _bitmap_params = { --defaults
+			name = "bitmap",
+			texture = "guis/textures/icon_loading",
+			texture_rect = nil,
+			color = Color.white,
+			rotation = nil,
+			render_template = nil,
+			blend_mode = "normal",
+			wrap = nil, --"wrap" or "clamp",
+			x = 50,
+			y = 50 * i,
+--			w = 32,
+--			h = 32,
+			visible = true
+		}
+		if type(bitmap_params) == "table" then
+			for k,v in pairs(bitmap_params) do 
+				_bitmap_params[k] = v
+			end
+		else
+			_bitmap_params.visible = false
+			_bitmap_params.w = 16
+			_bitmap_params.h = 16
+		end
+		tracker_bitmap = tracker_panel:bitmap(_bitmap_params)
+		
+		local _text_params = { --defaults
+			name = "label",
+			text = "empty",
+			text_id = nil,
+			x = tracker_bitmap:right(),
+			y = 50 * i,
+			align = "left",
+			vertical = "top",
+			font = "fonts/font_bitstream_vera_mono",
+			font_size = 32,
+			selection_color = Color.black,
+			color = Color.white,
+			wrap = false,
+			monospace = false,
+			rotation = nil,
+			render_template = nil,
+			blend_mode = "normal",
+			visible = true,
+			layer = 1
+		}
+		if type(text_params) == "table" then
+			for k,v in pairs(text_params) do 
+				_text_params[k] = v
+			end
+		end
+		tracker_text = tracker_panel:text(_text_params)
 	end
 	
-	table.insert(self._trackers,{
-		panel = panel,
-		params = params
+	
+	table.insert(self._trackers,i,{
+		name = tracker_name,
+		params = params,
+		panel = tracker_panel,
+		text_obj = tracker_text,
+		text_params = _text_params,
+		bitmap_obj = tracker_bitmap,
+		bitmap_params = _bitmap_params,
+		upd_func = params.upd_func,
+		upd_bitmap_func = params.upd_bitmap_func,
+		upd_text_func = params.upd_text_func
 	})
 end
 
+function Console:GetTracker(name)
+	for i,data in pairs(self._trackers) do 
+		if data.name == name then 
+			return i,data
+		end
+	end
+end
+
+function Console:SetTracker(val,name)
+	name = name or "default"
+	local i,data = self:GetTracker(name)
+	if data then
+		if alive(self._panel) then
+			data.text_params = data.text_params or {}
+			data.text_params.text = tostring(val)
+			if alive(data.text_obj) then
+				data.text_obj:set_text(tostring(val))
+				return
+				--todo default rotate text on update: if alive bitmap obj then rotate bitmap obj
+			end
+		end
+	else
+		self:NewTracker(name,nil,{text = tostring(val)},nil)
+	end
+end
+Console.SetTrackerValue = function(self,a,b) --legacy support
+	return self:SetTracker(b,a)
+end
+
+function Console:ConfigTracker(name,params,text_params,bitmap_params)
+	local i,data = self:GetTracker(name)
+	if data then
+		if type(text_params) == "table" then
+			local _text_params = { --defaults
+				name = "label",
+				text = "",
+				text_id = nil,
+				x = 50,
+				y = 50 * i,
+				align = "left",
+				vertical = "top",
+				font = "fonts/font_bitstream_vera_mono",
+				font_size = 32,
+				selection_color = Color.black,
+				color = Color.white,
+				wrap = false,
+				monospace = false,
+				rotation = nil,
+				render_template = nil,
+				blend_mode = "normal",
+				visible = true,
+				layer = 1
+			}
+			data.text_params = data.text_params or {}
+			for k,v in pairs(text_params) do 
+				_text_params[k] = v
+				data.text_params[k] = v
+			end
+			
+			if alive(data.text_obj) then
+				data.text_obj:config(text_params)
+			else
+				data.text_obj = data.panel:text(_text_params)
+			end
+		end
+		if type(bitmap_params) == "table" then
+			local _bitmap_params = { --defaults
+				name = "bitmap",
+				texture = "guis/textures/icon_loading",
+				texture_rect = nil,
+				color = Color.white,
+				rotation = nil,
+				render_template = nil,
+				blend_mode = "normal",
+				wrap = nil, --"wrap" or "clamp",
+				x = 50,
+				y = 50 * i,
+	--			w = 32,
+	--			h = 32,
+				visible = true
+			}
+			data.bitmap_params = data.bitmap_params or {}
+			for k,v in pairs(bitmap_params) do 
+				_bitmap_params[k] = v
+				data.bitmap_params[k] = v
+			end
+			
+			if alive(data.bitmap_obj) then
+				data.bitmap_obj:config(bitmap_params)
+			else
+				data.bitmap_obj = data.panel:bitmap(_bitmap_params)
+			end
+		end
+		return true
+	end
+	return false
+end
+
+function Console:RemoveTracker(name)
+	local i,data = self:GetTracker(name)
+	if data then
+		if alive(self._panel) and alive(data.panel) then
+			self._panel:remove(data.panel)
+		end
+		return table.remove(self._trackers,i)
+	end
+end
+
+function Console:UpdateTrackers(t,dt)
+	if alive(self._panel) then
+		for _,data in pairs(self._trackers) do 
+			if data.upd_func then
+				data.upd_func(data,t,dt)
+			end
+			if data.upd_text_func and alive(data.tracker_label) then 
+				data.upd_text_func(data.tracker_label,t,dt)
+			end
+			if data.upd_bitmap_func and alive(data.tracker_bitmap) then 
+				data.upd_bitmap_func(data.tracker_bitmap,t,dt)
+			end
+		end
+	elseif not self._ws then 
+		self:CreateTrackerHUD()
+	end
+end
 
 
 
