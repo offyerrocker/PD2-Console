@@ -14,8 +14,7 @@
 - [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
 
 ******************* Feature list todo: ******************* 
-- use coroutines for at-risk loops
-- change removing redundant spaces (allow unfiltered string streams per command)
+- use coroutines for at-risk loops (ongoing)
 - "Debug HUD"
 	- show aim-at target (tweakdata and health)
 	- show xyz pos
@@ -60,7 +59,7 @@ Parity with 1.0:
 - option to disable color coded logs
 - allow changing type colors through settings
 - [ConsoleModDialog] mouseover tooltips for buttons after n seconds
-- option to de-focus the console and keep it open while playing without hiding it
+- [ConsoleModDialog] option to de-focus the console and keep it open while playing without hiding it
 - "is holding scroll" for temporary scroll lock 
 - button-specific mouseover color/texture
 - session pref with existing vars
@@ -75,18 +74,14 @@ Parity with 1.0:
 - lookup asset loaded table so check when specific assets are loaded without having to make redundant dynresource checks
 - "/" key shortcut to open console window
 	- or other keys; allow other keys as command character
-- support inline images?
-	- would need to move history text into another child panel 
 - batch file folder system in saves
 	autoexec batch-style files
+- [ConsoleModDialog] Rewrite to allow multiple window management?
 
 ******************* Commands todo *******************
 
 - /texture
 	-create console mini-window showing texture
-- multithreading
-	/threads
-	/kill
 - /bind
 - /help - alphabetize
 	-s search function
@@ -173,8 +168,7 @@ do --init mod vars
 	Console.palettes = table.deep_map_copy(Console.default_palettes)
 	Console.default_settings = {
 		safe_mode = false,
-		console_params_guessing_enabled = true,
-		console_pause_game_on_focus = true,
+		log_blt_enabled = false,
 		log_input_enabled = true,
 		log_output_enabled = false,
 		log_buffer_enabled = true,
@@ -192,7 +186,10 @@ do --init mod vars
 		style_color_system = 0xffd700,
 		input_mousewheel_scroll_direction_reversed = false,
 		input_mousewheel_scroll_speed = 1,
+		console_params_guessing_enabled = true,
+		console_pause_game_on_focus = true,
 		console_show_nil_results = false,
+		console_autocull_dead_threads = true,
 		window_scrollbar_lock_enabled = true,
 		window_scroll_direction_reversed = true,
 		window_text_normal_color = 0xffffff,
@@ -229,10 +226,11 @@ do --init mod vars
 		"log_buffer_enabled",
 		"log_buffer_interval",
 		"console_pause_game_on_focus",
+		"console_autocull_dead_threads",
 		"console_params_guessing_enabled",
+		"console_show_nil_results",
 		"input_mousewheel_scroll_direction_reversed",
 		"input_mousewheel_scroll_speed",
-		"console_show_nil_results",
 		"window_scrollbar_lock_enabled",
 		"window_scroll_direction_reversed",
 		"window_text_normal_color",
@@ -347,6 +345,7 @@ do --init mod vars
 	--]]
 	}
 	Console._operation_timeout = 5
+	Console._coroutine_counter = 0
 	Console._io_buffer_size = 2^13
 	Console._buffers = {
 		input_log = {},
@@ -356,6 +355,7 @@ do --init mod vars
 		COMMAND = "/",
 		ALIAS = "$"
 	}
+	Console._threads = {}
 	Console._is_reading_log = false
 	--placeholder values for things that will be loaded later
 	
@@ -507,10 +507,48 @@ do --hooks and command registration
 				},
 				output_clear = {
 					arg_desc = "",
-					short_desc = "Clears the outlog and file."
+					short_desc = "Clears the output log and file."
 				}
 			},
 			func = callback(console,console,"cmd_clear")
+		})
+		console:RegisterCommand("thread",{
+			str = nil,
+			desc = "Manage, kill, or create Console operation threads.",
+			manual = "The id of a coroutine should be a number, or \"all\" to apply to all threads, or \"last\" to apply to the most recently made thread.\nAcceptable formats:\n    /thread [subcmd] [id]\n    /thread [subcmd] -n [id] \n    /thread [id]",
+			parameters = {
+				--[[
+				new = {
+					arg_desc = "[new]",
+					short_desc = "Create a new coroutine with the supplied loadstring"
+				},
+				--]]
+				kill = {
+					arg_desc = "[kill]",
+					short_desc = "Stops the coroutine with the given id."
+				},
+				list = {
+					arg_desc = "[list]",
+					short_desc = "If supplied with a specific id, lists all the information about that coroutine. Else, lists all coroutines."
+				},
+				pause = {
+					arg_desc = "[pause]",
+					short_desc = "If supplied, pauses a running coroutine so that it is not automatically executed on each frame."
+				},
+				resume = {
+					arg_desc = "[resume]",
+					short_desc = "If supplied, resumes a paused coroutine so that it continues to automatically execute on each frame."
+				},
+				priority = {
+					arg_desc = "[priority]",
+					short_desc = "When creating a coroutine, you can choose to specify a priority number [0-inf] which determines when your coroutine is run relative to others. Coroutines with larger priority numbers are run earlier."
+				},
+				number = {
+					arg_desc = "[number]",
+					short_desc = "Specify the id of the thread you want to manage."
+				}
+			},
+			func = callback(console,console,"cmd_thread")
 		})
 	end)
 
@@ -563,12 +601,68 @@ function Console.file_exists(path)
 	end
 end
 
+function Console.format_time(t,params)
+	local floor = math.floor
+	
+	local space_char
+	if params.divider then 
+		space_char = type(params.divider) == "string" and params.divider or " "
+	else
+		space_char = ""
+	end
+	local style = params.style
+	
+	local seconds = t % 60
+	local _minutes = floor(t / 60)
+	local minutes = _minutes % 60
+	local _hours = floor(_minutes / 60)
+	local hours = _hours % 24
+	local days = floor(_hours / 24)
+	local a = {
+		seconds,
+		minutes,
+		hours,
+		days
+	}
+	local b = {
+		"s",
+		"m",
+		"h",
+		"d"
+	}
+	local index
+	if days > 0 then
+		index = 4
+	elseif hours > 0 then 
+		index = 3
+	elseif minutes > 0 then
+		index = 2
+	else
+		index = 1
+	end
+	local str = ""
+	for i=index,1,-1 do 
+		local new_str
+		if style == 1 then
+			new_str = string.format("%i" .. b[i],a[i])
+		else
+			new_str = string.format("%i",a[i])
+		end
+		if str ~= "" then 
+			new_str = space_char .. new_str
+		end
+		str = str .. new_str
+	end
+	
+	return str
+end
+
 --loggers
 Console.blt_log = Console.blt_log or _G.log
 function Console:Log(info,params)
 	local _info = tostring(info)
 	if self._window_instance then 
-		params = params or {}
+		params = type(params) == "table" and params or {}
 		if params.skip_window_instance then
 			--don't feed back to ConsoleModDialog instance
 		elseif params.color_ranges and type(params.color_ranges) == "table" then
@@ -597,9 +691,9 @@ function Console:Log(info,params)
 	end
 	self:AddToOutputLog(_info)
 	
-	local should_blt_log = true
+	local should_blt_log = self.settings.log_blt_enabled
 	if should_blt_log then 
-		Console.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_info))
+		self.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_info))
 	end
 	
 end
@@ -611,12 +705,39 @@ function Console:Print(...)
 end
 _G.Print = callback(Console,Console,"Print")
 
-function Console:LogTable(obj)
-	--create thread to log table
+function Console:LogTable(obj,threaded)
+	if not obj then 
+		local err_col = self:GetColorByName("error")
+		self:Log("Error: LogTable(" .. tostring(obj) .. ")",{color = err_col})
+		return
+	end
+	if threaded then
+		return self:LogTable_Threaded(obj)
+	else
+		return self:_LogTable(obj)
+	end
 end
 _G.logall = callback(Console,Console,"LogTable")
 
-function Console:_LogTable(o)
+function Console:_LogTable(obj)
+	for k,v in pairs(obj) do 
+		local data_type = type(v)
+		local color = self:GetColorByName(data_type,"misc")
+		self:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = color})
+	end
+end
+
+function Console:LogTable_Threaded(obj,desc)
+	--create thread to log table
+	self:AddCoroutine(callback(self,self,"_LogTable",obj),{
+		desc = desc or "LogTable(" .. tostring(obj) .. ")",
+		priority = nil,
+		paused = false
+	})
+end
+_G.logall2 = callback(Console,Console,"LogTable_Threaded")
+
+function Console:_LogTable_Threaded(obj,t,dt)
 --generally best used to log all of the properties of a Class:
 --functions;
 --and values, such as numbers, strings, tables, etc.
@@ -626,7 +747,7 @@ function Console:_LogTable(o)
 --todo save this as a global to Console so that i can create and delete examples but save their references
 	if not obj then 
 		local err_col = self:GetColorByName("error")
-		Console:Log("Error: LogTable(" .. tostring(obj) .. ")",{color = err_col})
+		self:Log("Error: LogTable(" .. tostring(obj) .. ")",{color = err_col})
 		return
 	end
 	for k,v in pairs(obj) do 
@@ -649,11 +770,9 @@ function Console:_LogTable(o)
 			--]]
 		local color = self:GetColorByName(data_type,"misc")
 		self:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]",{color = color})
---			Console:Log("[" .. tostring(k) .. "] : [" .. tostring(v) .. "]")
 		coroutine.yield()
 	end
 end
-
 --core functionality
 
 function Console:callback_confirm_text(dialog_instance,text)
@@ -1053,6 +1172,34 @@ function Console:Update(updater_source,t,dt)
 			self._restart_data = nil
 		end
 	end
+	self:UpdateCoroutines(t,dt)
+end
+
+function Console:UpdateCoroutines(t,dt)
+	
+	for i=#self._threads,1,-1 do 
+		local data = self._threads[i]
+		local tid = data.id
+		local co = data.thread
+		local state = coroutine.status(co)
+		if state and state ~= "dead" then
+			if state == "suspended" then 
+				if not data.paused then 
+					data.clock = data.clock + dt
+					local success,err = coroutine.resume(co,t,dt)
+					if not success then 
+						data.paused = true
+						local err_color = self:GetColorByName("error")
+						self:Log("Paused execution of thread " .. tostring(tid))
+						self:Log(err,{color=err_color})
+						--table.remove(self._threads,i)
+					end
+				end
+			end
+		elseif self.settings.console_autocull_dead_threads
+			table.remove(self._threads,i)
+		end
+	end
 end
 
 function Console:GetColorByName(color_name,fallback)
@@ -1154,7 +1301,17 @@ function Console:cmd_help(params,subcmd,meta_params)
 	end
 end
 
-function Console:cmd_weaponname(params,name,meta_params)
+function Console:cmd_weaponname(params,args,meta_params)
+	self:AddCoroutine(function(t,dt)
+			self:_cmd_weaponname(params,args,meta_params)
+		end,{
+		desc = meta_params.raw_input,
+		priority = nil,
+		paused = false
+	})
+end
+
+function Console:_cmd_weaponname(params,name,meta_params,a,b,c)
 	params = type(params) == "table" and params or {}
 	local results = {}
 	if name == "" then
@@ -1226,6 +1383,7 @@ function Console:cmd_weaponname(params,name,meta_params)
 		if type(data) == "table" then
 			if check_weapon(weapon_id,data) then
 				table.insert(results,weapon_id)
+				local t,dt = coroutine.yield()
 			end
 		end
 	end
@@ -1233,7 +1391,17 @@ function Console:cmd_weaponname(params,name,meta_params)
 	return results
 end
 
-function Console:cmd_partname(params,name,meta_params)
+function Console:cmd_partname(params,args,meta_params)
+	self:AddCoroutine(function(t,dt)
+			self:_cmd_partname(params,args,meta_params)
+		end,{
+		desc = meta_params.raw_input,
+		priority = nil,
+		paused = false
+	})
+end
+
+function Console:_cmd_partname(params,name,meta_params)
 	params = type(params) == "table" and params or {}
 	local results = {}
 	local _type = params.type
@@ -1302,6 +1470,7 @@ function Console:cmd_partname(params,name,meta_params)
 		local part_data = tweak_data.weapon.factory.parts[part_id]
 		local localized_name = part_data.name_id and managers.localization:text(part_data.name_id)
 		self:Log(tostring(part_id) .. " / " .. tostring(localized_name or "UNKNOWN"))
+		local t,dt = coroutine.yield()
 		if list_weapons then 
 			for bm_id,weapon_data in pairs(tweak_data.weapon.factory) do 
 				if weapon_data.uses_parts and table.contains(weapon_data.uses_parts,part_id) then 
@@ -1309,6 +1478,7 @@ function Console:cmd_partname(params,name,meta_params)
 					local localized_weapon_name = weapon_id and managers.weapon_factory:get_weapon_name_by_weapon_id(weapon_id)
 					if localized_weapon_name or allow_npc_weapons then
 						self:Log("    - " .. tostring(bm_id) .. " / " .. tostring(weapon_id) .. " / " .. tostring(localized_weapon_name or "UNKNOWN"))
+						local t,dt = coroutine.yield()
 					end
 				end
 			end
@@ -1506,9 +1676,360 @@ function Console:cmd_clear(params,args,meta_params) --clears the console
 	end
 end
 
-function Console:cmd_echo(param,s,meta_params)
+function Console:cmd_echo(params,s,meta_params)
 	s = self:replace_aliases_in_string(s)
 	self:Log(s)
+end
+
+function Console:cmd_thread(params,args,meta_params)
+
+	--acceptable formats:
+	--		/thread subcmd i
+	--		/thread subcmd -n i
+	--		/thread i
+	
+	local _args = string.split(args," ")
+	local subcmd = _args[1]
+	local id = _args[2] or params.number or params.id
+	
+	local err_color = self:GetColorByName("error")
+	
+	if id == "last" then
+		id = self._coroutine_counter
+	end
+	
+	if params.list or subcmd == "list" then 
+		subcmd = "list"
+	elseif params.pause or subcmd == "pause" then
+		subcmd = "pause"
+	elseif params.resume or subcmd == "resume" then 
+		subcmd = "resume"
+	elseif params.kill or subcmd == "kill" or params.remove or subcmd == "remove" or params.stop or subcmd == "stop" then
+		subcmd = "kill"
+	elseif tonumber(subcmd) then
+		id = tonumber(subcmd)
+		subcmd = "list"
+	else
+		self:Log("Invalid subcmd: " .. tostring(subcmd),{color=err_color})
+		return
+	end
+	
+	
+	if subcmd == "list" then
+		if id then
+			local index,thread_data = self:GetCoroutine(id)
+			if thread_data then
+				local age_raw = os.time() - thread_data.creation_timestamp
+				local age_str = self.format_time(age_raw,{style=1,divider=":"})
+				
+				self:Log(string.format("ID: %i | DESC: %s | AGE: %s | RUNTIME: %0.2fs | PAUSED: %s",
+					thread_data.id,
+					thread_data.desc or "",
+					age_str,
+					thread_data.clock,
+					tostring(thread_data.paused and true or false)
+				))
+			else
+				--no thread found
+				self:Log(string.format("Could not find a thread with id [%s]",id),{color=err_color}) 
+				return
+			end
+		else
+			if #self._threads > 0 then 
+				local order = {}
+				local st = {}
+				local spacing = {1,1,1,1,1}
+				local max_spacing = {9,32,16,9,9}
+				local align = {1,1,2,2,1}
+				local div_char = "|"
+				local space_char = " "
+					
+				for i,thread_data in ipairs(self._threads) do 
+					local id_str = string.format("%i",thread_data.id)
+					local desc_str = thread_data.desc or ""
+					local age_str = self.format_time(os.time() - thread_data.creation_timestamp,{style=1})
+					local clock_str = string.format("%0.2fs",thread_data.clock)
+					local paused_str = tostring(thread_data.paused and true or false)
+					spacing[1] = math.clamp(spacing[1],utf8.len(id_str),max_spacing[1])
+					spacing[2] = math.clamp(spacing[2],utf8.len(desc_str),max_spacing[2])
+					spacing[3] = math.clamp(spacing[3],utf8.len(age_str),max_spacing[3])
+					spacing[4] = math.clamp(spacing[4],utf8.len(clock_str),max_spacing[4])
+					spacing[5] = math.clamp(spacing[5],utf8.len(paused_str),max_spacing[5])
+					st[i] = {
+						id_str,
+						desc_str,
+						age_str,
+						clock_str,
+						paused_str
+					}
+					table.insert(order,i)
+				end
+				table.sort(order,function(a,b)
+					if self._threads[a].id < self._threads[b].id then 
+						return true
+					else
+						return false
+					end
+				end)
+				
+				local header_columns = {
+					"ID",
+					"DESC",
+					"AGE",
+					"RUNTIME",
+					"PAUSED"
+				}
+				local header_str = ""
+				for j=1,5,1 do 
+					local str = header_columns[j]
+					local str_len = utf8.len(str)
+					spacing[j] = math.max(spacing[j],str_len)
+					local h = spacing[j] - str_len
+					local pad_left = string.rep(space_char,math.floor(h/2))
+					local pad_right = string.rep(space_char,math.ceil(h/2))
+					header_str = header_str .. (
+						pad_left
+						..
+						str
+						..
+						pad_right
+						..
+						div_char
+					)
+				end
+				self:Log(header_str)
+				
+				for _,i in ipairs(order) do 
+					local f_s = ""
+					for j=1,5,1 do 
+						local str = st[i][j]
+						local str_len = utf8.len(str)
+						if str_len > spacing[j] then
+							str = string.sub(str,1,spacing[j])
+							str_len = spacing[j]
+						end
+						local h = spacing[j] - str_len
+						local pad_left,pad_right
+						if align[j] == 3 then --right
+							if h > 1 then
+								pad_right = string.rep(space_char,1)
+								pad_left = string.rep(space_char,h-1)
+							else
+								pad_right = ""
+								pad_left = string.rep(space_char,h)
+							end
+						elseif align[j] == 2 then --center (left bias)
+							pad_left = string.rep(space_char,math.floor(h/2))
+							pad_right = string.rep(space_char,math.ceil(h/2))
+						else --left
+							if h > 1 then
+								pad_left = string.rep(space_char,1)
+								pad_right = string.rep(space_char,h-1)
+							else
+								pad_left = ""
+								pad_right = string.rep(space_char,h)
+							end
+						end
+						f_s = f_s .. (
+							pad_left
+							..
+							str
+							..
+							pad_right
+							..
+							div_char
+						)
+					end
+					self:Log(f_s)
+				end
+			else
+				self:Log("There are no registered threads.")
+			end
+		end
+	else
+		if id then
+			local cb
+			local fail_msg_sing
+			local done_msg_plur
+			local done_msg_sing
+			if subcmd == "pause" then --pause
+				cb = function(index,thread_data)
+					if not thread_data.paused then
+						thread_data.paused = true
+						return true
+					end
+				end
+				fail_msg_sing = "Thread [%i] is already paused."
+				done_msg_sing = "Paused thread [%i]."
+				done_msg_plur = "Paused all threads. (%i paused / %i total)"
+			elseif subcmd == "resume" then --resume
+				cb = function(index,thread_data)
+					if thread_data.paused then
+						thread_data.paused = false
+						return true
+					end
+				end
+				fail_msg_sing = "Thread [%i] is not paused."
+				done_msg_sing = "Resumed thread [%i]."
+				done_msg_plur = "Resumed all threads. (%i resumed / %i total)"
+			elseif subcmd == "kill" then --kill
+				cb = function(index,thread_data)
+					return (table.remove(self._threads,index) and true or false)
+				end
+				fail_msg_sing = "Thread [%i] does not exist."
+				done_msg_sing = "Removed thread [%i]."
+				done_msg_plur = "Disposed of multiple threads. (%i disposed / %i total)"
+			end
+			
+			if id == "all" then
+				local num_done = 0
+				local num_total = #self._threads
+				for i = num_total,1,-1 do 
+					if cb(i,self._threads[i]) then
+						num_done = num_done + 1
+					end
+				end
+				self:Log(string.format(done_msg_plur,num_done,num_total))
+			else
+				local index,thread_data = self:GetCoroutine(id)
+				if thread_data then
+					if cb(index,thread_data) then
+						self:Log(string.format(done_msg_sing,index))
+					else
+						self:Log(string.format(fail_msg_sing,index),{color=err_color})
+					end
+				else
+					self:Log(string.format("Could not find a thread with id [%s]",id),{color=err_color})
+					return
+				end
+			end
+		else
+			self:Log("You must supply a thread id!",{color=err_color})
+		end
+	end
+	--[[
+		local chunk = params.new or params.create
+		if chunk then 
+			local func,err = loadstring(chunk)
+			if func then 
+				local wrapper = function(is_exit,...)
+					while not is_exit do 
+						is_exit = func(...)
+						local dt = coroutine.yield()
+					end
+				end
+				
+				local to_i = #self._threads + 1
+				for i,data in ipairs(self._threads) do 
+					if priority > data.priority then 
+						to_i = i + 1
+						break
+					end
+				end
+				local co,co_err = coroutine.create(wrapper)
+				if co_err then 
+					local err_color = self:GetColorByName("error")
+					self:Log("Could not create coroutine.",{color=err_color})
+					self:Log(err,{color=err_color})
+				elseif co then
+					table.insert(self._threads,to_i,{
+						id = id,
+						thread = co,
+						priority = priority,
+						func = wrapper,
+						orig_func = func,
+						clock = 0,
+						paused = start_paused
+					})
+				
+				end
+			else
+				local err_color = self:GetColorByName("error")
+				self:Log("Error loading chunk:",{color=err_color})
+				self:Log(chunk,{color=err_color})
+				self:Log(err,{color=err_color})
+			end
+		elseif tid then 
+			--list info about tid
+		else
+			
+		end
+	--]]
+end
+
+
+--coroutine/thread management
+function Console:AddCoroutine(func,params)
+--desc is separate from id;
+--id is a unique identifier automatically generated/incremented by Console,
+--but desc is a human-readable string representing the command or chunk being executed
+	local id = self._coroutine_counter + 1
+	
+	local err_col = self:GetColorByName("error")
+	if type(func) ~= "function" then 
+		self:Log("Error: bad function type for arg #1 " .. tostring(func) .. " [" .. tostring(func) .. "], should be function",{color=err_col})
+		return
+	end
+	
+	params = type(params) == "table" and params or {}
+	local desc = params.desc
+	local priority = params.priority
+	local paused = params.paused
+	
+	local index = #self._threads + 1
+	--get priority; larger priorities are executed first
+	--if no priority is specified, add to the end of the stack
+	if priority then
+		for i=1,#self._threads,-1 do 
+			local data = self._threads[i]
+			if priority <= data.priority then 
+				index = i
+				break
+			end
+		end
+	end
+	
+	
+	local thread,err = coroutine.create(func)
+	if thread then
+		local new_thread_data = {
+			id = id,
+			desc = desc,
+			thread = thread,
+			func = func,
+			priority = priority,
+			clock = 0,
+			creation_timestamp = os.time(),
+			paused = paused
+			--, max_time = 10,
+			--max_executions = 0,
+		}
+		self:Log("Adding " .. tostring(thread) .. " with id " .. tostring(id))
+		self._coroutine_counter = id
+		table.insert(self._threads,index,new_thread_data)
+	end
+	
+	
+	
+	
+	
+
+	do return end
+	Console._asdf = coroutine.create(function(...)
+		f(...)
+	end)
+	--_G.sdf = coroutine.create(function(o) return Console:LogTable(o) end)
+end
+
+function Console:GetCoroutine(id)
+	id = id and tonumber(id)
+	if id then
+		for i,thread_data in ipairs(self._threads) do 
+			if thread_data.id == id then 
+				return i,thread_data
+			end
+		end
+	end
 end
 
 --alias management
