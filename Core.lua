@@ -1,8 +1,15 @@
 --[[
+===== Overview ======
+- Complete 1.0 parity list
+- Make a pass for localization strings
+- Complete menus (and re-enable settings loading)
+- Fix high-priority bugs
+- Develop plan for sustainable module packages
+
+
 
 *******************  Bug list [high priority] ******************* 
 - Fix internal/external Log/logall use so that user-made Log/logall calls can safely be used on Console's own objects without causing stack overflows
-	- look for another breaker solution
 - [Console] memory crash when using 166k-168k output logs
 - [ConsoleModDialog] Fix "scroll lock off" not scrolling properly
 - [Console] Figure out a memory-safe(r) solution to putting all history output in one continuous string in a single Text object
@@ -14,6 +21,8 @@
 - [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
 
 ******************* Feature list todo: ******************* 
+- Spacing format function, as prototyped in /thread
+- save last result to an alias/register
 - use coroutines for at-risk loops (ongoing)
 - "Debug HUD"
 	- show aim-at target (tweakdata and health)
@@ -37,8 +46,8 @@ Parity with 1.0:
 	-popups (trackers but worldspace)
 	-search_class()
 	-commands
-		-bind/unbind
 		-skillname/skillinfo
+			- organize output strings
 		-whisper
 		-rot
 		-tp
@@ -48,6 +57,8 @@ Parity with 1.0:
 		-gotonav/editnav
 		-forcestart
 		-say
+		-fwd ray
+			-aim-at unit save to predefined alias/register
 		
 
 
@@ -79,10 +90,10 @@ Parity with 1.0:
 - [ConsoleModDialog] Rewrite to allow multiple window management?
 
 ******************* Commands todo *******************
-
+- /weaponname
+	-parameters to limit searches for weapon id, bm id, or name
 - /texture
 	-create console mini-window showing texture
-- /bind
 - /help - alphabetize
 	-s search function
 	-/commands alias
@@ -93,7 +104,9 @@ Parity with 1.0:
 - /alias
 	- alias reference copying (copy func between aliases)
 	- alias syntax for functions
+- /cvar change advanced client/console vars or behaviors
 
+rework all help/manual/commands text
 --]]
 
 
@@ -648,7 +661,14 @@ do --hooks and command registration
 			desc = "Remove all keybinds. Only applies to keybinds bound with /bind; does not apply to base-game keybinds or BLT keybinds.",
 			manual = "/unbindall",
 			parameters = {},
-			func = function() console:cmd_unbind({key = "all"},"",{raw_input = "/unbind -key all",cmd_string = "-key all"}) end
+			func = function() return console:cmd_unbind({key = "all"},"",{raw_input = "/unbind -key all",cmd_string = "-key all"}) end
+		})
+		console:RegisterCommand("skillname",{
+			str = nil,
+			desc = "Search for a skill by name or description.",
+			manual = "/skillname",
+			parameters = {},
+			func = callback(console,console,"cmd_skillname")
 		})
 	end)
 
@@ -1282,106 +1302,6 @@ function Console:Update(updater_source,t,dt)
 	self:UpdateTrackers(t,dt)
 end
 
-function Console:UpdateCoroutines(t,dt)
-	
-	for i=#self._threads,1,-1 do 
-		local data = self._threads[i]
-		local tid = data.id
-		local co = data.thread
-		local state = coroutine.status(co)
-		if state and state ~= "dead" then
-			if state == "suspended" then 
-				if not data.paused then 
-					data.clock = data.clock + dt
-					local success,err = coroutine.resume(co,t,dt)
-					if not success then 
-						data.paused = true
-						local err_color = self:GetColorByName("error")
-						self:Log("Paused execution of thread " .. tostring(tid))
-						self:Log(err,{color=err_color})
-						--table.remove(self._threads,i)
-					end
-				end
-			end
-		elseif self.settings.console_autocull_dead_threads then
-			table.remove(self._threads,i)
-		end
-	end
-end
-
-function Console:UpdateKeybinds(t,dt)
-	local chat_focused
-	if managers then 
-		if managers.hud and managers.hud:chat_focus() then
-			chat_focused = true
-		elseif managers.menu_component and managers.menu_component:input_focut_game_chat_gui() then
-			chat_focused = true
-		end
-	end
-
-	local console_focused = Console._window_instance:is_focused()
-
-	for key,data in pairs(self._custom_keybinds) do 
-		if chat_focused and not data.allow_chat then 
-			return
-		elseif console_focused and not data.allow_console then
-			return
-		end
-		local down
-		if data.device == 1 then --mouse button
-			down = Input:mouse():down(Idstring(key))
-		elseif data.device == 2 then --keyboard key
-			down = Input:keyboard():down(Idstring(key))
-		elseif data.device == 3 then --controller axis/button (not yet implemented)
---			local wrapper_index = managers.controller:get_default_wrapper_index()
---			local controller_index = managers.controller:get_controller_index_list(wrapper_index)
---			local controller = Input:controller(controller_index)
---			down = controller:down(Idstring(key))
-		end
-		
-		if down then
-			local do_action
-			local is_press
-			
-			local cache = self._input_cache[key]
-			if not cache then
-				cache = {
-					start_t = t
-				}
-				if data.hold then
-					cache.next_t = t + data.hold
-				elseif data.repeat_delay then
-					cache.next_t = t + data.repeat_delay 
-				end
-				self._input_cache[key] = cache
-				
-				is_press = true
-			end
-			
-			if cache.next_t then
-				if cache.next_t < t then
-					do_action = true
-					if data.repeat_delay then
-						cache.next_t = cache.next_t + data.repeat_delay
-					else
-						cache.next_t = nil
-					end
-				end
-			elseif is_press then
-				do_action = true
-			end
-
-			if do_action then
-				if data.func then 
-					data.func()
-				end
-			end
-		else
-			self._input_cache[key] = nil
-		end
-	end
-end
-
 function Console:GetColorByName(color_name,fallback)
 	local color
 	local color_setting_name = color_name and self.color_data[color_name]
@@ -1491,12 +1411,14 @@ function Console:cmd_weaponname(params,args,meta_params)
 	})
 end
 
-function Console:_cmd_weaponname(params,name,meta_params,a,b,c)
+function Console:_cmd_weaponname(params,name,meta_params)
 	params = type(params) == "table" and params or {}
 	local results = {}
 	if name == "" then
 		name = params.name
 	end
+	local name_lower = name and string.lower(name)
+	
 	local category = params.category
 	local slot = tonumber(params.slot)
 	
@@ -1512,16 +1434,19 @@ function Console:_cmd_weaponname(params,name,meta_params,a,b,c)
 		local localized_name
 		local localized_name_lower
 		local weapon_id_lower = string.lower(weapon_id)
+		local bm_id = managers.weapon_factory:get_factory_id_by_weapon_id(weapon_id)
+		local bm_id_lower = bm_id and string.lower(bm_id)
 		if name_id then
 			localized_name = managers.localization:text(name_id)
 			localized_name_lower = string.lower(localized_name)
 		end
 		
 		if name then
-			local name_lower = string.lower(name)
 			if localized_name and string.find(localized_name_lower,name_lower) then
 				--pass
 			elseif string.find(weapon_id_lower,name_lower) then
+				--pass
+			elseif bm_id_lower and string.find(bm_id_lower,name_lower) then
 				--pass
 			else
 				--fail
@@ -1535,7 +1460,7 @@ function Console:_cmd_weaponname(params,name,meta_params,a,b,c)
 				return false
 			end
 		end
-		self:Log(tostring(weapon_id) .. " / " .. tostring(localized_name or "UNKNOWN"))
+		self:Log(tostring(weapon_id) .. " / " .. tostring(localized_name or "UNKNOWN") .. " / " .. tostring(bm_id))
 		return true
 	end
 	local search_feedback_str = "--- Searching for"
@@ -1678,9 +1603,6 @@ function Console:cmd_restart(params,args,meta_params)
 	
 	local is_in_menu = game_state_machine and game_state_machine:current_state_name() == "menu_main"
 
-	
-	
-	Log("args[" .. timer_str .. "]")
 	if timer_str == "cancel" or timer_str == "stop" then
 		--assuming the player doesn't want to do anything if their timer is "stop"
 		self._restart_data = nil
@@ -1875,6 +1797,280 @@ function Console:cmd_echo(params,s,meta_params)
 	s = self:replace_aliases_in_string(s)
 	self:Log(s)
 end
+
+
+function Console:cmd_skillname(params,args,meta_params)
+	local name = args ~= "" and args or params.name
+	
+	local results = {}
+	if not name or name == "" then
+		local err_color = self:GetColorByName("error")
+		self:Log("Error: /skillname: No name provided!",{color=err_color})
+		return 
+	end
+	local skill_names
+	self:Log("--- Searching for skill: " .. name .. "...")
+	
+	for skill_id,data in pairs(tweak_data.skilltree.skills) do 
+		if type(data) == "table" and (data.name_id or data.desc_id) then 
+			local found
+			local localized_name = data.name_id and managers.localization:text(data.name_id) or "[NAME ERROR]"
+			local localized_desc = data.desc_id and managers.localization:text(data.desc_id) or "[DESC ERROR]"
+			if string.find(string.lower(skill_id),name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name}
+			elseif string.find(string.lower(localized_name),name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name}
+			elseif data.name_id and string.find(data.name_id,name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name}
+			elseif string.find(string.lower(localized_desc),name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name,desc = localized_desc}
+			elseif data.desc_id and string.find(data.desc_id,name) then 
+				results[skill_id] = results[skill_id] or {name_id = data.name_id,title = localized_name,desc_id = data.desc_id}
+			end
+		end
+	end
+	
+	local formatted = {
+		title = "Name: $title",
+		name_id = "name_id: $name_id",
+		desc_id = "desc_id: $desc_id",
+		desc = "Description: $desc",
+		upgrade_id = "upgrade_id = $upgrade_id"
+	}
+	
+	for skill_id,skill_name_data in pairs(results) do 
+		self:Log("Skill: " .. tostring(skill_id),{color=Color.yellow})
+		for key,value in pairs(skill_name_data) do 
+			if formatted[key] then 
+				local _value = string.gsub(value,"\n"," | ")
+				self:Log(string.gsub(formatted[key],"$" .. key,_value),{color=Color(1,0.5,0.25)})
+			end
+		end
+	end
+	
+	self:Log("---Search ended.")
+	return results
+end
+
+
+--keybinds
+
+function Console:cmd_bind(params,args,meta_params)
+	local key_raw = args or params.key
+	local key_name = key_raw
+	local _args = string.split(args," ")
+	--lookup
+	--self:Log("Warning: key name not recognized. Keybind may fail to execute.")
+	
+	local _type = params.type
+	local list = params.list or _args[1] == "list"
+	local repeat_delay
+	if params.repeat_delay then 
+		repeat_delay = tonumber(params.repeat_delay)
+	end
+	local hold
+	if params.hold then 
+		hold = tonumber(params.hold)
+	end
+	local allow_in_chat = params.chatenabled
+	local allow_in_console = params.consoleenabled
+	
+	local action = params.action --the payload string or action name
+	local err_color = self:GetColorByName("error")
+	local device 
+	
+	if string.find(key_raw,"mouse ") then 
+		device = self.INPUT_DEVICES.MOUSE
+		if not string.find(key_raw,"wheel") then 
+			key_name = string.sub(key_raw,7)
+		end
+	else
+		device = self.INPUT_DEVICES.KEYBOARD
+	end
+	
+	if list then 
+		if key_name and key_name ~= "" then
+			local id,keybind_data = self._custom_keybinds[key_name]
+			if keybind_data then
+				--list specified keybind
+				self:Log(string.format(
+						"Key: %s | Raw Key: %s | Type: %s | Action: %s | Repeat Delay: %s | Hold: %s | Device: %s",
+						tostring(id),
+						tostring(keybind_data.key_raw),
+						tostring(keybind_data.type),
+						tostring(keybind_data.action),
+						keybind_data.repeat_delay and string.format("%0.2f",keybind_data.repeat_delay) or "-",
+						keybind_data.hold and string.format("%0.2f",keybind_data.hold) or "-",
+						tostring(keybind_data.device)
+					)
+				)
+			else
+				self:Log(string.format("No key found by id [%s]",key_name))
+			end
+		else
+			--list all keybinds
+			local done_any = false
+			for id,keybind_data in pairs(self._custom_keybinds) do 
+				done_any = true
+				self:Log(string.format(
+						"Key: %s | Raw Key: %s | Type: %s | Action: %s | Repeat Delay: %s | Hold: %s | Device: %s",
+						tostring(id),
+						tostring(keybind_data.key_raw),
+						tostring(keybind_data.type),
+						tostring(keybind_data.action),
+						keybind_data.repeat_delay and string.format("%0.2fs",keybind_data.repeat_delay) or "-",
+						keybind_data.hold and string.format("%0.2fs",keybind_data.hold) or "-",
+						tostring(keybind_data.device)
+					)
+				)
+			end
+			if not done_any then 
+				self:Log("No keybinds found.")
+			end
+		end
+	else
+		local data = {
+			key_name = key_name,
+			key_raw = key_raw,
+			device = device,
+			type = _type,
+			action = action,
+			hold = hold,
+			repeat_delay = repeat_delay,
+			allow_chat = allow_in_chat,
+			allow_console = allow_in_console
+		}
+		self:_cmd_bind(key_name,data)
+		self:SaveKeybinds()
+	end
+end
+
+function Console:_cmd_bind(key_name,data)
+	local err_color = self:GetColorByName("error")
+	local func,err
+	if data.type == "chunk" then
+		func,err = self:InterpretLua(data.action)
+	elseif data.type == "command" then
+		func,err = self:InterpretCommand(data.action)
+	else
+		--providing a type is much more efficient,
+		--since that way the function can be cached,
+		--instead of forcing the game to load the chunk on every keybind execution.
+		--but, if absolutely necessary, keybinds can be used to substitute direct console input.
+		--this is also the only way to use the special repeat command "//" with keybinds.
+		func = function()
+			self:ParseTextInput(data.action)
+		end
+	end
+	
+	if err then
+		self:Log("Error: Unable to parse keybind action:",{color=err_color})
+		self:Log(err,{color=err_color})
+		return
+	end
+	if func then
+		data.func = func
+		self:Log("Bound [" .. key_name .. "] to [" .. data.action .. "]")
+		self._custom_keybinds[key_name] = data
+	else
+		self:Log("Chunk failed to compile",{color=err_color})
+	end
+end
+
+function Console:cmd_unbind(params,args,meta_params)
+	local err_color = self:GetColorByName("error")
+	if args == "all" or params.key == "all" then
+		local num_done = 0
+		for k,_ in pairs(self._custom_keybinds) do 
+			self._custom_keybinds[k] = nil
+			num_done = num_done + 1
+		end
+		self:Log(string.format("Removed all keybinds! (%i)",num_done))
+	else
+		if self._custom_keybinds[args] then 
+			self._custom_keybinds[args] = nil
+			self:Log(string.format("Unbound key [%s]",args))
+		else
+			self:Log(string.format("No keybind found by key name [%s]",args),{color=err_color})
+		end
+	end
+	self:SaveKeybinds()
+end
+
+function Console:UpdateKeybinds(t,dt)
+	local chat_focused
+	if managers then 
+		if managers.hud and managers.hud:chat_focus() then
+			chat_focused = true
+		elseif managers.menu_component and managers.menu_component:input_focut_game_chat_gui() then
+			chat_focused = true
+		end
+	end
+
+	local console_focused = Console._window_instance:is_focused()
+
+	for key,data in pairs(self._custom_keybinds) do 
+		if chat_focused and not data.allow_chat then 
+			return
+		elseif console_focused and not data.allow_console then
+			return
+		end
+		local down
+		if data.device == 1 then --mouse button
+			down = Input:mouse():down(Idstring(key))
+		elseif data.device == 2 then --keyboard key
+			down = Input:keyboard():down(Idstring(key))
+		elseif data.device == 3 then --controller axis/button (not yet implemented)
+--			local wrapper_index = managers.controller:get_default_wrapper_index()
+--			local controller_index = managers.controller:get_controller_index_list(wrapper_index)
+--			local controller = Input:controller(controller_index)
+--			down = controller:down(Idstring(key))
+		end
+		
+		if down then
+			local do_action
+			local is_press
+			
+			local cache = self._input_cache[key]
+			if not cache then
+				cache = {
+					start_t = t
+				}
+				if data.hold then
+					cache.next_t = t + data.hold
+				elseif data.repeat_delay then
+					cache.next_t = t + data.repeat_delay 
+				end
+				self._input_cache[key] = cache
+				
+				is_press = true
+			end
+			
+			if cache.next_t then
+				if cache.next_t < t then
+					do_action = true
+					if data.repeat_delay then
+						cache.next_t = cache.next_t + data.repeat_delay
+					else
+						cache.next_t = nil
+					end
+				end
+			elseif is_press then
+				do_action = true
+			end
+
+			if do_action then
+				if data.func then 
+					data.func()
+				end
+			end
+		else
+			self._input_cache[key] = nil
+		end
+	end
+end
+
+--coroutine/thread management
 
 function Console:cmd_thread(params,args,meta_params)
 
@@ -2152,145 +2348,33 @@ function Console:cmd_thread(params,args,meta_params)
 	--]]
 end
 
-function Console:cmd_bind(params,args,meta_params)
-	local key_raw = args or params.key
-	local key_name = key_raw
-	local _args = string.split(args," ")
-	--lookup
-	--self:Log("Warning: key name not recognized. Keybind may fail to execute.")
+function Console:UpdateCoroutines(t,dt)
 	
-	local _type = params.type
-	local list = params.list or _args[1] == "list"
-	local repeat_delay
-	if params.repeat_delay then 
-		repeat_delay = tonumber(params.repeat_delay)
-	end
-	local hold
-	if params.hold then 
-		hold = tonumber(params.hold)
-	end
-	local allow_in_chat = params.chatenabled
-	local allow_in_console = params.consoleenabled
-	
-	local action = params.action --the payload string or action name
-	local err_color = self:GetColorByName("error")
-	local device 
-	
-	if string.find(key_raw,"mouse ") then 
-		device = self.INPUT_DEVICES.MOUSE
-		if not string.find(key_raw,"wheel") then 
-			key_name = string.sub(key_raw,7)
-		end
-	else
-		device = self.INPUT_DEVICES.KEYBOARD
-	end
-	
-	if list then 
-		if key_name and key_name ~= "" then
-			local id,keybind_data = self._custom_keybinds[key_name]
-			if keybind_data then
-				--log stuff
-				self:Log(string.format(
-						"Key: %s | Raw Key: %s | Type: %s | Action: %s | Repeat Delay: %s | Hold: %s | Device: %s",
-						tostring(id),
-						tostring(keybind_data.key_raw),
-						tostring(keybind_data.type),
-						tostring(keybind_data.action),
-						keybind_data.repeat_delay and string.format("%0.2f",keybind_data.repeat_delay) or "-",
-						keybind_data.hold and string.format("%0.2f",keybind_data.hold) or "-",
-						tostring(keybind_data.device)
-					)
-				)
-			else
-				self:Log(string.format("No key found by id [%s]",key_name))
+	for i=#self._threads,1,-1 do 
+		local data = self._threads[i]
+		local tid = data.id
+		local co = data.thread
+		local state = coroutine.status(co)
+		if state and state ~= "dead" then
+			if state == "suspended" then 
+				if not data.paused then 
+					data.clock = data.clock + dt
+					local success,err = coroutine.resume(co,t,dt)
+					if not success then 
+						data.paused = true
+						local err_color = self:GetColorByName("error")
+						self:Log("Paused execution of thread " .. tostring(tid))
+						self:Log(err,{color=err_color})
+						--table.remove(self._threads,i)
+					end
+				end
 			end
-			return
+		elseif self.settings.console_autocull_dead_threads then
+			table.remove(self._threads,i)
 		end
-		
-		for id,keybind_data in pairs(self._custom_keybinds) do 
-			self:Log(string.format(
-					"Key: %s | Raw Key: %s | Type: %s | Action: %s | Repeat Delay: %s | Hold: %s | Device: %s",
-					tostring(id),
-					tostring(keybind_data.key_raw),
-					tostring(keybind_data.type),
-					tostring(keybind_data.action),
-					keybind_data.repeat_delay and string.format("%0.2fs",keybind_data.repeat_delay) or "-",
-					keybind_data.hold and string.format("%0.2fs",keybind_data.hold) or "-",
-					tostring(keybind_data.device)
-				)
-			)
-		end
-	else
-		local data = {
-			key_name = key_name,
-			key_raw = key_raw,
-			device = device,
-			type = _type,
-			action = action,
-			hold = hold,
-			repeat_delay = repeat_delay,
-			allow_chat = allow_in_chat,
-			allow_console = allow_in_console
-		}
-		self:_cmd_bind(key_name,data)
-		self:SaveKeybinds()
 	end
 end
 
-function Console:_cmd_bind(key_name,data)
-	local err_color = self:GetColorByName("error")
-	local func,err
-	if data.type == "chunk" then
-		func,err = self:InterpretLua(data.action)
-	elseif data.type == "command" then
-		func,err = self:InterpretCommand(data.action)
-	else
-		--providing a type is much more efficient,
-		--since that way the function can be cached,
-		--instead of forcing the game to load the chunk on every keybind execution.
-		--but, if absolutely necessary, keybinds can be used to substitute direct console input.
-		--this is also the only way to use the special repeat command "//" with keybinds.
-		func = function()
-			self:ParseTextInput(data.action)
-		end
-	end
-	
-	if err then
-		self:Log("Error: Unable to parse keybind action:",{color=err_color})
-		self:Log(err,{color=err_color})
-		return
-	end
-	if func then
-		data.func = func
-		self:Log("Bound [" .. key_name .. "] to [" .. data.action .. "]")
-		self._custom_keybinds[key_name] = data
-	else
-		self:Log("Chunk failed to compile",{color=err_color})
-	end
-end
-
-function Console:cmd_unbind(params,args,meta_params)
-	local err_color = self:GetColorByName("error")
-	if args == "all" then
-		local num_done = 0
-		for k,_ in pairs(self._custom_keybinds) do 
-			self._custom_keybinds[k] = nil
-			num_done = num_done + 1
-		end
-		self:Log(string.format("Removed all keybinds! (%i)",num_done))
-	else
-		if self._custom_keybinds[args] then 
-			self._custom_keybinds[args] = nil
-			self:Log(string.format("Unbound key [%s]",args))
-		else
-			self:Log(string.format("No keybind found by key name [%s]",args),{color=err_color})
-		end
-		
-	end
-	self:SaveKeybinds()
-end
-
---coroutine/thread management
 function Console:AddCoroutine(func,params)
 --desc is separate from id;
 --id is a unique identifier automatically generated/incremented by Console,
@@ -2336,21 +2420,10 @@ function Console:AddCoroutine(func,params)
 			--, max_time = 10,
 			--max_executions = 0,
 		}
-		self:Log("Adding " .. tostring(thread) .. " with id " .. tostring(id))
+--		self:Log("Adding " .. tostring(thread) .. " with id " .. tostring(id))
 		self._coroutine_counter = id
 		table.insert(self._threads,index,new_thread_data)
 	end
-	
-	
-	
-	
-	
-
-	do return end
-	Console._asdf = coroutine.create(function(...)
-		f(...)
-	end)
-	--_G.sdf = coroutine.create(function(o) return Console:LogTable(o) end)
 end
 
 function Console:GetCoroutine(id)
