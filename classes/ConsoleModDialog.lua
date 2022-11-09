@@ -1999,6 +1999,10 @@ function ConsoleModDialog:set_input_enabled(enabled)
 	end
 end
 
+function ConsoleModDialog:is_focused()
+	return self.is_active
+end
+
 function ConsoleModDialog:show()
 	if _G.setup and _G.setup:has_queued_exec() then
 		return

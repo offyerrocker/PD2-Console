@@ -35,6 +35,7 @@ Parity with 1.0:
 	-unit tagging
 	-hitbox display
 	-popups (trackers but worldspace)
+	-search_class()
 	-commands
 		-bind/unbind
 		-skillname/skillinfo
@@ -92,9 +93,6 @@ Parity with 1.0:
 - /alias
 	- alias reference copying (copy func between aliases)
 	- alias syntax for functions
-- /unalias
-
-- warning/text-based confirm prompt eg. when a query is expected to have lots of results
 
 --]]
 
@@ -109,6 +107,7 @@ do --init mod vars
 	Console._menu_path = mod_path .. "menu/options.json"
 	Console._default_localization_path = mod_path .. "localization/english.json"
 	Console._save_path = save_path .. "console_settings.ini"
+	Console._keybinds_path = save_path .. "console_keybinds.ini"
 	Console._autoexec_menustate_path = save_path .. "autoexec_menustate.lua"
 	Console._output_log_file_path = save_path .. "console_output_log.txt" --store recent console output; colors and data types are not preserved
 	Console._input_log_file_path = save_path .. "console_input_log.txt" -- store recent console input
@@ -354,6 +353,26 @@ do --init mod vars
 		COMMAND = "/",
 		ALIAS = "$"
 	}
+	Console.INPUT_DEVICES = {
+		MOUSE = 1,
+		KEYBOARD = 2,
+		CONTROLLER = 3
+	}
+	Console._custom_keybinds = {
+		--[[ ex.
+		g = {
+			key_name = "g",
+			key_raw = "g",
+			device = 2,
+			type = "command",
+			action = "/echo Hello",
+--			hold = 0.5,
+			repeat_delay = 0,
+			func = function: 0xd3adb33f (compiled from InterpretCommand("/echo Hello") )
+		}
+		--]]
+	}
+	Console._input_cache = {}
 	Console._threads = {}
 	Console._trackers = {}
 	Console._is_reading_log = false
@@ -369,8 +388,6 @@ do --init mod vars
 		}
 	--]]
 	
-	Console._restart_timer = false --used for /restart [timer] command: tracks next _restart_timer value to output (every second)
-	Console._restart_timer_t = false  --used for /restart [timer] command: tracks time left til 0 (restart)
 	Console._colorpicker = nil
 	Console._is_font_asset_load_done = nil --if font is loaded
 	Console._is_texture_asset_load_done = nil
@@ -563,6 +580,75 @@ do --hooks and command registration
 				}
 			},
 			func = callback(console,console,"cmd_thread")
+		})
+		console:RegisterCommand("bind",{
+			str = nil,
+			desc = "Bind a key to execute a payload (a code chunk, a console command, or an in-game action).",
+			manual = "",
+			parameters = {
+				key = {
+					arg_desc = "[key]",
+					short_desc = "The name of the key to bind."
+				},
+				type = {
+					arg_desc = "[type]",
+					short_desc = "(String) The type of payload for this keybind. Possible types are \"chunk\" (Lua code chunk) \"command\" (console command), or nil.\nIt is strongly recommended to specify the type, as this is much better for performance."
+				},
+				list = {
+					arg_desc = "[list]",
+					short_desc = "If supplied: lists all keybinds, their types, and their associated payloads."
+				},
+				--[[
+				chunk = {
+					arg_desc = "[chunk]",
+					short_desc = ""
+				},
+				command = {
+					arg_desc = "[command]",
+					short_desc = "This 
+				},
+				--]]
+				action = {
+					arg_desc = "[action]",
+					short_desc = "A string containing the command or code chunk to execute when the key is pressed."
+				},
+				repeat_delay = {
+					arg_desc = "[repeat_delay]",
+					short_desc = "(Boolean) If supplied, the keybind will continuously execute its payload while its key is held."
+				},
+				hold = {
+					arg_desc = "[hold]",
+					short_desc = "(Float) If supplied, the key must be held for this many seconds in order to execute its payload."
+				},
+				consoleenabled = {
+					arg_desc = "",
+					short_desc = "If supplied, the keybind can be executed while the Console window is open."
+				},
+				chatenabled = {
+					arg_desc = "",
+					short_desc = "If supplied, the keybind can be executed while typing in the in-game chat."
+				}
+			},
+			func = callback(console,console,"cmd_bind")
+		})
+		console:RegisterCommand("unbind",{
+			str = nil,
+			desc = "Remove a keybind. Only applies to keybinds bound with /bind; does not apply to base-game keybinds or BLT keybinds.",
+			manual = "/unbind [keyname]",
+			parameters = {
+				key = {
+					arg_desc = "[key]",
+					short_desc = "You can also use \"all\" for the key name to unbind all keybinds."
+				}
+			},
+			func = callback(console,console,"cmd_unbind")
+		})
+		console:RegisterCommand("unbindall",{
+			str = nil,
+			desc = "Remove all keybinds. Only applies to keybinds bound with /bind; does not apply to base-game keybinds or BLT keybinds.",
+			manual = "/unbindall",
+			parameters = {},
+			func = function() console:cmd_unbind({key = "all"},"",{raw_input = "/unbind -key all",cmd_string = "-key all"}) end
 		})
 	end)
 
@@ -830,77 +916,81 @@ function Console:ParseTextInput(text)
 	end
 	
 	if first_char == COMMAND_PREFIX then 
-		return self:InterpretCommand(text)
+		self.blt_log(self.settings.window_prompt_string .. text)
+		local func = self:InterpretCommand(text)
+		self:AddToInputLog({
+			input = text,
+			func = func
+		})
+		if func then 
+			return func()
+		end
 	elseif string.gsub(text,"%s","") ~= "" then
-		return self:InterpretLua(text)
+		self.blt_log(self.settings.window_prompt_string .. text)
+		local func = self:InterpretLua(text)
+		local result
+		if func then 
+			result = {pcall(func)}
+			if result[1] == true then
+				table.remove(result,1)
+			end
+		end
+		self:AddToInputLog(
+			{
+				input = text,
+				func = func
+			}
+		)
+		local out_s
+		local color_data = {}
+		if result then
+			local value_sep = "\n"
+			local sep_length = utf8.len(value_sep)
+			local current = 1
+			for result_num,v in ipairs(result) do 
+				local _type = type(v)
+				local _v = tostring(v)
+				self.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_v))
+				local color = self:GetColorByName(_type)
+				local length = utf8.len(_v)
+				local new_current = current + length
+				color_data[result_num] = {
+					start = current,
+					finish = new_current,
+					color = color
+				}
+				if out_s then 
+					out_s = out_s .. value_sep .. _v
+					current = new_current + sep_length
+				else
+					out_s = _v
+					current = new_current + sep_length
+				end
+			end
+		else
+			out_s = nil
+		end
+	--	self:AddToOutputLog(result)
+		return out_s,color_data --colors here
 	end
 end
 
-function Console:InterpretLua(raw_string)
-	self.blt_log(self.settings.window_prompt_string .. raw_string)
---	local s = string.match(raw_string,"[^%s]*.*")
-	local s = raw_string
-	local force_ordered_results = false --todo
-	local result
+function Console:InterpretLua(s)
 	local func,err = loadstring(s)
 	if err then 
-		local err_color = self.hex_number_to_color(self.settings.style_color_error)
+		local err_color = self:GetColorByName("error")
 		self:Log("Error loading chunk:",{color=err_color})
 		self:Log(err,{color=err_color})
-	elseif func then 
-		if force_ordered_results then
-			result = pcall(func)
-		else
-			result = {pcall(func)}
-		end
-		if result[1] == true then
-			table.remove(result,1)
-		end
 	end
-	self:AddToInputLog(
-		{
-			input = s,
-			func = func
-		}
-	)
-	local out_s
-	local color_data = {}
-	if result then
-		local value_sep = "\n"
-		local sep_length = utf8.len(value_sep)
-		local current = 1
-		for result_num,v in ipairs(result) do 
-			local _type = type(v)
-			local _v = tostring(v)
-			self.blt_log(string.format(managers.localization:text("menu_consolemod_window_log_prefix_str"),_v))
-			local color = self:GetColorByName(_type)
-			local length = utf8.len(_v)
-			local new_current = current + length
-			color_data[result_num] = {
-				start = current,
-				finish = new_current,
-				color = color
-			}
-			if out_s then 
-				out_s = out_s .. value_sep .. _v
-				current = new_current + sep_length
-			else
-				out_s = _v
-				current = new_current + sep_length
-			end
-		end
-	else
-		out_s = nil
-	end
---	self:AddToOutputLog(result)
-	return out_s,color_data --colors here
+	return func,err
 end
 
 function Console:InterpretCommand(raw_cmd_string)
+	if not raw_cmd_string then 
+		return nil,"string expected, got nil"
+	end
 	--command string must start with "/"
 	
-	self.blt_log(self.settings.window_prompt_string .. raw_cmd_string)
-
 	--separate cmd_name (cmd_name aliasing is addressed earlier)
 	--check for substitutions
 	--separate positional parameters (aka "arguments"; everything between cmd_name and normal parameters)
@@ -1105,11 +1195,11 @@ function Console:InterpretCommand(raw_cmd_string)
 	}
 	
 	if command_data.func then 
-		self:AddToInputLog({
-			input = raw_cmd_string,
-			func = nil --command_data.func
-		})
-		return command_data.func(cmd_params,args_string,meta_params)
+		return function ()
+			return command_data.func(cmd_params,args_string,meta_params)
+		end
+	end
+	--[[
 	elseif command_data.str then 
 		local func,err = loadstring(command_data.str)
 		if func then
@@ -1123,6 +1213,7 @@ function Console:InterpretCommand(raw_cmd_string)
 			func = func
 		})
 	end
+	--]]
 end
 
 function Console:Update(updater_source,t,dt)
@@ -1186,6 +1277,7 @@ function Console:Update(updater_source,t,dt)
 			self._restart_data = nil
 		end
 	end
+	self:UpdateKeybinds(t,dt)
 	self:UpdateCoroutines(t,dt)
 	self:UpdateTrackers(t,dt)
 end
@@ -1213,6 +1305,79 @@ function Console:UpdateCoroutines(t,dt)
 			end
 		elseif self.settings.console_autocull_dead_threads then
 			table.remove(self._threads,i)
+		end
+	end
+end
+
+function Console:UpdateKeybinds(t,dt)
+	local chat_focused
+	if managers then 
+		if managers.hud and managers.hud:chat_focus() then
+			chat_focused = true
+		elseif managers.menu_component and managers.menu_component:input_focut_game_chat_gui() then
+			chat_focused = true
+		end
+	end
+
+	local console_focused = Console._window_instance:is_focused()
+
+	for key,data in pairs(self._custom_keybinds) do 
+		if chat_focused and not data.allow_chat then 
+			return
+		elseif console_focused and not data.allow_console then
+			return
+		end
+		local down
+		if data.device == 1 then --mouse button
+			down = Input:mouse():down(Idstring(key))
+		elseif data.device == 2 then --keyboard key
+			down = Input:keyboard():down(Idstring(key))
+		elseif data.device == 3 then --controller axis/button (not yet implemented)
+--			local wrapper_index = managers.controller:get_default_wrapper_index()
+--			local controller_index = managers.controller:get_controller_index_list(wrapper_index)
+--			local controller = Input:controller(controller_index)
+--			down = controller:down(Idstring(key))
+		end
+		
+		if down then
+			local do_action
+			local is_press
+			
+			local cache = self._input_cache[key]
+			if not cache then
+				cache = {
+					start_t = t
+				}
+				if data.hold then
+					cache.next_t = t + data.hold
+				elseif data.repeat_delay then
+					cache.next_t = t + data.repeat_delay 
+				end
+				self._input_cache[key] = cache
+				
+				is_press = true
+			end
+			
+			if cache.next_t then
+				if cache.next_t < t then
+					do_action = true
+					if data.repeat_delay then
+						cache.next_t = cache.next_t + data.repeat_delay
+					else
+						cache.next_t = nil
+					end
+				end
+			elseif is_press then
+				do_action = true
+			end
+
+			if do_action then
+				if data.func then 
+					data.func()
+				end
+			end
+		else
+			self._input_cache[key] = nil
 		end
 	end
 end
@@ -1987,6 +2152,144 @@ function Console:cmd_thread(params,args,meta_params)
 	--]]
 end
 
+function Console:cmd_bind(params,args,meta_params)
+	local key_raw = args or params.key
+	local key_name = key_raw
+	local _args = string.split(args," ")
+	--lookup
+	--self:Log("Warning: key name not recognized. Keybind may fail to execute.")
+	
+	local _type = params.type
+	local list = params.list or _args[1] == "list"
+	local repeat_delay
+	if params.repeat_delay then 
+		repeat_delay = tonumber(params.repeat_delay)
+	end
+	local hold
+	if params.hold then 
+		hold = tonumber(params.hold)
+	end
+	local allow_in_chat = params.chatenabled
+	local allow_in_console = params.consoleenabled
+	
+	local action = params.action --the payload string or action name
+	local err_color = self:GetColorByName("error")
+	local device 
+	
+	if string.find(key_raw,"mouse ") then 
+		device = self.INPUT_DEVICES.MOUSE
+		if not string.find(key_raw,"wheel") then 
+			key_name = string.sub(key_raw,7)
+		end
+	else
+		device = self.INPUT_DEVICES.KEYBOARD
+	end
+	
+	if list then 
+		if key_name and key_name ~= "" then
+			local id,keybind_data = self._custom_keybinds[key_name]
+			if keybind_data then
+				--log stuff
+				self:Log(string.format(
+						"Key: %s | Raw Key: %s | Type: %s | Action: %s | Repeat Delay: %s | Hold: %s | Device: %s",
+						tostring(id),
+						tostring(keybind_data.key_raw),
+						tostring(keybind_data.type),
+						tostring(keybind_data.action),
+						keybind_data.repeat_delay and string.format("%0.2f",keybind_data.repeat_delay) or "-",
+						keybind_data.hold and string.format("%0.2f",keybind_data.hold) or "-",
+						tostring(keybind_data.device)
+					)
+				)
+			else
+				self:Log(string.format("No key found by id [%s]",key_name))
+			end
+			return
+		end
+		
+		for id,keybind_data in pairs(self._custom_keybinds) do 
+			self:Log(string.format(
+					"Key: %s | Raw Key: %s | Type: %s | Action: %s | Repeat Delay: %s | Hold: %s | Device: %s",
+					tostring(id),
+					tostring(keybind_data.key_raw),
+					tostring(keybind_data.type),
+					tostring(keybind_data.action),
+					keybind_data.repeat_delay and string.format("%0.2fs",keybind_data.repeat_delay) or "-",
+					keybind_data.hold and string.format("%0.2fs",keybind_data.hold) or "-",
+					tostring(keybind_data.device)
+				)
+			)
+		end
+	else
+		local data = {
+			key_name = key_name,
+			key_raw = key_raw,
+			device = device,
+			type = _type,
+			action = action,
+			hold = hold,
+			repeat_delay = repeat_delay,
+			allow_chat = allow_in_chat,
+			allow_console = allow_in_console
+		}
+		self:_cmd_bind(key_name,data)
+		self:SaveKeybinds()
+	end
+end
+
+function Console:_cmd_bind(key_name,data)
+	local err_color = self:GetColorByName("error")
+	local func,err
+	if data.type == "chunk" then
+		func,err = self:InterpretLua(data.action)
+	elseif data.type == "command" then
+		func,err = self:InterpretCommand(data.action)
+	else
+		--providing a type is much more efficient,
+		--since that way the function can be cached,
+		--instead of forcing the game to load the chunk on every keybind execution.
+		--but, if absolutely necessary, keybinds can be used to substitute direct console input.
+		--this is also the only way to use the special repeat command "//" with keybinds.
+		func = function()
+			self:ParseTextInput(data.action)
+		end
+	end
+	
+	if err then
+		self:Log("Error: Unable to parse keybind action:",{color=err_color})
+		self:Log(err,{color=err_color})
+		return
+	end
+	if func then
+		data.func = func
+		self:Log("Bound [" .. key_name .. "] to [" .. data.action .. "]")
+		self._custom_keybinds[key_name] = data
+	else
+		self:Log("Chunk failed to compile",{color=err_color})
+	end
+end
+
+function Console:cmd_unbind(params,args,meta_params)
+	local err_color = self:GetColorByName("error")
+	if args == "all" then
+		local num_done = 0
+		for k,_ in pairs(self._custom_keybinds) do 
+			self._custom_keybinds[k] = nil
+			num_done = num_done + 1
+		end
+		self:Log(string.format("Removed all keybinds! (%i)",num_done))
+	else
+		if self._custom_keybinds[args] then 
+			self._custom_keybinds[args] = nil
+			self:Log(string.format("Unbound key [%s]",args))
+		else
+			self:Log(string.format("No keybind found by key name [%s]",args),{color=err_color})
+		end
+		
+	end
+	self:SaveKeybinds()
+end
+
 --coroutine/thread management
 function Console:AddCoroutine(func,params)
 --desc is separate from id;
@@ -2415,7 +2718,7 @@ end
 
 function Console:ToggleConsoleWindow()
 	if self._window_instance then
-		local state = not self._window_instance.is_active
+		local state = not self._window_instance:is_focused()
 		if state then 
 			self:ShowConsoleWindow()
 		else
@@ -2598,7 +2901,6 @@ function Console:FlushOutputLogBuffer()
 	end
 end
 
-
 function Console:LoadSettings()
 	if SystemFS:exists( Application:nice_path(self._save_path,true) ) then 
 		local config_from_ini = self._lip.load(self._save_path)
@@ -2639,8 +2941,8 @@ function Console:SaveSettings()
 		--it's not really a better solution, just a different one
 		
 		palettes[i] = "0x" .. v --tonumber("0x" .. v)
-		
 	end
+	
 	self._lip.save(self._save_path,{Config = self.settings,Palettes=palettes},self.settings_sort)
 end
 
@@ -2655,6 +2957,46 @@ function Console:ResetSettings(soft_reset)
 	end
 	for k,v in pairs(self.default_settings) do 
 		self.settings[k] = v
+	end
+end
+
+function Console:SaveKeybinds()
+	local keybinds = {}
+	
+	for key_name,keybind_data in pairs(self._custom_keybinds) do 
+		table.insert(keybinds,#keybinds + 1,{
+			key_name = keybind_data.key_name,
+			key_raw = keybind_data.key_raw,
+			type = keybind_data.type,
+			action = keybind_data.action,
+			device = keybind_data.device,
+			hold = keybind_data.hold,
+			repeat_delay = keybind_data.repeat_delay,
+			allow_console = keybind_data.allow_console,
+			allow_chat = keybind_data.allow_chat
+		})
+	end
+	
+	self._lip.save(self._keybinds_path,keybinds)
+end
+
+function Console:LoadKeybinds()
+	if SystemFS:exists( Application:nice_path(self._keybinds_path,true) ) then 
+		local config_from_ini = self._lip.load(self._keybinds_path)
+		for _,keybind_data in pairs(config_from_ini) do 
+			local key_name = keybind_data.key_name
+			self:_cmd_bind(keybind_data.key_name,{
+				key_name = keybind_data.key_name,
+				key_raw = keybind_data.key_raw,
+				type = keybind_data.type,
+				action = keybind_data.action,
+				device = keybind_data.device,
+				hold = keybind_data.hold,
+				repeat_delay = keybind_data.repeat_delay,
+				allow_console = keybind_data.allow_console,
+				allow_chat = keybind_data.allow_chat
+			})
+		end
 	end
 end
 
@@ -2771,7 +3113,6 @@ end
 
 Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager)
 --	Console:LoadSettings() --temp disabled; work from default settings for now
-
 	
 
 	if not Console.settings.safe_mode then 
@@ -2795,7 +3136,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 		if not Console._safe_mode then
 			Console.orig_BLTKeybindsManager_update = BLTKeybindsManager.update
 			function BLTKeybindsManager:update(...)
-				if Console._window_instance and Console._window_instance.is_active then 
+				if Console._window_instance and Console._window_instance:is_focused() then 
 					return
 				end
 				return Console.orig_BLTKeybindsManager_update(self,...)
@@ -2810,6 +3151,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
 	
 	Hooks:Call("ConsoleMod_RegisterCommands",Console)
+	Console:LoadKeybinds()
 	
 	Console:CreateConsoleWindow()
 	
