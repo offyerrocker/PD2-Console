@@ -3275,7 +3275,7 @@ end
 --menu hooks
 
 Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager)
---	Console:LoadSettings() --temp disabled; work from default settings for now
+	Console:LoadSettings() --temp disabled; work from default settings for now
 	
 
 	if not Console.settings.safe_mode then 
