@@ -90,8 +90,12 @@ Parity with 1.0:
 - [ConsoleModDialog] Rewrite to allow multiple window management?
 
 ******************* Commands todo *******************
+- /bind key collision warning
 - /weaponname
 	-parameters to limit searches for weapon id, bm id, or name
+	-parameter to search by dlc id
+- /dlcname
+	-search for a dlc name
 - /texture
 	-create console mini-window showing texture
 - /help - alphabetize
@@ -201,7 +205,7 @@ do --init mod vars
 		console_pause_game_on_focus = true,
 		console_show_nil_results = false,
 		console_autocull_dead_threads = true,
-		window_scrollbar_lock_enabled = true,
+		window_scrollbar_lock_enabled = false,
 		window_scroll_direction_reversed = true,
 		window_text_normal_color = 0xffffff,
 		window_text_highlight_color = 0xffd700, --the color of the highlight box around the text
@@ -429,21 +433,23 @@ do --hooks and command registration
 			desc = "Reloads the Lua state. Restart the heist day if in a heist, or reload the menu if at the main menu.",
 			manual = "/restart [String cancel]",
 			arg_desc = "(Boolean) Any truthy value as the first argument will cancel any ongoing restart timer.",
-			name = {
-				arg_desc = "[timer]",
-				short_desc = "(Int) Optional. The number of seconds to delay restarting by. If in-game, will display a timer in chat similar to the one available in the base game. If not supplied, restarts instantly."
-			},
-			name = {
-				arg_desc = "[noclose]",
-				short_desc = "(Boolean) Optional. Any truthy value will prevent the Console window from closing automatically if a restart is performed immediately.\nThis is because the Console window is a dialog, and any open dialog will delay a restart for as long as the dialog is open."
-			},
-			silent = {
-				arg_desc = "[silent]",
-				short_desc = "Optional. If supplied, does not send a countdown message in the chat. (Countdown messages will still be displayed in the Console.)"
-			},
-			vote = {
-				arg_desc = "[vote]",
-				short_desc = "Optional. If supplied, ignores any currennt or supplied timer and triggers a vote-restart instead."
+			parameters = {
+				timer = {
+					arg_desc = "[timer]",
+					short_desc = "(Int) Optional. The number of seconds to delay restarting by. If in-game, will display a timer in chat similar to the one available in the base game. If not supplied, restarts instantly."
+				},
+				noclose = {
+					arg_desc = "[noclose]",
+					short_desc = "(Boolean) Optional. Any truthy value will prevent the Console window from closing automatically if a restart is performed immediately.\nThis is because the Console window is a dialog, and any open dialog will delay a restart for as long as the dialog is open."
+				},
+				silent = {
+					arg_desc = "[silent]",
+					short_desc = "Optional. If supplied, does not send a countdown message in the chat. (Countdown messages will still be displayed in the Console.)"
+				},
+				vote = {
+					arg_desc = "[vote]",
+					short_desc = "Optional. If supplied, ignores any currennt or supplied timer and triggers a vote-restart instead."
+				}
 			},
 			func = callback(console,console,"cmd_restart")
 		})
@@ -895,6 +901,90 @@ function Console:_LogTable_Threaded(obj,t,dt)
 end
 --core functionality
 
+function Console:SearchTable(tbl,s,case_sensitive,threaded)
+	local function cb()
+		return self:_SearchTable(tbl,s,case_sensitive,threaded)
+	end
+	if threaded == false then --default true if not specified off
+		cb()
+	else
+		self:AddCoroutine(cb,{
+			desc = "Console:SearchTable(" .. tostring(tbl) .. "," .. tostring(s) .. ")",
+			priority = nil,
+			paused = false
+		})
+	end
+end
+
+function Console:_SearchTable(tbl,s,case_sensitive,threaded)
+	local err_color = self:GetColorByName("error")
+    s = tostring(s)
+	local s_lower = case_sensitive and s or string.lower(s)
+    self:Log("Searching table " .. tostring(tbl) .. " for \"" .. s .. "\"")
+	local done_any = false
+    if type(tbl) == "table" then 
+        for k,v in pairs(tbl) do 
+			local name = tostring(k)
+			local name_lower = case_sensitive and name or string.lower(name)
+            local msg = "TABLE"
+            if string.match(name_lower,s) then
+				done_any = true
+                local t = type(v)
+				if t == "function" then 
+					msg = tostring(t) .. "." .. name .. "()" --" = " .. tostring(v)
+				else
+					msg = tostring(t) .. "." .. name .. " = " .. tostring(v)
+				end
+				local col = self:GetColorByName(t,"misc")
+                self:Log(msg,{color = col})
+				if threaded then
+					local t,dt = coroutine.yield()
+				end
+            end
+        end
+    else
+        self:Log("Type is not table/class!",{color = err_color})
+    end
+	if not done_any then 
+		self:Log("No results for '" .. tostring(s) .."' in " .. tostring(tbl),{color = Color("ff4400")})
+	end
+end
+--[[
+function Console:_SearchTable(tbl,s,case_sensitive)
+	local err_color = self:GetColorByName("error")
+    s = tostring(s)
+	local s_lower = case_sensitive and s or string.lower(s)
+    self:Log("Searching table " .. tostring(tbl) .. " for \"" .. s .. "\"")
+	local done_any = false
+    if type(tbl) == "table" then 
+        for k,v in pairs(tbl) do 
+			local name = tostring(k)
+			local name_lower = case_sensitive and name or string.lower(name)
+            local msg = "TABLE"
+            if string.match(name_lower,s) then
+				done_any = true
+                local t = type(v)
+				if t == "function" then 
+					msg = tostring(t) .. "." .. name .. "()" --" = " .. tostring(v)
+				else
+					msg = tostring(t) .. "." .. name .. " = " .. tostring(v)
+				end
+				local col = self:GetColorByName(t,"misc")
+                self:Log(msg,{color = col})
+            end
+        end
+    else
+        self:Log("Type is not table/class!",{color = err_color})
+    end
+	if not done_any then 
+		self:Log("No results for '" .. tostring(s) .."' in " .. tostring(tbl),{color = Color("ff4400")})
+	end
+end
+--]]
+_G.search_class = function(...)
+	return Console:SearchTable(...)
+end
+
 function Console:callback_confirm_text(dialog_instance,text)
 	return self:ParseTextInput(text)
 end
@@ -1264,7 +1354,7 @@ function Console:Update(updater_source,t,dt)
 				if not restart_data.is_silent then
 					local sender_str = managers.localization:text("menu_consolemod_window_log_prefix_short")
 					if managers.chat then
-						managers.chat:_receive_message(1,sender_str,out_str, color)
+						managers.chat:_receive_message(1,sender_str,out_str, out_col)
 						managers.chat:send_message(managers.chat._channel_id, sender_str or managers.network.account:username() or "Nobody",out_str)
 					end
 				end
@@ -1890,7 +1980,7 @@ function Console:cmd_bind(params,args,meta_params)
 	
 	if list then 
 		if key_name and key_name ~= "" then
-			local id,keybind_data = self._custom_keybinds[key_name]
+			local id,keybind_data = self._custom_keybinds[key_raw]
 			if keybind_data then
 				--list specified keybind
 				self:Log(string.format(
@@ -1940,12 +2030,12 @@ function Console:cmd_bind(params,args,meta_params)
 			allow_chat = allow_in_chat,
 			allow_console = allow_in_console
 		}
-		self:_cmd_bind(key_name,data)
+		self:_cmd_bind(key_raw,data)
 		self:SaveKeybinds()
 	end
 end
 
-function Console:_cmd_bind(key_name,data)
+function Console:_cmd_bind(key_raw,data)
 	local err_color = self:GetColorByName("error")
 	local func,err
 	if data.type == "chunk" then
@@ -1970,8 +2060,8 @@ function Console:_cmd_bind(key_name,data)
 	end
 	if func then
 		data.func = func
-		self:Log("Bound [" .. key_name .. "] to [" .. data.action .. "]")
-		self._custom_keybinds[key_name] = data
+		self:Log("Bound [" .. key_raw .. "] to [" .. data.action .. "]")
+		self._custom_keybinds[key_raw] = data
 	else
 		self:Log("Chunk failed to compile",{color=err_color})
 	end
@@ -2009,7 +2099,8 @@ function Console:UpdateKeybinds(t,dt)
 
 	local console_focused = Console._window_instance:is_focused()
 
-	for key,data in pairs(self._custom_keybinds) do 
+	for _,data in pairs(self._custom_keybinds) do 
+		local key = data.key_name
 		if chat_focused and not data.allow_chat then 
 			return
 		elseif console_focused and not data.allow_console then
@@ -2856,8 +2947,8 @@ function Console:LoadInputLog()
 end
 
 function Console:AddToInputLog(data)
-	table.insert(self._input_log,#self._input_log+1,data)
 	if self.settings.log_input_enabled then
+		table.insert(self._input_log,#self._input_log+1,data)
 		local s = data.input
 		if s then
 			self:WriteToInputLog(string.gsub(s,"\n"," "),false)
@@ -2940,8 +3031,8 @@ function Console:LoadOutputLog() --load from output
 end
 
 function Console:AddToOutputLog(s)
-	table.insert(self._output_log,#self._output_log+1,s)
 	if self.settings.log_output_enabled then 
+		table.insert(self._output_log,#self._output_log+1,s)
 		self:WriteToOutputLog(s,false)
 	end
 end
@@ -3057,8 +3148,7 @@ function Console:LoadKeybinds()
 	if SystemFS:exists( Application:nice_path(self._keybinds_path,true) ) then 
 		local config_from_ini = self._lip.load(self._keybinds_path)
 		for _,keybind_data in pairs(config_from_ini) do 
-			local key_name = keybind_data.key_name
-			self:_cmd_bind(keybind_data.key_name,{
+			self:_cmd_bind(keybind_data.key_raw,{
 				key_name = keybind_data.key_name,
 				key_raw = keybind_data.key_raw,
 				type = keybind_data.type,

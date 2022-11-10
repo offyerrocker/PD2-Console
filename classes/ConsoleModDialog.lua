@@ -1109,25 +1109,6 @@ function ConsoleModDialog:add_to_history(s,colors)
 		end
 	end
 	local _s = tostring(s)
-	local history_text = self._history_text
-	local current_text = history_text:text()
-	local prev_lines = history_text:number_of_lines()
-	history_text:set_text(current_text .. "\n" .. _s)
-	local bw,bh = self._body:size()
-	local history_margin_hor = 4
-	local _,_,_,th = history_text:text_rect()
-	history_text:set_size(bw - (history_margin_hor * 2),th)
-	local history_text_y = history_text:y()
-	if not self:is_scrollbar_lock_enabled() then
-		if bh - (th - history_text_y) < 0 then 
---			log(th - history_text_y)
-			self:set_vscroll_ratio(1)
-			--snap scroll to current line
-		else
---			self:perform_vscroll_amount(history_text:line_height())
-		end
-	end
-	
 	local offset = self._current_range_data_index
 	if type(colors) == "table" then
 		for i,range_data in pairs(colors) do 
@@ -1148,7 +1129,8 @@ function ConsoleModDialog:add_to_history(s,colors)
 	end
 	offset = offset + 1 + utf8.len(_s) --add 1 to offset to account for newline
 	self._current_range_data_index = offset
-	self:refresh_history_colors()
+	
+	self._queued_add_to_history = (self._queued_add_to_history or self._history_text:text()) .. "\n" .. _s
 end
 
 function ConsoleModDialog:refresh_history_colors()
@@ -1816,6 +1798,35 @@ function ConsoleModDialog:is_focused_text_writable()
 end
 
 function ConsoleModDialog:update(t,dt)
+	
+	if self._queued_add_to_history then 
+		local history_text = self._history_text
+		
+		history_text:set_text(self._queued_add_to_history)
+		
+		local prev_lines = history_text:number_of_lines()
+		local bw,bh = self._body:size()
+		local history_margin_hor = self:get_creation_params().history_margin_hor
+		local _,_,_,th = history_text:text_rect()
+		history_text:set_size(bw - (history_margin_hor * 2),th)
+		local history_text_y = history_text:y()
+		if not self:is_scrollbar_lock_enabled() then
+			if bh - (th - history_text_y) < 0 then 
+	--			log(th - history_text_y)
+				self:set_vscroll_ratio(1)
+				--snap scroll to current line
+			else
+	--			self:perform_vscroll_amount(history_text:line_height())
+			end
+		end
+		
+		self:refresh_history_colors()
+		
+		self._queued_add_to_history = nil
+	end
+	
+	
+	
 	local focused_text = self._focused_text
 	if focused_text then
 		local input_text = self._input_text
