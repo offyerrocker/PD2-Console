@@ -1904,14 +1904,14 @@ function ConsoleModDialog:update(t,dt)
 		end
 	end
 	
-	local s = ""
+--	local s = ""
 --	local id,target = self:get_mouseover_target(self._mouse_x,self._mouse_y)
 --	local s = tostring(id) .. string.format(" %i %i",self._mouse_x,self._mouse_y)
-	s = s .. "\n" .. string.format("pos %i %i",self._history_text:position())
-	s = s .. "\n" .. string.format("sze %i %i",self._history_text:size())
+--	s = s .. "\n" .. string.format("pos %i %i",self._history_text:position())
+--	s = s .. "\n" .. string.format("sze %i %i",self._history_text:size())
 --	s = s .. "\n" .. string.format("%i %i",self._mouse_drag_x_start or -1,self._mouse_drag_y_start or -1)
 --	s = s .. "\n" .. string.format("%i %i",self._target_drag_x_start or -1,self._target_drag_y_start or -1)
-	self._prompt:set_text(s)
+--	self._prompt:set_text(s)
 --self._history_text:set_text(string.format("%0.2f",self._key_held_t))
 end
 

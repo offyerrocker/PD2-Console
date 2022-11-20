@@ -949,38 +949,7 @@ function Console:_SearchTable(tbl,s,case_sensitive,threaded)
 		self:Log("No results for '" .. tostring(s) .."' in " .. tostring(tbl),{color = Color("ff4400")})
 	end
 end
---[[
-function Console:_SearchTable(tbl,s,case_sensitive)
-	local err_color = self:GetColorByName("error")
-    s = tostring(s)
-	local s_lower = case_sensitive and s or string.lower(s)
-    self:Log("Searching table " .. tostring(tbl) .. " for \"" .. s .. "\"")
-	local done_any = false
-    if type(tbl) == "table" then 
-        for k,v in pairs(tbl) do 
-			local name = tostring(k)
-			local name_lower = case_sensitive and name or string.lower(name)
-            local msg = "TABLE"
-            if string.match(name_lower,s) then
-				done_any = true
-                local t = type(v)
-				if t == "function" then 
-					msg = tostring(t) .. "." .. name .. "()" --" = " .. tostring(v)
-				else
-					msg = tostring(t) .. "." .. name .. " = " .. tostring(v)
-				end
-				local col = self:GetColorByName(t,"misc")
-                self:Log(msg,{color = col})
-            end
-        end
-    else
-        self:Log("Type is not table/class!",{color = err_color})
-    end
-	if not done_any then 
-		self:Log("No results for '" .. tostring(s) .."' in " .. tostring(tbl),{color = Color("ff4400")})
-	end
-end
---]]
+
 _G.search_class = function(...)
 	return Console:SearchTable(...)
 end
@@ -1040,9 +1009,13 @@ function Console:ParseTextInput(text)
 		local func = self:InterpretLua(text)
 		local result
 		if func then 
-			result = {pcall(func)}
-			if result[1] == true then
-				table.remove(result,1)
+			result = {blt.pcall(func)}
+			local success = table.remove(result,1)
+			if success then 
+				--continue
+			else
+				local err = table.remove(result,1)
+				self:Log(err,{color=self:GetColorByName("error")})
 			end
 		end
 		self:AddToInputLog(
@@ -1428,7 +1401,7 @@ end
 function Console:AutoExec(c) --executes the contents of a lua file
 	if c == "menu_state" then
 		if self.file_exists(self._autoexec_menustate_path) then 
-			self:Log(dofile(self._autoexec_menustate_path))
+			self:Log(blt.vm.dofile(self._autoexec_menustate_path))
 		end
 	end
 end
@@ -1887,7 +1860,6 @@ function Console:cmd_echo(params,s,meta_params)
 	s = self:replace_aliases_in_string(s)
 	self:Log(s)
 end
-
 
 function Console:cmd_skillname(params,args,meta_params)
 	local name = args ~= "" and args or params.name
@@ -2542,9 +2514,19 @@ function Console:replace_aliases_in_string(s)
 			if string.find(s,alias) then 
 				local value
 				if type(data.get_value) == "function" then 
-					local success = pcall(function()
-						value = data.get_value()
-					end)
+					local result = {
+						blt.pcall(
+							function()
+								value = data.get_value()
+							end
+						)
+					}
+					local success = table.remove(result,1)
+					if success then 
+					else
+						local err = table.remove(result,1)
+						self:Log(err,{color=self:GetColorByName("error")})
+					end
 				else
 					value = data.value
 				end
