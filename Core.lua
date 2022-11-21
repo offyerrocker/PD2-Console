@@ -6,6 +6,8 @@
 - Fix high-priority bugs
 - Develop plan for sustainable module packages
 
+- split Core megaclass into organized files
+	- the delineations are basically already there; just separate along the seams and dofile them all on core load
 
 
 *******************  Bug list [high priority] ******************* 
@@ -2002,13 +2004,20 @@ function Console:cmd_bind(params,args,meta_params)
 			allow_chat = allow_in_chat,
 			allow_console = allow_in_console
 		}
-		self:_cmd_bind(key_raw,data)
+		local success,err = self:_cmd_bind(key_raw,data)
+		
+		if success then
+			self:Log("Bound [" .. key_raw .. "] to [" .. action .. "]")
+		elseif err then
+			self:Log("Error: Unable to parse keybind action:",{color=err_color})
+			self:Log(err,{color=err_color})
+		end
+		
 		self:SaveKeybinds()
 	end
 end
 
 function Console:_cmd_bind(key_raw,data)
-	local err_color = self:GetColorByName("error")
 	local func,err
 	if data.type == "chunk" then
 		func,err = self:InterpretLua(data.action)
@@ -2025,17 +2034,12 @@ function Console:_cmd_bind(key_raw,data)
 		end
 	end
 	
-	if err then
-		self:Log("Error: Unable to parse keybind action:",{color=err_color})
-		self:Log(err,{color=err_color})
-		return
-	end
 	if func then
 		data.func = func
-		self:Log("Bound [" .. key_raw .. "] to [" .. data.action .. "]")
 		self._custom_keybinds[key_raw] = data
+		return true
 	else
-		self:Log("Chunk failed to compile",{color=err_color})
+		return false,err
 	end
 end
 
@@ -2361,54 +2365,6 @@ function Console:cmd_thread(params,args,meta_params)
 			self:Log("You must supply a thread id!",{color=err_color})
 		end
 	end
-	--[[
-		local chunk = params.new or params.create
-		if chunk then 
-			local func,err = loadstring(chunk)
-			if func then 
-				local wrapper = function(is_exit,...)
-					while not is_exit do 
-						is_exit = func(...)
-						local dt = coroutine.yield()
-					end
-				end
-				
-				local to_i = #self._threads + 1
-				for i,data in ipairs(self._threads) do 
-					if priority > data.priority then 
-						to_i = i + 1
-						break
-					end
-				end
-				local co,co_err = coroutine.create(wrapper)
-				if co_err then 
-					local err_color = self:GetColorByName("error")
-					self:Log("Could not create coroutine.",{color=err_color})
-					self:Log(err,{color=err_color})
-				elseif co then
-					table.insert(self._threads,to_i,{
-						id = id,
-						thread = co,
-						priority = priority,
-						func = wrapper,
-						orig_func = func,
-						clock = 0,
-						paused = start_paused
-					})
-				
-				end
-			else
-				local err_color = self:GetColorByName("error")
-				self:Log("Error loading chunk:",{color=err_color})
-				self:Log(chunk,{color=err_color})
-				self:Log(err,{color=err_color})
-			end
-		elseif tid then 
-			--list info about tid
-		else
-			
-		end
-	--]]
 end
 
 function Console:UpdateCoroutines(t,dt)
