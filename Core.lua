@@ -36,9 +36,9 @@
 - mouse-selectable input text
 - scale scrollbar size to num of history lines
 
-- rounded corners in ConsoleModDialog
+- submit button
+	- recolor text on mouseover
 	- center submit button and create its own subpanel
-	- increase Console header size
 - ConsoleModDialog scroll button click input repeat
 
 
@@ -1927,7 +1927,9 @@ function Console:cmd_bind(params,args,meta_params)
 	--self:Log("Warning: key name not recognized. Keybind may fail to execute.")
 	
 	local _type = params.type
-	local list = params.list or _args[1] == "list"
+	local action = params.action --the payload string or action name
+	local list = params.list or _args[1] == "list" or not action
+	
 	local repeat_delay
 	if params.repeat_delay then 
 		repeat_delay = tonumber(params.repeat_delay)
@@ -1939,7 +1941,6 @@ function Console:cmd_bind(params,args,meta_params)
 	local allow_in_chat = params.chatenabled
 	local allow_in_console = params.consoleenabled
 	
-	local action = params.action --the payload string or action name
 	local err_color = self:GetColorByName("error")
 	local device 
 	
@@ -2007,7 +2008,7 @@ function Console:cmd_bind(params,args,meta_params)
 		local success,err = self:_cmd_bind(key_raw,data)
 		
 		if success then
-			self:Log("Bound [" .. key_raw .. "] to [" .. action .. "]")
+			self:Log("Bound [" .. tostring(key_raw) .. "] to [" .. tostring(action) .. "]")
 		elseif err then
 			self:Log("Error: Unable to parse keybind action:",{color=err_color})
 			self:Log(err,{color=err_color})

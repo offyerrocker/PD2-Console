@@ -1992,7 +1992,7 @@ function ConsoleModDialog:set_input_enabled(enabled)
 		
 			self._fullscreen_ws:disconnect_keyboard()
 			self._panel:key_release(nil)
-			self:release_scroll_bar()
+			self:release_scroll_bar() --not used
 			controller:remove_trigger("confirm", self._confirm_func)
 
 			if managers.controller:get_default_wrapper_type() == "pc" or managers.controller:get_default_wrapper_type() == "steam" or managers.controller:get_default_wrapper_type() == "vr" then
