@@ -1958,7 +1958,7 @@ function ConsoleModDialog:set_input_enabled(enabled)
 		if enabled then
 			controller:add_trigger("confirm", self._confirm_func)
 
-			if managers.controller:get_default_wrapper_type() == "pc" or managers.controller:get_default_wrapper_type() == "steam" or managers.controller:get_default_wrapper_type() == "vr" then
+			if true or managers.controller:get_default_wrapper_type() == "pc" or managers.controller:get_default_wrapper_type() == "steam" or managers.controller:get_default_wrapper_type() == "vr" then
 				controller:add_trigger("toggle_menu", self._cancel_func)
 
 				self._mouse_id = managers.mouse_pointer:get_id()

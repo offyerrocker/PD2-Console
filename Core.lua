@@ -469,6 +469,10 @@ do --hooks and command registration
 					arg_desc = "[weapon]",
 					short_desc = "(String) The weapon id to filter for, eg. m134, flamethrower, saw, m1911, or new_m4. If supplied, partname will only display attachments that can be applied to this weapon. Must be exact weapon_id match."
 				},
+				perks = {
+					arg_desc = "[perk name, ...]",
+					short_desc = "If supplied, lists all of the attachments that contain all of the supplied perks. Multiple perks can be supplied using space separators."
+				},
 				blueprint = {
 					arg_desc = "[]",
 					short_desc = "If supplied, lists the ids of all the weapons that use a given part."
@@ -1578,6 +1582,8 @@ function Console:_cmd_partname(params,name,meta_params)
 	local weapon_id = params.weapon_id or params.weapon
 	local list_weapons = params.blueprint
 	local allow_npc_weapons = params.npcs
+	local perks = params.perks
+	local perks_list
 	
 	local search_feedback_str = "--- Searching for"
 	if name and name ~= "" then 
@@ -1587,6 +1593,14 @@ function Console:_cmd_partname(params,name,meta_params)
 	end
 	if _type then 
 		search_feedback_str = search_feedback_str .. " of attachment type [" .. tostring(_type) .. "]"
+	end
+	if perks then
+		perks_list = string.split(perks," ")
+		if #perks_list > 0 then
+			search_feedback_str = search_feedback_str .. " with weapon perks [" .. perks .. "]"
+		else
+			perks_list = nil
+		end
 	end
 	if weapon_id then 
 		search_feedback_str = search_feedback_str .. " usable on weapon with weapon_id [" .. tostring(weapon_id) .. "]"
@@ -1600,6 +1614,18 @@ function Console:_cmd_partname(params,name,meta_params)
 		if _type and _type ~= part_data.type then
 			return false
 		else
+			if perks_list then
+				if not part_data.perks then 
+					--no perks on this attachment
+					return false
+				else
+					for _,perk_name in pairs(perks_list) do 
+						if not table.contains(part_data.perks,string.lower(perk_name)) then 
+							return false
+						end
+					end
+				end
+			end
 			if name then 
 				if localized_name and string.find(string.lower(localized_name),string.lower(name)) then 
 					--found
@@ -3282,7 +3308,7 @@ end)
 --updater hooks
 Hooks:Add("MenuUpdate", "dcc_update_menu", callback(Console,Console,"Update","MenuUpdate"))
 Hooks:Add("GameSetupUpdate", "dcc_update_gamesetup", callback(Console,Console,"Update","GameSetupUpdate"))
-
+Hooks:Add("GameSetupPausedUpdate","dcc_update_gamesetuppaused",callback(Console,Console,"Update","GameSetupPausedUpdate"))
 
 
 --deprecated/not implemented
