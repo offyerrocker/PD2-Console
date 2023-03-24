@@ -1301,12 +1301,14 @@ end
 function ConsoleModDialog:clear_history_text()
 	local history_text = self._history_text
 	history_text:set_text("")
+	history_text:clear_range_color()
 	local _,_,_,th = history_text:text_rect()
 	self._current_window_color_ranges = {}
 	self._current_range_data_index = 0
 	self:resize_panel(self._panel:size())
 --	self._body:set_h(th)
 	history_text:set_h(self._body:h())
+	self._queued_add_to_history = ""
 end
 
 function ConsoleModDialog:callback_mouse_moved(o,x,y)
