@@ -13,18 +13,16 @@
 *******************  Bug list [high priority] ******************* 
 - Fix internal/external Log/logall use so that user-made Log/logall calls can safely be used on Console's own objects without causing stack overflows
 - [Console] memory crash when using 166k-168k output logs
-- [ConsoleModDialog] Fix "scroll lock off" not scrolling properly
 - [Console] Figure out a memory-safe(r) solution to putting all history output in one continuous string in a single Text object
 - [ConsoleModDialog] Prevent "mouse hold" vars from sticking around after the console window is closed, if holding down a key or button when hiding console window
 
 *******************  Bug list [low priority] ******************* 
 
-- [ConsoleModDialog] move get_mouseover_target function to use ordered indices so that click priority is possible
 - [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
 
 ******************* Feature list todo: ******************* 
 - Spacing format function, as prototyped in /thread
-- save last result to an alias/register
+- save last result to an alias/var
 - use coroutines for at-risk loops (ongoing)
 - "Debug HUD"
 	- show aim-at target (tweakdata and health)
@@ -32,8 +30,6 @@
 - straighten out Log/Print/output call flow
 	- different levels of logging
 	print/log behavior option checkboxes
-- mouse-selectable output text
-- mouse-selectable input text
 - scale scrollbar size to num of history lines
 
 - submit button
