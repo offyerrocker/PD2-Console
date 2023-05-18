@@ -682,6 +682,13 @@ do --hooks and command registration
 			parameters = {},
 			func = callback(console,console,"cmd_skillname")
 		})
+		console:RegisterCommand("info",{
+			str = nil,
+			desc = "Prints basic information about the application and Console mod.",
+			manual = "/info",
+			parameters = {},
+			func = callback(console,console,"info")
+		})
 	end)
 
 	Hooks:Add("ConsoleMod_AutoExec","consolemod_autoexec_listener",function(console,state)
@@ -1948,6 +1955,36 @@ function Console:cmd_skillname(params,args,meta_params)
 	
 	self:Log("---Search ended.")
 	return results
+end
+
+function Console:cmd_info()
+	local mm_key = NetworkMatchMakingSTEAM._BUILD_SEARCH_INTEREST_KEY
+	self:Log("CURRENT INFO:",{color=Color.yellow})
+	
+	self:Log(string.format("Application version: %s",Application:version()))
+	self:Log(string.format("Matchmaking key: %s",mm_key))
+	
+	local console_version_blt = "unknown"
+	local console_blt_mod = BLT.Mods:GetModByName("Developer Console")
+	if console_blt_mod then
+		console_version_blt = console_blt_mod:GetVersion()
+	end
+	self:Log(string.format("Console version (SBLT): %s",console_version_blt))
+	
+	--[[
+	local console_version_beardlib = "unknown"
+	if ConsoleCore then
+		for _,_module in ipairs(ConsoleCore._modules) do 
+			if _module._name == "AssetUpdates" then
+				console_version_beardlib = _module.version
+				break
+			end
+		end
+	end
+	self:Log(string.format("Console version (BeardLib): %s",console_version_beardlib))
+	--todo mod hash?
+	--]]
+	
 end
 
 --keybinds
