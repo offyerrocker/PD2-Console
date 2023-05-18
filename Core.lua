@@ -21,6 +21,9 @@
 - [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
 
 ******************* Feature list todo: ******************* 
+- Re-enable logging before the window is instantiated
+- Text input "redirection" (eg. for Y/N response prompts, Text Based Adventure, etc)
+	- Should also be able to temporarily hide current text history and show a new, non-scrollable field
 - Spacing format function, as prototyped in /thread
 - save last result to an alias/var
 - use coroutines for at-risk loops (ongoing)
@@ -430,7 +433,7 @@ do --hooks and command registration
 			str = nil,
 			desc = "Reloads the Lua state. Restart the heist day if in a heist, or reload the menu if at the main menu.",
 			manual = "/restart [String cancel]",
-			arg_desc = "(Boolean) Any truthy value as the first argument will cancel any ongoing restart timer.",
+			arg_desc = "(Boolean) Any truthy value as the first argument will cancel the ongoing restart timer.",
 			parameters = {
 				timer = {
 					arg_desc = "[timer]",
