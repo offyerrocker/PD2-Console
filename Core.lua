@@ -837,6 +837,11 @@ function Console:Print(...)
 end
 _G.Print = callback(Console,Console,"Print")
 
+function Console:BLT_Print(...)
+	log(self.table_concat({...}," "))
+end
+_G._print = callback(Console,Console,"BLT_Print")
+
 function Console:LogTable(obj,threaded)
 	if not obj then 
 		local err_col = self:GetColorByName("error")
@@ -1066,7 +1071,7 @@ end
 
 function Console:InterpretLua(s)
 	local func,err = loadstring(s)
-	if err then 
+	if not func then 
 		local err_color = self:GetColorByName("error")
 		self:Log("Error loading chunk:",{color=err_color})
 		self:Log(err,{color=err_color})
@@ -1407,7 +1412,10 @@ end
 function Console:AutoExec(c) --executes the contents of a lua file
 	if c == "menu_state" then
 		if self.file_exists(self._autoexec_menustate_path) then 
-			self:Log(blt.vm.dofile(self._autoexec_menustate_path))
+			local result = {blt.vm.dofile(self._autoexec_menustate_path)}
+			if #result > 0 then
+				self:Print(unpack(result))
+			end
 		end
 	end
 end
@@ -1772,7 +1780,7 @@ function Console:cmd_alias(params,args,meta_params)
 	local cmd_no_name = meta_params.cmd_string 
 	local name_start,name_finish = string.find(args,"%w+[%w_]*") --must start with alphanum
 	local var_name = name_start and string.sub(args,name_start,name_finish)
-	local err_col = self.hex_number_to_color(self.settings.style_color_error)
+	local err_col = self:GetColorByName("error")
 	
 	local feedback_val,feedback_type
 	local value,func,err
@@ -1941,7 +1949,6 @@ function Console:cmd_skillname(params,args,meta_params)
 	self:Log("---Search ended.")
 	return results
 end
-
 
 --keybinds
 
@@ -2893,7 +2900,8 @@ function Console:LoadInputLog()
 					local func,err
 					if load_chunks_on_read then --probably not necessary since loadstring is kinda heavy
 						func,err = loadstring(line)
-						if err then
+						if func then
+						elseif err then
 							--silent fail- if these are logged, the output log would probably balloon in size
 							--add errors to table internally?
 							func = nil
@@ -3240,7 +3248,7 @@ end
 --menu hooks
 
 Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager)
-	Console:LoadSettings() --temp disabled; work from default settings for now
+	Console:LoadSettings()
 	
 
 	if not Console.settings.safe_mode then 
