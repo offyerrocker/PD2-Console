@@ -1,25 +1,13 @@
-# PD2-Console
-Command Prompt Console mod for PAYDAY 2
+# Console
 
-"Command Console" adds a toggle-able command prompt UI in-game.
-This command prompt can be used to enter and execute direct Lua code, or premade console commands.
-This mod should not be conflated or confused with any official developer console. This will not allow you to see debug logs or debug UIs by PAYDAY 2's developers (at least, not by default.) 
+Adds an interactive Lua shell in-game.
+
+Its main purpose is to allow you to enter and execute direct Lua code, or premade console commands.
+This mod should not be conflated or confused with any official developer console.
 This is merely a tool for developing mods using Lua.
 
-Although all code and commands run from this command prompt are encapsulated in a pcall ("protected call") to prevent crashes from syntax errors or other compilation problems, there is no access protection for illegal actions or code that may adversely affect your game's function outside of this pcall.
-For example, running 
+Although all code and commands run from this command prompt are encapsulated in a pcall ("protected call") to prevent crashes from syntax errors or other compilation problems, this is not a 100% foolproof method for protecting you from errors. pcall can only prevent crashes on the Lua side; errors in native calls (eg. Application/Diesel C functions exposed to Lua) called through the Console may still crash.
 
-`return 1 / 0` 
-
-will not crash, and will instead log an error "div 0 error" to the console.
-However, any successful code execution may still cause crashes in any affected code outside of the console, e.g. replacing a value that the game uses with a nil or invalid value. 
-For example, running
-
-`managers.player = true` 
-
-will crash next time any PlayerManager function is called, because you are removing (a global reference for) an important class used by the game.
-
-This code will only execute on your client; remote code execution is a security exploit, not a planned feature.
 Commands may not be mixed with other commands or with user-input Lua code by default. 
 
-
+Requires SuperBLT and BeardLib. Install into the mods folder. The keybind to toggle the shell is not bound by default and must be set in the Mod Keybinds menu, or in the Mod Options menu under "Command Console Options".
