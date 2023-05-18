@@ -1,6 +1,9 @@
 <mod name="Console" author="Offyerrocker" global_key="ConsoleCore" color="Color(0.6,0.9,1)" core_class="Core.lua">
 	<!--
-	<AssetUpdates id="offyerrocker/PD2-Console" install_directory="mods/" provider="github" branch="master"/>
+	<AssetUpdates id="offyerrocker/PD2-Console" install_directory="mods/" provider="github" release="true" branch="master"/>
+	<optional_versions>
+		<dev id="offyerrocker/PD2-Console" install_directory="mods/" provider="github" release="false" branch="master"/>
+	</optional_versions>
 	-->
 	<Localization directory="localization" default="english.json" >
 		<loc file="english.json" language="english" />
