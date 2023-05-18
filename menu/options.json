@@ -1,0 +1,21 @@
+{
+	"menu_id" : "dcc_options",
+	"parent_menu_id" : "blt_options",
+	"title" : "dcc_title",
+	"back_callback" : "callback_dcc_close",
+	"items" : [
+		{
+			"type" : "keybind",
+			"id" : "id_dcc_toggle",
+			"title" : "dcc_toggle_title",
+			"description" : "dcc_toggle_desc",
+			"keybind_id" : "dcc_commandprompt_toggle",
+			"run_in_game" : true,
+			"run_in_menu" : true,
+			"default_keybind" : "`",
+			"default_key" : "`",
+			"button" : "`",
+			"func" : "callback_dcc_console_window_focus"
+		}
+	]
+}

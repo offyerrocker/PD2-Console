@@ -1,0 +1,52 @@
+{
+	"dcc_title" : "Command Console Options",
+	"dcc_toggle_title" : "Toggle Command Console Prompt",
+	"dcc_toggle_desc" : "Shows or hides the Console Window",
+	
+	"menu_consolemod_window_title" : "Console",
+	"menu_consolemod_window_log_prefix_short" : "[CONSOLE]",
+	"menu_consolemod_window_log_prefix_str" : "CONSOLE: %s",
+	"menu_consolemod_dialog_submit_title" : "Submit",
+	"menu_consolemod_cmd_restart_dialog_cancelled" : "Restart cancelled.",
+	"menu_consolemod_cmd_restart_dialog_countdown" : "RESTARTING IN %i SECONDS...",
+	"menu_consolemode_error_command_missing" : "/%s: No such command found.",
+	"menu_consolemod_firstboot_autoexec_comment" : "--The contents of this file will be loaded and executed shortly after the game loads.\n--You can use this to automatically set aliases or variables for longer term testing or debugging, or for temporarily overriding Console configuration vars.\n--You may safely delete this message.",
+	"menu_consolemod_cmd_alias_assigned" : "%s -> %s",
+	"menu_consolemod_cmd_alias_bad_value" : "Error: Bad value or function. Alias not created.",
+	"menu_consolemod_cmd_alias_bad_name" : "Error: Bad alias name. Alias not created.",
+	
+	"dcc_window_startup_message_1" : "Initiating a new console session.",
+	"dcc_window_startup_message_2" : "Welcome to the unofficial console!",
+	"dcc_window_startup_message_3" : "Type /help for a list of commands.",
+	
+	
+	
+	
+	
+	
+	
+	
+	"dcc_desc" : "Options options options!",
+	"dcc_setkeyboardregion_title" : "Set Keyboard Region",
+	"dcc_setkeyboardregion_desc" : "Choose your keyboard type",
+	"setkeyboardregion_us" : "US",
+	"setkeyboardregion_uk" : "UK",
+	"dcc_printbehavior_title" : "print\() Behavior",
+	"dcc_printbehavior_desc" : "Choose what print\() will do.\nChanges take place on restart.",
+	"printbehavior_default" : "Default",
+	"printbehavior_tap" : "Console + Default",
+	"printbehavior_overwrite" : "Console Only",
+	"printbehavior_empty" : "Nothing",
+	
+	"dcc_keybind_debughud_title" : "Toggle Debug HUD",
+	"dcc_keybind_debughud_desc" : "Shows or hides the Debug HUD.",
+
+	"dcc_toggle_title_1" : "Toggle 1",
+	"dcc_toggle_desc_1" : "1 is not 1",
+	"dcc_tagunit_title" : "Tag Aimed Unit",
+	"dcc_tagunit_desc" : "Tags the unit you're looking at",
+	"dcc_reset_settings_title" : "Reset settings",
+	"dcc_reset_settings_desc" : "Revert to default settings",
+	"dcc_tagposition_aim_title" : "Tag Aimed Position",
+	"dcc_tagposition_aim_desc" : "Tag the place you're looking at"
+}
