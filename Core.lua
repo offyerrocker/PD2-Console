@@ -687,7 +687,7 @@ do --hooks and command registration
 			desc = "Prints basic information about the application and Console mod.",
 			manual = "/info",
 			parameters = {},
-			func = callback(console,console,"info")
+			func = callback(console,console,"cmd_info")
 		})
 	end)
 
@@ -3408,7 +3408,6 @@ local deprecated_func_list = {
 	"cmd_help",
 	"cmd_contact",
 	"cmd_about",
-	"cmd_info",
 	"cmd_epoch",
 	"cmd_runtime",
 	"cmd_time",

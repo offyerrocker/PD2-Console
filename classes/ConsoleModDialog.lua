@@ -1,6 +1,6 @@
 
 --partly based on Dialog and child classes like DocumentDialog
-ConsoleModDialog = ConsoleModDialog or class() --class(Dialog) --can't seem to get inheritance from this class to work
+ConsoleModDialog = ConsoleModDialog or class() --class(Dialog)
 
 ConsoleModDialog.MOVE_AXIS_LIMIT = 0.4
 ConsoleModDialog.MOVE_AXIS_DELAY = 0.4
@@ -199,13 +199,12 @@ function ConsoleModDialog:create_gui()
 	local scrollbar_handle_w = scrollbar_w
 	local scrollbar_handle_h = params.scrollbar_handle_h
 	local scrollbar_lock_alpha
-	local scrollbar_lock_alpha_on = params.scrollbar_lock_alpha_on
-	local scrollbar_lock_alpha_off = params.scrollbar_lock_alpha_on
-	if self:is_scrollbar_lock_enabled() then 
-		scrollbar_lock_alpha = scrollbar_lock_alpha_on
+	if settings.window_scrollbar_lock_enabled then 
+		scrollbar_lock_alpha = params.scrollbar_lock_alpha_on
 	else
-		scrollbar_lock_alpha = scrollbar_lock_alpha_off
+		scrollbar_lock_alpha = params.scrollbar_lock_alpha_off
 	end
+	
 	local scrollbar_bg_color = Color(params.scrollbar_bg_color)
 	local scrollbar_bg_alpha = params.scrollbar_bg_alpha
 	
@@ -693,6 +692,7 @@ function ConsoleModDialog:create_gui()
 		font_size = text_font_size,
 		align = "left",
 		vertical = "bottom",
+		visible = false,
 --		blend_mode = "add",
 		color = prompt_text_color,
 		alpha = prompt_text_alpha,
@@ -912,14 +912,14 @@ function ConsoleModDialog:create_gui()
 			end
 		},
 		close_button = {
-			object = self._close_button,
+			object = close_button,
 			mouseover_pointer = "link",
 			drag_pointer = nil,
 			mouseover_event_start_callback = function(o,x,y)
 				o:set_color(button_highlight_color)
 			end,
 			mouseover_event_stop_callback = function(o,x,y)
-				o:set_color(Color.red)
+				o:set_color(close_button_color)
 			end,
 			mouse_left_release_callback = nil,
 			mouse_left_click_callback = function(o,x,y) self:hide() end
@@ -1175,14 +1175,17 @@ function ConsoleModDialog:callback_on_scrollbar_down_button_clicked(o,x,y)
 end
 
 function ConsoleModDialog:callback_on_scrollbar_lock_button_clicked(o,x,y)
-	local scrollbar_lock_alpha_high = 1
-	local scrollbar_lock_alpha_low = 0.5
+	local params = self:get_creation_params()
 	local state = not self:is_scrollbar_lock_enabled()
+	
+	--visually set scrollbar lock button state
 	if state then 
-		o:set_alpha(scrollbar_lock_alpha_high)
+		o:set_alpha(params.scrollbar_lock_alpha_on)
 	else
-		o:set_alpha(scrollbar_lock_alpha_low)
+		o:set_alpha(params.scrollbar_lock_alpha_off)
 	end
+	
+	--set scrollbar button setting
 	self:set_scrollbar_lock_enabled(state)
 end
 
@@ -1908,13 +1911,12 @@ function ConsoleModDialog:update(t,dt)
 	
 --	local s = ""
 --	local id,target = self:get_mouseover_target(self._mouse_x,self._mouse_y)
---	local s = tostring(id) .. string.format(" %i %i",self._mouse_x,self._mouse_y)
+--	s = tostring(id) .. string.format(" %i %i",self._mouse_x,self._mouse_y)
 --	s = s .. "\n" .. string.format("pos %i %i",self._history_text:position())
 --	s = s .. "\n" .. string.format("sze %i %i",self._history_text:size())
 --	s = s .. "\n" .. string.format("%i %i",self._mouse_drag_x_start or -1,self._mouse_drag_y_start or -1)
 --	s = s .. "\n" .. string.format("%i %i",self._target_drag_x_start or -1,self._target_drag_y_start or -1)
---	self._prompt:set_text(s)
---self._history_text:set_text(string.format("%0.2f",self._key_held_t))
+	--self._prompt:set_text(s)
 end
 
 function ConsoleModDialog:update_input(t,dt)
