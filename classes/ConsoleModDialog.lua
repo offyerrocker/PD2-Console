@@ -1021,6 +1021,21 @@ function ConsoleModDialog:create_gui()
 			end
 		}
 	}
+	
+	local sorted_ui_objects = {}
+	for obj_name,cb_data in pairs(self._ui_objects) do 
+		table.insert(sorted_ui_objects,obj_name)
+	end
+	table.sort(sorted_ui_objects,function(a,b)
+		local data_a = self._ui_objects[a]
+		local data_b = self._ui_objects[b]
+		if data_a.object:layer() < data_b.object:layer() then
+			return true
+		end
+		return false
+	end)
+	self._sorted_ui_objects = sorted_ui_objects
+	
 	self._focused_text = input_text
 	input_text:enter_text(callback(self,self,"enter_text"))
 	self:generate_history(text_stale_color)
@@ -1142,18 +1157,17 @@ function ConsoleModDialog:refresh_history_colors()
 end
 
 function ConsoleModDialog:get_mouseover_target(x,y)
-	local id,target
-	
-	local objects = self._ui_objects
-	for _id,data in pairs(objects) do 
+
+	local ui_objects = self._ui_objects
+	for _,id in ipairs(self._sorted_ui_objects) do 
+		local data = ui_objects[id]
 		local object = data.object
 		if alive(object) and object:inside(x,y) then 
-			id = _id
-			target = object
-			break
+			return id,object
 		end
 	end
-	return id,target
+	
+	return
 end
 
 function ConsoleModDialog:callback_scrollbar_top_button_clicked(o,x,y)
