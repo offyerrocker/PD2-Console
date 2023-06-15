@@ -18,8 +18,6 @@
 
 *******************  Bug list [low priority] ******************* 
 
-- [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
-
 ******************* Feature list todo: ******************* 
 - Re-enable logging before the window is instantiated
 - Text input "redirection" (eg. for Y/N response prompts, Text Based Adventure, etc)
@@ -64,6 +62,7 @@ Parity with 1.0:
 
 
 ******************* Secondary feature todo ******************* 
+- [ConsoleModDialog] clean up mouse drag code (save current mouse drag/hold id)
 - var pipelining from command to command
 	- eg. saving return values of list from /weaponname to $WEAPONS
 - optional pause on open console (sp only)
@@ -680,6 +679,13 @@ do --hooks and command registration
 			manual = "/skillname",
 			parameters = {},
 			func = callback(console,console,"cmd_skillname")
+		})
+		console:RegisterCommand("bltmods",{
+			str = nil,
+			desc = "List your BLT mods, as far as the sharable list goes.",
+			manual = "/bltmods",
+			parameters = {},
+			func = callback(console,console,"cmd_bltmods")
 		})
 		console:RegisterCommand("info",{
 			str = nil,
@@ -1954,6 +1960,51 @@ function Console:cmd_skillname(params,args,meta_params)
 	
 	self:Log("---Search ended.")
 	return results
+end
+
+function Console:cmd_bltmods(params,args,meta_params)
+	local searchname = args
+	
+	local searchname_lower
+	if searchname then 
+		searchname_lower = string.lower(searchname)
+		Log("----- Searching for " .. tostring(searchname) .. " in mods list...",{color=Color.yellow})
+	else
+		Log("----- Listing mods by name...",{color=Color.yellow})
+	end
+	local my_mods_list = MenuCallbackHandler:build_mods_list()
+	local result = {}
+	local sorted_list = {}
+	for index,data in pairs(my_mods_list) do
+		table.insert(sorted_list,index)
+	end
+	
+	table.sort(sorted_list)
+	
+	for _,index in pairs(sorted_list) do 
+		local data = my_mods_list[index]
+		if data then 
+			local name = data[1]
+			local foldername = data[2]
+			local name_lower = name and string.lower(name)
+			if searchname_lower then 
+				if (string.find(name_lower,searchname_lower) or string.find(name_lower,searchname_lower)) then 
+					table.insert(result,data)
+					Log("Found mod match: " .. tostring(name) .. " / " .. tostring(foldername),{color=Color(1,0.5,0)})
+				end
+			elseif name then 
+				Log(name)
+			end
+		end
+	end
+	
+	if searchname then 
+		Log("----- Search concluded",{color=Color.yellow})
+		return result
+	else
+		Log("----- Mods list ends",{color=Color.yellow})
+		return my_mods_list
+	end
 end
 
 function Console:cmd_info()
