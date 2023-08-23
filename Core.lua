@@ -680,6 +680,13 @@ do --hooks and command registration
 			parameters = {},
 			func = callback(console,console,"cmd_skillname")
 		})
+		console:RegisterCommand("maskname",{
+			str = nil,
+			desc = "Search for a mask by internal name or localized name.",
+			manual = "/maskname",
+			parameters = {},
+			func = callback(console,console,"cmd_maskname")
+		})
 		console:RegisterCommand("bltmods",{
 			str = nil,
 			desc = "List your BLT mods, as far as the sharable list goes.",
@@ -694,6 +701,41 @@ do --hooks and command registration
 			parameters = {},
 			func = callback(console,console,"cmd_info")
 		})
+		console:RegisterCommand("loc",{
+			str = nil,
+			desc = "Localizes the given text. Supports macros given as parameters.",
+			manual = "/loc",
+			arg_desc = "",
+			parameters = {},
+			func = callback(console,console,"cmd_loc")
+		})
+		console:RegisterCommand("sv_cheats",{
+			str = nil,
+			desc = "Enable cheats",
+			manual = "/sv_cheats",
+			arg_desc = "",
+			parameters = {},
+			func = function(params,args,meta_params)
+				if string.find(args,"1") then
+					console:Log("Why don't you go and cl_somebitches 1",{color=Color.yellow})
+				end
+				return
+			end
+		})
+		console:RegisterCommand("cl_somebitches",{
+			str = nil,
+			desc = "Enable bitches",
+			manual = "/cl_somebitches",
+			arg_desc = "",
+			parameters = {},
+			func = function(params,args,meta_params)
+				if string.find(args,"1") then
+					console:Log("Can't use cheat command cl_somebitches in multiplayer, unless the server has sv_cheats set to 1.",{color=Color.yellow})
+				end
+				return
+			end
+		})
+		
 	end)
 
 	Hooks:Add("ConsoleMod_AutoExec","consolemod_autoexec_listener",function(console,state)
@@ -1461,9 +1503,6 @@ function Console.string_escape_magic_characters(s,to)
 	return s
 end
 
-
-
-
 function Console:cmd_help(params,subcmd,meta_params)
 	local cmd_data = subcmd and self._registered_commands[subcmd] 
 	if cmd_data then 
@@ -2037,6 +2076,42 @@ function Console:cmd_info()
 	
 end
 
+function Console:cmd_maskname(params,search_name,meta_params)
+	local results = {}
+	for id,data in pairs(tweak_data.blackmarket.masks) do
+		if type(data) == "table" then
+			if data.name_id then
+				local localized_name = managers.localization:text(data.name_id)
+				if string.find(string.lower(localized_name),search_name) then
+					table.insert(results,id)
+				end
+			end
+		end
+	end
+	
+	if #results > 0 then
+		if sort_type == 2 then
+			table.sort(results,function(a,b)
+				local d1 = tweak_data.blackmarket.masks[a]
+				local d2 = tweak_data.blackmarket.masks[b]
+				if not d1 or not d2 then
+					return false
+				end
+				return managers.localization:text(d1.name_id) > managers.localization:text(d2.name_id)
+			end)
+		else
+			table.sort(results)
+		end
+		self:Log(#results .. " results found for \"" .. search_name .. "\":")
+		for _,id in pairs(results) do 
+			self:Log(id .. " | " .. managers.localization:text(tweak_data.blackmarket.masks[id].name_id),{color=Color("ffd700")})
+		end
+		self:Log("[End results]")
+	else
+		self:Log("No results found for \"" .. search_name .. "\".")
+	end
+end
+
 --keybinds
 
 function Console:cmd_bind(params,args,meta_params)
@@ -2182,6 +2257,17 @@ function Console:cmd_unbind(params,args,meta_params)
 		end
 	end
 	self:SaveKeybinds()
+end
+
+function Console:cmd_loc(params,args,meta_params)
+	local _args = string.split(args," ")
+	
+	if #_args == 0 then
+		self:Log("No args found!")
+		return
+	end
+	
+	return managers.localization:text(_args[1],params)
 end
 
 function Console:UpdateKeybinds(t,dt)
@@ -2564,6 +2650,7 @@ function Console:AddCoroutine(func,params)
 		self._coroutine_counter = id
 		table.insert(self._threads,index,new_thread_data)
 	end
+	return id
 end
 
 function Console:GetCoroutine(id)
