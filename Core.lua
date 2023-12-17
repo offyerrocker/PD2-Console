@@ -1,5 +1,6 @@
 --[[
 ===== Overview ======
+- PRIORITY: Tab autocomplete
 - Complete 1.0 parity list
 - Make a pass for localization strings
 - Complete menus (and re-enable settings loading)
@@ -111,6 +112,29 @@ Parity with 1.0:
 - /cvar change advanced client/console vars or behaviors
 
 rework all help/manual/commands text
+	eg: weaponname
+	
+	NAME (primary, subsequent aliases listed)
+		weaponname
+	PARAMETERS (multiple)
+		category/cat: only show matching weapons from this weapon category. [snp/ar/pistol/revolver/akimbo/...]
+		
+	EXAMPLES (multiple)
+		/weaponname m4
+		/weaponname new_m4
+		/weaponname car-4
+		/weaponname -category pistol -t -c
+	
+	
+	
+	--> simple command list: (/help)
+		weaponname 				- Search for a weapon by name or other parameters
+		partname				- Search for an attachment by name or other parameters
+		clear					- Clear the console
+		
+	--> detailed command list: (/help weaponname)
+		weaponname
+	
 --]]
 
 
@@ -368,7 +392,8 @@ do --init mod vars
 	}
 	Console.PREFIXES = {
 		COMMAND = "/",
-		ALIAS = "$"
+		ALIAS = "$",
+		SUBCOMMAND = "-"
 	}
 	Console.INPUT_DEVICES = {
 		MOUSE = 1,
@@ -728,6 +753,7 @@ do --hooks and command registration
 			manual = "/cl_somebitches",
 			arg_desc = "",
 			parameters = {},
+			hidden = true,
 			func = function(params,args,meta_params)
 				if string.find(args,"1") then
 					console:Log("Can't use cheat command cl_somebitches in multiplayer, unless the server has sv_cheats set to 1.",{color=Color.yellow})
@@ -1503,28 +1529,83 @@ function Console.string_escape_magic_characters(s,to)
 	return s
 end
 
-function Console:cmd_help(params,subcmd,meta_params)
-	local cmd_data = subcmd and self._registered_commands[subcmd] 
-	if cmd_data then 
-		self:Log("/" .. tostring(subcmd))
-		self:Log(cmd_data.arg_desc)
-		self:Log(cmd_data.desc)
-		self:Log(cmd_data.manual)
-		if cmd_data.parameters then 
-			for param_name,param_data in pairs( cmd_data.parameters ) do 
-				if not param_data.hidden then
-					self:Log("-" .. param_name .. " " .. tostring(param_data.arg_desc))
-					self:Log(tostring(param_data.short_desc))
+function Console:cmd_help(params,args,meta_params)
+	local subcmd = args
+	local registered_cmds = self._registered_commands
+	
+	if subcmd ~= nil and subcmd ~= "" then
+		local cmd_data = registered_cmds[subcmd] 
+		if cmd_data then
+			subcmd = tostring(subcmd)
+			--detailed info
+			
+			local cmd_param_names = {}
+			
+			-- used for display spacing of parameters
+			local len_max = 0 
+			local all_lens = {}
+			
+			if cmd_data.parameters then 
+				for param_name,param_data in pairs(cmd_data.parameters) do 
+					if not param_data.hidden then
+						table.insert(cmd_param_names,param_name)
+						local len_name = utf8.len(param_name)
+						len_max = math.max(len_max,len_name)
+						all_lens[param_name] = len_name
+					end
 				end
 			end
+			table.sort(cmd_param_names)
+			
+			-- name/format
+			self:Log(self.PREFIXES.COMMAND .. subcmd .. ":")
+			
+			-- desc
+			self:Log(cmd_data.desc)
+			
+			-- parameters
+			for _,param_name in ipairs(cmd_param_names) do 
+				local param_data = cmd_data.parameters[param_name]
+				self:Log(self.PREFIXES.SUBCOMMAND .. param_name .. string.rep(" ",1 + (len_max - all_lens[param_name])) .. " " .. string.gsub(param_data.short_desc,"\n","\n" .. string.rep(" ",3 + len_max)))
+				-- 3 = hyphen (1) + magic number (1) + extra space (1)
+			end
+			
+			-- manual (as in manual description)
+			-- IMPORTANT: should also provide guidance on how to input the "args" 
+			-- eg. "cancel" for /restart cancel
+			self:Log(cmd_data.manual or "")
+			
+		else
+			self:Log("No command found: " .. tostring(subcmd) .. ". Please check your spelling and try again.")
 		end
 	else
-		for cmd_name,_cmd_data in pairs(self._registered_commands) do 
-			if not _cmd_data.hidden then
-				self:Log("/" .. tostring(cmd_name))
-				self:Log(_cmd_data.desc)
-				self:Log("")
+		-- list all commands (alphabetically) alongside their descriptions
+		
+		-- list of command names, to sort after populate
+		local sorted_cmds = {}
+		
+		-- used for display spacing
+		local len_max = 0 
+		local all_lens = {}
+		
+		-- populate list of commands
+		for cmd_name,cmd_data in pairs(registered_cmds) do 
+			if not cmd_data.hidden then
+				table.insert(sorted_cmds,cmd_name)
+				local desc = cmd_data.desc
+				local len_name = utf8.len(cmd_name)
+				all_lens[cmd_name] = len_name
+				len_max = math.max(len_max,len_name)
 			end
+		end
+		
+		-- alphabetize list
+		table.sort(sorted_cmds)
+		
+		-- display
+		for _,cmd_name in ipairs(sorted_cmds) do
+			local cmd_data = registered_cmds[cmd_name]
+			self:Log("/" .. tostring(cmd_name) .. string.rep(" ",1 + (len_max - all_lens[cmd_name])) .. string.gsub(cmd_data.desc,"\n","\n" .. string.rep(" ",3 + len_max)))
 		end
 	end
 end
