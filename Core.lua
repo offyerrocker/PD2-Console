@@ -3538,6 +3538,25 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	MenuCallbackHandler.callback_dcc_console_window_focus = function(self)
 		Console:ToggleConsoleWindow()
 	end
+	MenuCallbackHandler.callback_dcc_reset_window_pos = function(self)
+		
+		Console.settings.window_x = Console.default_settings.window_x
+		Console.settings.window_y = Console.default_settings.window_y
+		Console.settings.window_w = Console.default_settings.window_w
+		Console.settings.window_h = Console.default_settings.window_h
+		
+		
+		if Console._window_instance then
+			Console._window_instance._panel:set_position(Console.settings.window_x,Console.settings.window_y)
+		end
+		
+		Console:SaveSettings()
+	end
+	MenuCallbackHandler.callback_dcc_console_window_font_size = function(self,item)
+		Console.settings.window_font_size = tonumber(item:value())
+		
+		Console:SaveSettings()
+	end
 	MenuCallbackHandler.callback_dcc_close = function(self) end --not used
 	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
 	

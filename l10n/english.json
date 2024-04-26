@@ -19,7 +19,10 @@
 	"dcc_window_startup_message_2" : "Welcome to the unofficial console!",
 	"dcc_window_startup_message_3" : "Type /help for a list of commands.",
 	
-	
+	"dcc_reset_window_pos_title" : "Reset Window",
+	"dcc_reset_window_pos_desc" : "Resets the Console window to the default position and size.",
+	"dcc_window_font_size_title" : "Font Size (requires restart)",
+	"dcc_window_font_size_desc" : "Change the size of the text in the Console window.",
 	
 	
 	

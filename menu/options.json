@@ -6,7 +6,7 @@
 	"items" : [
 		{
 			"type" : "keybind",
-			"id" : "id_dcc_toggle",
+			"id" : "dcc_toggle",
 			"title" : "dcc_toggle_title",
 			"description" : "dcc_toggle_desc",
 			"keybind_id" : "dcc_commandprompt_toggle",
@@ -16,6 +16,25 @@
 			"default_key" : "`",
 			"button" : "`",
 			"func" : "callback_dcc_console_window_focus"
+		},
+		{
+			"type" : "slider",
+			"id" : "dcc_font_size",
+			"title" : "dcc_window_font_size_title",
+			"description" : "dcc_window_font_size_desc",
+			"callback" : "callback_dcc_console_window_font_size",
+			"value" : "window_font_size",
+			"default_value" : 12,
+			"min" : 1,
+			"max" : 64,
+			"step" : 1
+		},
+		{
+			"type" : "button",
+			"id" : "dcc_reset_window_pos",
+			"title" : "dcc_reset_window_pos_title",
+			"description" : "dcc_reset_window_pos_desc",
+			"callback" : "callback_dcc_reset_window_pos"
 		}
 	]
 }
