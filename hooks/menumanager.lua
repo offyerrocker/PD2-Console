@@ -1,4 +1,4 @@
-if not BeardLib then
+if not _G.BeardLib then
 	dofile(ModPath .. "Core.lua")
 end
 
