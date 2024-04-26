@@ -146,7 +146,7 @@ do --init mod vars
 	Console._mod_core = ConsoleCore
 	Console._mod_path = mod_path
 	Console._menu_path = mod_path .. "menu/options.json"
-	Console._default_localization_path = mod_path .. "localization/english.json"
+	Console._default_localization_path = mod_path .. "l10n/english.json"
 	Console._save_path = save_path .. "console_settings.ini"
 	Console._keybinds_path = save_path .. "console_keybinds.ini"
 	Console._autoexec_menustate_path = save_path .. "autoexec_menustate.lua"

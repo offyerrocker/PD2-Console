@@ -4,7 +4,7 @@
 			<dev id="offyerrocker/PD2-Console" install_directory="mods/" provider="github" release="false" branch="master"/>
 		</optional_versions>
 	</AssetUpdates>
-	<Localization directory="localization" default="english.json" >
+	<Localization directory="l10n" default="english.json" >
 		<loc file="english.json" language="english" />
 	</Localization>
 </mod>
