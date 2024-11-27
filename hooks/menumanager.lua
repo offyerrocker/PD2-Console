@@ -18,6 +18,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	
 
 	if not Console.settings.safe_mode then 
+		--[[
 		if not Console.file_exists(Console._autoexec_menustate_path) then 
 			local file = io.open(Console._autoexec_menustate_path,"w+")
 			if file then
@@ -25,7 +26,7 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 				file:close()
 			end
 		end
-		
+		--]]
 		Console:LoadAllAssets()
 		
 		if Console.settings.log_output_enabled then 
