@@ -10,6 +10,9 @@
 - split Core megaclass into organized files
 	- the delineations are basically already there; just separate along the seams and dofile them all on core load
 
+-- probably needs smarter concurrent parsing/evaluation
+-- eg detecting when typing a command name and starting a subcmd
+	
 
 *******************  Bug list [high priority] ******************* 
 - Fix internal/external Log/logall use so that user-made Log/logall calls can safely be used on Console's own objects without causing stack overflows
@@ -2820,12 +2823,18 @@ end
 function Console:CreateTrackerHUD()
 	if managers.gui_data then
 		self._ws = self._ws or managers.gui_data:create_fullscreen_workspace()
-		self._panel = self._panel or self._ws:panel()
+		if not self._panel then 
+			local mh 
+			if _G.IS_VR then 
+				local fs = managers.hud and managers.hud:script(PlayerBase.PLAYER_INFO_HUD_FULLSCREEN_PD2)
+				mh = fs and fs.panel
+			end
+			self._panel = self._panel or mh or self._ws:panel()
+		end
 		
 		for _,data in pairs(self._trackers) do 
 			self:ConfigTracker(data.name,data.params,data.text_params,data.bitmap_params)
 		end
-		
 	end
 end
 
