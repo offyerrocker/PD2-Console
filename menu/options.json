@@ -35,6 +35,20 @@
 			"title" : "dcc_reset_window_pos_title",
 			"description" : "dcc_reset_window_pos_desc",
 			"callback" : "callback_dcc_reset_window_pos"
+		},
+		{
+			"type" : "button",
+			"id" : "dcc_open_console",
+			"title" : "dcc_open_console_title",
+			"description" : "dcc_open_console_desc",
+			"callback" : "callback_dcc_open_console"
+		},
+		{
+			"type" : "button",
+			"id" : "dcc_exec_debug",
+			"title" : "dcc_exec_debug_title",
+			"description" : "dcc_exec_debug_desc",
+			"callback" : "callback_dcc_exec_debug"
 		}
 	]
 }

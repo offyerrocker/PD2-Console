@@ -72,6 +72,27 @@ Hooks:Add("MenuManagerInitialize", "dcc_menumanager_init", function(menu_manager
 	MenuCallbackHandler.callback_dcc_close = function(self) end --not used
 	MenuCallbackHandler.callback_on_console_window_closed = function(self) end --not used
 	
+	MenuCallbackHandler.callback_dcc_open_console = function(self) -- manually open console window
+		Console:ToggleConsoleWindow()
+	end
+	MenuCallbackHandler.callback_dcc_exec_debug = function(self) -- execute lua debug file
+		local path = SavePath .. "exec.lua"
+		if io.file_is_readable(path) then
+			local succ,err = blt.pcall(function()
+				local result = blt.vm.dofile(path)
+				
+				if result and #result > 0 then
+					Console:Print(unpack(result))
+				end
+			end)
+			if not succ then 
+				log("Execution failed:",err)
+			end
+		else
+			Console:Print("Path is not readable:",path)
+		end
+	end
+	
 	Hooks:Call("ConsoleMod_RegisterCommands",Console)
 	Console:LoadKeybinds()
 	

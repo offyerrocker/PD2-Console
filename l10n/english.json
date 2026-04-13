@@ -28,14 +28,18 @@
 	
 	
 	
+	"dcc_open_console_title" : "Open Console Window",
+	"dcc_open_console_desc" : "Opens the Console window.",
+	"dcc_exec_debug_title" : "Execute Debug File",
+	"dcc_exec_debug_desc" : "Executes the file at: saves/exec.lua",
 	
 	"dcc_desc" : "Options options options!",
 	"dcc_setkeyboardregion_title" : "Set Keyboard Region",
 	"dcc_setkeyboardregion_desc" : "Choose your keyboard type",
 	"setkeyboardregion_us" : "US",
 	"setkeyboardregion_uk" : "UK",
-	"dcc_printbehavior_title" : "print\() Behavior",
-	"dcc_printbehavior_desc" : "Choose what print\() will do.\nChanges take place on restart.",
+	"dcc_printbehavior_title" : "print() Behavior",
+	"dcc_printbehavior_desc" : "Choose what print() will do.\nChanges take place on restart.",
 	"printbehavior_default" : "Default",
 	"printbehavior_tap" : "Console + Default",
 	"printbehavior_overwrite" : "Console Only",
