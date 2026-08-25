@@ -2047,6 +2047,11 @@ function ConsoleModDialog:show()
 	--]]
 	self._input_delay_timer = self.INPUT_IGNORE_DELAY_INTERVAL
 	self._panel:show()
+	if FreeFlightCamera and FreeFlightCamera._state == 0 then
+		FreeFlightCamera._con:disable()
+	end
+	
+	
 --	self:set_input_enabled(true)
 --	managers.menu:post_event("prompt_enter") --snd
 	self.is_active = true
@@ -2065,6 +2070,9 @@ function ConsoleModDialog:hide()
 		end
 	end
 	--]]
+	if FreeFlightCamera and FreeFlightCamera._state == 0 then
+		FreeFlightCamera._con:enable()
+	end
 	self:set_input_enabled(false)
 	self._key_held_ids = nil
 	self._key_held_t = nil

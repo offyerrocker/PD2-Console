@@ -476,7 +476,7 @@ do --hooks and command registration
 				},
 				vote = {
 					arg_desc = "[vote]",
-					short_desc = "Optional. If supplied, ignores any currennt or supplied timer and triggers a vote-restart instead."
+					short_desc = "Optional. If supplied, ignores any current or supplied timer and triggers a vote-restart instead."
 				}
 			},
 			func = callback(console,console,"cmd_restart")
